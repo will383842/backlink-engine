@@ -20,6 +20,7 @@ import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Prospect, Backlink } from "@/types";
 import EnrollPreview from "./EnrollPreview";
+import { useTranslation } from "@/i18n";
 
 interface ProspectTimelineEvent {
   id: number;
@@ -162,6 +163,7 @@ export default function ProspectDetail() {
   const numericId = Number(id);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
 
   const { data: prospect, isLoading } = useQuery<Prospect>({
@@ -198,7 +200,7 @@ export default function ProspectDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
-      toast.success("Prospect updated");
+      toast.success(t("prospectDetail.prospectUpdated"));
     },
   });
 
@@ -209,7 +211,7 @@ export default function ProspectDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
-      toast.success("Prospect marked as WON");
+      toast.success(t("prospectDetail.prospectMarkedWon"));
     },
   });
 
@@ -220,7 +222,7 @@ export default function ProspectDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
-      toast.success("Recontact scheduled");
+      toast.success(t("prospectDetail.recontactScheduled"));
     },
   });
 
@@ -235,7 +237,7 @@ export default function ProspectDetail() {
   if (!prospect) {
     return (
       <div className="card text-center text-surface-500">
-        Prospect not found.
+        {t("prospects.notFound")}
       </div>
     );
   }
@@ -263,9 +265,9 @@ export default function ProspectDetail() {
               </span>
             </div>
             <div className="mt-1 flex items-center gap-4 text-sm text-surface-500">
-              <span>Score: {prospect.score}</span>
-              <span>DA: {prospect.mozDa ?? "N/A"}</span>
-              <span>Tier: {prospect.tier ? `T${prospect.tier}` : "N/A"}</span>
+              <span>{t("prospects.score")}: {prospect.score}</span>
+              <span>{t("prospects.da")}: {prospect.mozDa ?? t("common.na")}</span>
+              <span>{t("prospects.tier")}: {prospect.tier ? `T${prospect.tier}` : t("common.na")}</span>
             </div>
           </div>
         </div>
@@ -276,21 +278,21 @@ export default function ProspectDetail() {
             onClick={() => setEnrollModalOpen(true)}
             className="btn-primary"
           >
-            <Send size={16} className="mr-1.5" /> Enroll
+            <Send size={16} className="mr-1.5" /> {t("prospectDetail.enroll")}
           </button>
           <button
             onClick={() => markWonMutation.mutate()}
             disabled={markWonMutation.isPending}
             className="btn-primary bg-emerald-600 hover:bg-emerald-700"
           >
-            <Trophy size={16} className="mr-1.5" /> Mark WON
+            <Trophy size={16} className="mr-1.5" /> {t("prospectDetail.markWon")}
           </button>
           <button
             onClick={() => recontactMutation.mutate()}
             disabled={recontactMutation.isPending}
             className="btn-secondary"
           >
-            <RefreshCcw size={16} className="mr-1.5" /> Recontact
+            <RefreshCcw size={16} className="mr-1.5" /> {t("prospectDetail.recontact")}
           </button>
         </div>
       </div>
@@ -299,15 +301,15 @@ export default function ProspectDetail() {
         {/* Contact info */}
         <div className="card">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-surface-500">
-            <Mail size={16} /> Contact Info
+            <Mail size={16} /> {t("prospectDetail.contactInfo")}
           </h3>
           <dl className="space-y-3 text-sm">
             <div>
-              <dt className="font-medium text-surface-500">Email</dt>
+              <dt className="font-medium text-surface-500">{t("prospectDetail.email")}</dt>
               <dd>
                 <InlineEdit
                   value={firstContact?.email ?? null}
-                  placeholder="Not set (click to edit)"
+                  placeholder={t("common.notSet")}
                   onSave={(val) => {
                     // Contacts are separate, but update via prospect endpoint
                     updateMutation.mutate({ contactFormUrl: prospect.contactFormUrl } as Partial<Prospect>);
@@ -321,26 +323,26 @@ export default function ProspectDetail() {
               </dd>
             </div>
             <div>
-              <dt className="font-medium text-surface-500">Contact Name</dt>
+              <dt className="font-medium text-surface-500">{t("prospectDetail.contactName")}</dt>
               <dd>
                 <InlineEdit
                   value={firstContact?.name ?? null}
-                  placeholder="Not set (click to edit)"
+                  placeholder={t("common.notSet")}
                   onSave={(val) => {
                     api.put(`/prospects/${numericId}`, { name: val }).then(() => {
                       queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
-                      toast.success("Contact name updated");
+                      toast.success(t("prospectDetail.contactNameUpdated"));
                     });
                   }}
                 />
               </dd>
             </div>
             <div>
-              <dt className="font-medium text-surface-500">Contact Form URL</dt>
+              <dt className="font-medium text-surface-500">{t("prospectDetail.contactFormUrl")}</dt>
               <dd>
                 <InlineEdit
                   value={prospect.contactFormUrl}
-                  placeholder="Not set (click to edit)"
+                  placeholder={t("common.notSet")}
                   onSave={(val) => updateMutation.mutate({ contactFormUrl: val } as Partial<Prospect>)}
                   isLink
                 />
@@ -352,39 +354,39 @@ export default function ProspectDetail() {
         {/* Enrichment data */}
         <div className="card">
           <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-surface-500">
-            <FileText size={16} /> Enrichment Data
+            <FileText size={16} /> {t("prospectDetail.enrichmentData")}
           </h3>
           <dl className="space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <dt className="font-medium text-surface-500">Country</dt>
+                <dt className="font-medium text-surface-500">{t("prospects.country")}</dt>
                 <dd className="text-surface-900">
-                  {prospect.country ?? "N/A"}
+                  {prospect.country ?? t("common.na")}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-surface-500">Language</dt>
+                <dt className="font-medium text-surface-500">{t("prospects.language")}</dt>
                 <dd className="text-surface-900">
-                  {prospect.language ?? "N/A"}
+                  {prospect.language ?? t("common.na")}
                 </dd>
               </div>
               <div>
-                <dt className="font-medium text-surface-500">Source</dt>
+                <dt className="font-medium text-surface-500">{t("prospects.source")}</dt>
                 <dd className="text-surface-900">{prospect.source}</dd>
               </div>
               <div>
-                <dt className="font-medium text-surface-500">Spam Score</dt>
+                <dt className="font-medium text-surface-500">{t("prospectDetail.spamScore")}</dt>
                 <dd className="text-surface-900">{prospect.spamScore}</dd>
               </div>
             </div>
             <div>
               <dt className="font-medium text-surface-500">
-                Neighborhood Score
+                {t("prospectDetail.neighborhoodScore")}
               </dt>
               <dd className="text-surface-900">
                 {prospect.linkNeighborhoodScore !== null
                   ? `${prospect.linkNeighborhoodScore}/100`
-                  : "Not analyzed"}
+                  : t("common.notAnalyzed")}
               </dd>
             </div>
           </dl>
@@ -394,10 +396,10 @@ export default function ProspectDetail() {
       {/* Timeline */}
       <div className="card">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-surface-500">
-          <Clock size={16} /> Timeline
+          <Clock size={16} /> {t("prospectDetail.timeline")}
         </h3>
         {!timeline?.length ? (
-          <p className="text-sm text-surface-400">No events yet.</p>
+          <p className="text-sm text-surface-400">{t("prospectDetail.noEventsYet")}</p>
         ) : (
           <div className="space-y-3">
             {timeline.map((event) => (
@@ -427,21 +429,21 @@ export default function ProspectDetail() {
       {/* Backlinks */}
       <div className="card">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-surface-500">
-          <Link2 size={16} /> Backlinks
+          <Link2 size={16} /> {t("prospectDetail.backlinks")}
         </h3>
         {!backlinks?.length ? (
-          <p className="text-sm text-surface-400">No backlinks recorded.</p>
+          <p className="text-sm text-surface-400">{t("prospectDetail.noBacklinksRecorded")}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-surface-200">
                 <tr>
-                  <th className="pb-2 font-medium text-surface-500">Target</th>
-                  <th className="pb-2 font-medium text-surface-500">Anchor</th>
-                  <th className="pb-2 font-medium text-surface-500">Type</th>
-                  <th className="pb-2 font-medium text-surface-500">Live</th>
+                  <th className="pb-2 font-medium text-surface-500">{t("prospectDetail.target")}</th>
+                  <th className="pb-2 font-medium text-surface-500">{t("prospectDetail.anchor")}</th>
+                  <th className="pb-2 font-medium text-surface-500">{t("prospectDetail.type")}</th>
+                  <th className="pb-2 font-medium text-surface-500">{t("prospectDetail.live")}</th>
                   <th className="pb-2 font-medium text-surface-500">
-                    First Detected
+                    {t("prospectDetail.firstDetected")}
                   </th>
                 </tr>
               </thead>
@@ -467,7 +469,7 @@ export default function ProspectDetail() {
                         ? format(new Date(bl.firstDetectedAt), "dd MMM yyyy")
                         : bl.createdAt
                           ? format(new Date(bl.createdAt), "dd MMM yyyy")
-                          : "N/A"}
+                          : t("common.na")}
                     </td>
                   </tr>
                 ))}

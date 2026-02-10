@@ -5,9 +5,11 @@ import { format } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { SuppressionEntry } from "@/types";
+import { useTranslation } from "@/i18n";
 
 export default function Suppression() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [showForm, setShowForm] = useState(false);
   const [email, setEmail] = useState("");
   const [reason, setReason] = useState("");
@@ -29,7 +31,7 @@ export default function Suppression() {
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Added to suppression list");
+      toast.success(t("suppression.addedToSuppression"));
       queryClient.invalidateQueries({ queryKey: ["suppression"] });
       setEmail("");
       setReason("");
@@ -42,7 +44,7 @@ export default function Suppression() {
       await api.delete(`/suppression/${id}`);
     },
     onSuccess: () => {
-      toast.success("Removed from suppression list");
+      toast.success(t("suppression.removedFromSuppression"));
       queryClient.invalidateQueries({ queryKey: ["suppression"] });
     },
   });
@@ -50,7 +52,7 @@ export default function Suppression() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!email.trim() || !reason.trim()) {
-      toast.error("Email and reason are required");
+      toast.error(t("suppression.emailAndReasonRequired"));
       return;
     }
     addMutation.mutate();
@@ -61,13 +63,13 @@ export default function Suppression() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-surface-900">
-          Suppression List ({entries?.length ?? 0})
+          {t("suppression.title")} ({entries?.length ?? 0})
         </h3>
         <button
           onClick={() => setShowForm(!showForm)}
           className="btn-primary"
         >
-          <Plus size={16} className="mr-1.5" /> Add Email
+          <Plus size={16} className="mr-1.5" /> {t("suppression.addEmail")}
         </button>
       </div>
 
@@ -76,7 +78,7 @@ export default function Suppression() {
         <form onSubmit={handleSubmit} className="card space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="font-semibold text-surface-900">
-              Add to Suppression
+              {t("suppression.addToSuppression")}
             </h4>
             <button type="button" onClick={() => setShowForm(false)}>
               <X size={20} className="text-surface-400 hover:text-surface-600" />
@@ -86,7 +88,7 @@ export default function Suppression() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Email
+                {t("suppression.email")}
               </label>
               <input
                 type="email"
@@ -99,7 +101,7 @@ export default function Suppression() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Reason
+                {t("suppression.reason")}
               </label>
               <input
                 type="text"
@@ -118,14 +120,14 @@ export default function Suppression() {
               disabled={addMutation.isPending}
               className="btn-primary"
             >
-              {addMutation.isPending ? "Adding..." : "Add"}
+              {addMutation.isPending ? t("common.adding") : t("common.add")}
             </button>
             <button
               type="button"
               onClick={() => setShowForm(false)}
               className="btn-secondary"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </form>
@@ -138,16 +140,16 @@ export default function Suppression() {
             <thead className="border-b border-surface-200 bg-surface-50">
               <tr>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Email
+                  {t("suppression.email")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Reason
+                  {t("suppression.reason")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Source
+                  {t("suppression.source")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Date
+                  {t("suppression.date")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600" />
               </tr>
@@ -165,7 +167,7 @@ export default function Suppression() {
                     colSpan={5}
                     className="px-4 py-12 text-center text-surface-500"
                   >
-                    Suppression list is empty.
+                    {t("suppression.listEmpty")}
                   </td>
                 </tr>
               ) : (
@@ -190,7 +192,7 @@ export default function Suppression() {
                         onClick={() => {
                           if (
                             window.confirm(
-                              `Remove ${entry.emailNormalized} from suppression list?`
+                              t("suppression.confirmRemove", { email: entry.emailNormalized })
                             )
                           ) {
                             deleteMutation.mutate(entry.id);

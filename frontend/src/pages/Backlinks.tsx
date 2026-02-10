@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Backlink, LinkType } from "@/types";
+import { useTranslation } from "@/i18n";
 
 const LINK_TYPE_COLORS: Record<LinkType, string> = {
   dofollow: "bg-emerald-100 text-emerald-700",
@@ -15,6 +16,7 @@ const LINK_TYPE_COLORS: Record<LinkType, string> = {
 
 export default function Backlinks() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [filterLive, setFilterLive] = useState<string>("");
   const [filterType, setFilterType] = useState<string>("");
 
@@ -35,7 +37,7 @@ export default function Backlinks() {
       return res.data;
     },
     onSuccess: (data: { verified: number }) => {
-      toast.success(`Verification started for ${data.verified} backlinks`);
+      toast.success(t("backlinks.verificationStarted", { count: data.verified }));
       queryClient.invalidateQueries({ queryKey: ["backlinks"] });
     },
   });
@@ -49,9 +51,9 @@ export default function Backlinks() {
           onChange={(e) => setFilterLive(e.target.value)}
           className="input-field w-auto"
         >
-          <option value="">All Status</option>
-          <option value="true">Live</option>
-          <option value="false">Lost</option>
+          <option value="">{t("backlinks.allStatus")}</option>
+          <option value="true">{t("backlinks.liveLbl")}</option>
+          <option value="false">{t("backlinks.lost")}</option>
         </select>
 
         <select
@@ -59,11 +61,11 @@ export default function Backlinks() {
           onChange={(e) => setFilterType(e.target.value)}
           className="input-field w-auto"
         >
-          <option value="">All Types</option>
-          <option value="dofollow">Dofollow</option>
-          <option value="nofollow">Nofollow</option>
-          <option value="ugc">UGC</option>
-          <option value="sponsored">Sponsored</option>
+          <option value="">{t("backlinks.allTypes")}</option>
+          <option value="dofollow">{t("backlinks.dofollow")}</option>
+          <option value="nofollow">{t("backlinks.nofollow")}</option>
+          <option value="ugc">{t("backlinks.ugc")}</option>
+          <option value="sponsored">{t("backlinks.sponsored")}</option>
         </select>
 
         <div className="flex-1" />
@@ -77,7 +79,7 @@ export default function Backlinks() {
             size={16}
             className={`mr-1.5 ${verifyAllMutation.isPending ? "animate-spin" : ""}`}
           />
-          {verifyAllMutation.isPending ? "Verifying..." : "Verify All"}
+          {verifyAllMutation.isPending ? t("backlinks.verifying") : t("backlinks.verifyAll")}
         </button>
       </div>
 
@@ -88,25 +90,25 @@ export default function Backlinks() {
             <thead className="border-b border-surface-200 bg-surface-50">
               <tr>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Source Page
+                  {t("backlinks.sourcePage")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Target URL
+                  {t("backlinks.targetUrl")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Anchor Text
+                  {t("backlinks.anchorText")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Type
+                  {t("backlinks.type")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Verified
+                  {t("backlinks.verified")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Live
+                  {t("backlinks.live")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Last Verified
+                  {t("backlinks.lastVerified")}
                 </th>
               </tr>
             </thead>
@@ -123,7 +125,7 @@ export default function Backlinks() {
                     colSpan={7}
                     className="px-4 py-12 text-center text-surface-500"
                   >
-                    No backlinks found.
+                    {t("backlinks.noBacklinksFound")}
                   </td>
                 </tr>
               ) : (
@@ -162,7 +164,7 @@ export default function Backlinks() {
                     <td className="px-4 py-3 text-xs text-surface-500">
                       {bl.lastVerifiedAt
                         ? format(new Date(bl.lastVerifiedAt), "dd MMM yyyy HH:mm")
-                        : "Never"}
+                        : t("common.never")}
                     </td>
                   </tr>
                 ))

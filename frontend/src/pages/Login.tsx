@@ -2,9 +2,12 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
+import { useTranslation } from "@/i18n";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 export default function Login() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -12,7 +15,7 @@ export default function Login() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!email || !password) {
-      toast.error("Please fill in all fields");
+      toast.error(t("auth.fillAllFields"));
       return;
     }
 
@@ -23,7 +26,7 @@ export default function Login() {
         password,
       });
       localStorage.setItem("bl_token", data.token);
-      toast.success("Logged in successfully");
+      toast.success(t("auth.loggedInSuccess"));
       navigate("/", { replace: true });
     } catch {
       // Error handled by api interceptor
@@ -40,7 +43,7 @@ export default function Login() {
             <span className="text-brand-600">Backlink</span> Engine
           </h1>
           <p className="mt-2 text-sm text-surface-500">
-            Sign in to your account
+            {t("auth.signInToAccount")}
           </p>
         </div>
 
@@ -50,7 +53,7 @@ export default function Login() {
               htmlFor="email"
               className="mb-1 block text-sm font-medium text-surface-700"
             >
-              Email
+              {t("auth.email")}
             </label>
             <input
               id="email"
@@ -68,7 +71,7 @@ export default function Login() {
               htmlFor="password"
               className="mb-1 block text-sm font-medium text-surface-700"
             >
-              Password
+              {t("auth.password")}
             </label>
             <input
               id="password"
@@ -82,9 +85,13 @@ export default function Login() {
           </div>
 
           <button type="submit" disabled={loading} className="btn-primary w-full">
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? t("auth.signingIn") : t("auth.signIn")}
           </button>
         </form>
+
+        <div className="mt-4 flex justify-center">
+          <LanguageSwitcher />
+        </div>
       </div>
     </div>
   );

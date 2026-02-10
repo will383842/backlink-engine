@@ -4,6 +4,7 @@ import { X, Send, Tag } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Campaign } from "@/types";
+import { useTranslation } from "@/i18n";
 
 interface EnrollPreviewData {
   subject: string;
@@ -28,6 +29,7 @@ export default function EnrollPreview({
   onClose,
 }: EnrollPreviewProps) {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
 
   // Close modal on Escape key
@@ -73,7 +75,7 @@ export default function EnrollPreview({
       return res.data;
     },
     onSuccess: () => {
-      toast.success(`${prospectDomain} enrolled in campaign`);
+      toast.success(t("enrollPreview.enrolledInCampaign", { domain: prospectDomain }));
       queryClient.invalidateQueries({ queryKey: ["prospect", prospectId] });
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       onClose();
@@ -92,7 +94,7 @@ export default function EnrollPreview({
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4">
           <div>
             <h3 className="text-lg font-semibold text-surface-900">
-              Enroll Prospect
+              {t("enrollPreview.title")}
             </h3>
             <p className="text-sm text-surface-500">{prospectDomain}</p>
           </div>
@@ -109,14 +111,14 @@ export default function EnrollPreview({
           {/* Campaign selector */}
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Select Campaign
+              {t("enrollPreview.selectCampaign")}
             </label>
             <select
               value={selectedCampaignId}
               onChange={(e) => setSelectedCampaignId(e.target.value)}
               className="input-field"
             >
-              <option value="">Choose a campaign...</option>
+              <option value="">{t("enrollPreview.chooseCampaign")}</option>
               {campaigns
                 ?.filter((c) => c.isActive)
                 .map((c) => (
@@ -140,7 +142,7 @@ export default function EnrollPreview({
               {/* Campaign info */}
               <div className="rounded-lg bg-surface-50 p-4">
                 <h4 className="mb-1 text-sm font-semibold text-surface-700">
-                  Campaign
+                  {t("enrollPreview.campaign")}
                 </h4>
                 <p className="text-sm text-surface-900">
                   {preview.campaign.name} ({preview.campaign.language.toUpperCase()})
@@ -151,7 +153,7 @@ export default function EnrollPreview({
               {preview.tags.length > 0 && (
                 <div>
                   <h4 className="mb-2 flex items-center gap-1 text-sm font-semibold text-surface-700">
-                    <Tag size={14} /> Tags to Apply
+                    <Tag size={14} /> {t("enrollPreview.tagsToApply")}
                   </h4>
                   <div className="flex flex-wrap gap-1">
                     {preview.tags.map((tag) => (
@@ -169,13 +171,13 @@ export default function EnrollPreview({
               {/* Email preview */}
               <div>
                 <h4 className="mb-2 text-sm font-semibold text-surface-700">
-                  Email Preview
+                  {t("enrollPreview.emailPreview")}
                 </h4>
                 <div className="rounded-lg border border-surface-200 bg-white">
                   <div className="border-b border-surface-100 px-4 py-2">
                     <p className="text-sm">
                       <span className="font-medium text-surface-500">
-                        Subject:{" "}
+                        {t("enrollPreview.subjectLabel")}{" "}
                       </span>
                       <span className="text-surface-900">
                         {preview.subject}
@@ -194,7 +196,7 @@ export default function EnrollPreview({
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 border-t border-surface-200 px-6 py-4">
           <button onClick={onClose} className="btn-secondary">
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             onClick={() => enrollMutation.mutate()}
@@ -206,7 +208,7 @@ export default function EnrollPreview({
             className="btn-primary"
           >
             <Send size={16} className="mr-1.5" />
-            {enrollMutation.isPending ? "Enrolling..." : "Confirm & Enroll"}
+            {enrollMutation.isPending ? t("enrollPreview.enrolling") : t("enrollPreview.confirmAndEnroll")}
           </button>
         </div>
       </div>

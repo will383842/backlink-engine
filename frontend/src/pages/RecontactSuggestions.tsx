@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { ReplyCategory } from "@/types";
+import { useTranslation } from "@/i18n";
 
 interface RecontactProspect {
   id: string;
@@ -30,6 +31,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export default function RecontactSuggestions() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { data: prospects, isLoading } = useQuery<RecontactProspect[]>({
@@ -47,7 +49,7 @@ export default function RecontactSuggestions() {
       return res.data;
     },
     onSuccess: (data: { recontacted: number }) => {
-      toast.success(`${data.recontacted} prospects queued for recontact`);
+      toast.success(t("recontact.prospectQueued", { count: data.recontacted }));
       setSelectedIds(new Set());
       queryClient.invalidateQueries({ queryKey: ["recontact-suggestions"] });
     },
@@ -80,10 +82,10 @@ export default function RecontactSuggestions() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-surface-900">
-            Recontact Suggestions
+            {t("recontact.title")}
           </h3>
           <p className="text-sm text-surface-500">
-            LOST prospects older than 6 months with qualifying scores
+            {t("recontact.description")}
           </p>
         </div>
         <button
@@ -96,8 +98,8 @@ export default function RecontactSuggestions() {
             className={`mr-1.5 ${recontactMutation.isPending ? "animate-spin" : ""}`}
           />
           {recontactMutation.isPending
-            ? "Processing..."
-            : `Recontact Selected (${selectedIds.size})`}
+            ? t("common.processing")
+            : `${t("recontact.recontactSelected")} (${selectedIds.size})`}
         </button>
       </div>
 
@@ -119,17 +121,17 @@ export default function RecontactSuggestions() {
                   />
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Domain
+                  {t("recontact.domain")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Score
+                  {t("recontact.score")}
                 </th>
-                <th className="px-4 py-3 font-medium text-surface-600">DA</th>
+                <th className="px-4 py-3 font-medium text-surface-600">{t("recontact.da")}</th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Last Contact
+                  {t("recontact.lastContact")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Reply Category
+                  {t("recontact.replyCategory")}
                 </th>
               </tr>
             </thead>
@@ -146,7 +148,7 @@ export default function RecontactSuggestions() {
                     colSpan={6}
                     className="px-4 py-12 text-center text-surface-500"
                   >
-                    No recontact suggestions at this time.
+                    {t("recontact.noSuggestions")}
                   </td>
                 </tr>
               ) : (
@@ -184,7 +186,7 @@ export default function RecontactSuggestions() {
                         </span>
                       ) : (
                         <span className="text-xs text-surface-400">
-                          No reply
+                          {t("recontact.noReply")}
                         </span>
                       )}
                     </td>

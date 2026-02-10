@@ -15,6 +15,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import api from "@/lib/api";
+import { useTranslation } from "@/i18n";
 
 interface ReportsData {
   backlinksPerMonth: { month: string; count: number }[];
@@ -36,6 +37,8 @@ const COLORS = [
 ];
 
 export default function Reports() {
+  const { t } = useTranslation();
+
   const { data, isLoading } = useQuery<ReportsData>({
     queryKey: ["reports"],
     queryFn: async () => {
@@ -55,7 +58,7 @@ export default function Reports() {
   if (!data) {
     return (
       <div className="card text-center text-surface-500">
-        Failed to load reports.
+        {t("reports.failedToLoad")}
       </div>
     );
   }
@@ -65,7 +68,7 @@ export default function Reports() {
       {/* Backlinks per month */}
       <section className="card">
         <h3 className="mb-4 text-lg font-semibold text-surface-900">
-          Backlinks Per Month
+          {t("reports.backlinksPerMonth")}
         </h3>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -81,7 +84,7 @@ export default function Reports() {
               <Line
                 type="monotone"
                 dataKey="count"
-                name="Backlinks"
+                name={t("reports.backlinksLabel")}
                 stroke="#338fff"
                 strokeWidth={2}
                 dot={{ r: 4 }}
@@ -95,7 +98,7 @@ export default function Reports() {
       {/* Pipeline funnel */}
       <section className="card">
         <h3 className="mb-4 text-lg font-semibold text-surface-900">
-          Pipeline Funnel
+          {t("reports.pipelineFunnel")}
         </h3>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -107,7 +110,7 @@ export default function Reports() {
               />
               <YAxis tick={{ fontSize: 12, fill: "#64748b" }} />
               <Tooltip />
-              <Bar dataKey="count" name="Prospects" radius={[6, 6, 0, 0]}>
+              <Bar dataKey="count" name={t("reports.prospectsLabel")} radius={[6, 6, 0, 0]}>
                 {data.pipelineFunnel.map((_, index) => (
                   <Cell
                     key={`cell-${index}`}
@@ -124,7 +127,7 @@ export default function Reports() {
         {/* Reply rate by campaign */}
         <section className="card">
           <h3 className="mb-4 text-lg font-semibold text-surface-900">
-            Reply Rate by Campaign
+            {t("reports.replyRateByCampaign")}
           </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -141,7 +144,7 @@ export default function Reports() {
                 <Tooltip formatter={(value: number) => `${value}%`} />
                 <Bar
                   dataKey="rate"
-                  name="Reply Rate"
+                  name={t("reports.replyRateLabel")}
                   fill="#1459e1"
                   radius={[6, 6, 0, 0]}
                 />
@@ -153,7 +156,7 @@ export default function Reports() {
         {/* Prospects by source */}
         <section className="card">
           <h3 className="mb-4 text-lg font-semibold text-surface-900">
-            Prospects by Source
+            {t("reports.prospectsBySource")}
           </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -188,7 +191,7 @@ export default function Reports() {
       {/* Prospects by country */}
       <section className="card">
         <h3 className="mb-4 text-lg font-semibold text-surface-900">
-          Prospects by Country
+          {t("reports.prospectsByCountry")}
         </h3>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -208,7 +211,7 @@ export default function Reports() {
               <Tooltip />
               <Bar
                 dataKey="count"
-                name="Prospects"
+                name={t("reports.prospectsLabel")}
                 fill="#338fff"
                 radius={[0, 6, 6, 0]}
               />

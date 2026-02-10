@@ -4,6 +4,7 @@ import { Plus, Edit2, X, ExternalLink } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { LinkableAsset } from "@/types";
+import { useTranslation } from "@/i18n";
 
 interface AssetForm {
   title: string;
@@ -21,6 +22,7 @@ const emptyForm: AssetForm = {
 
 export default function Assets() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<AssetForm>(emptyForm);
@@ -41,7 +43,7 @@ export default function Assets() {
       return (await api.post("/assets", form)).data;
     },
     onSuccess: () => {
-      toast.success(editingId ? "Asset updated" : "Asset created");
+      toast.success(editingId ? t("assets.assetUpdated") : t("assets.assetCreated"));
       queryClient.invalidateQueries({ queryKey: ["assets"] });
       handleClose();
     },
@@ -67,7 +69,7 @@ export default function Assets() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!form.title.trim() || !form.url.trim()) {
-      toast.error("Title and URL are required");
+      toast.error(t("assets.titleAndUrlRequired"));
       return;
     }
     saveMutation.mutate();
@@ -78,7 +80,7 @@ export default function Assets() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-surface-900">
-          Linkable Assets
+          {t("assets.title")}
         </h3>
         <button
           onClick={() => {
@@ -88,7 +90,7 @@ export default function Assets() {
           }}
           className="btn-primary"
         >
-          <Plus size={16} className="mr-1.5" /> New Asset
+          <Plus size={16} className="mr-1.5" /> {t("assets.newAsset")}
         </button>
       </div>
 
@@ -97,7 +99,7 @@ export default function Assets() {
         <form onSubmit={handleSubmit} className="card space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="font-semibold text-surface-900">
-              {editingId ? "Edit Asset" : "New Asset"}
+              {editingId ? t("assets.editAsset") : t("assets.newAsset")}
             </h4>
             <button type="button" onClick={handleClose}>
               <X size={20} className="text-surface-400 hover:text-surface-600" />
@@ -107,7 +109,7 @@ export default function Assets() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Title
+                {t("assets.titleField")}
               </label>
               <input
                 type="text"
@@ -119,25 +121,25 @@ export default function Assets() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Type
+                {t("assets.typeField")}
               </label>
               <select
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
                 className="input-field"
               >
-                <option value="blog-post">Blog Post</option>
-                <option value="guide">Guide</option>
-                <option value="tool">Tool</option>
-                <option value="infographic">Infographic</option>
-                <option value="video">Video</option>
-                <option value="calculator">Calculator</option>
-                <option value="template">Template</option>
+                <option value="blog-post">{t("assets.blogPost")}</option>
+                <option value="guide">{t("assets.guide")}</option>
+                <option value="tool">{t("assets.tool")}</option>
+                <option value="infographic">{t("assets.infographic")}</option>
+                <option value="video">{t("assets.video")}</option>
+                <option value="calculator">{t("assets.calculator")}</option>
+                <option value="template">{t("assets.template")}</option>
               </select>
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                URL
+                {t("assets.urlField")}
               </label>
               <input
                 type="url"
@@ -161,7 +163,7 @@ export default function Assets() {
                 htmlFor="isPublished"
                 className="text-sm font-medium text-surface-700"
               >
-                Published
+                {t("assets.publishedField")}
               </label>
             </div>
           </div>
@@ -173,13 +175,13 @@ export default function Assets() {
               className="btn-primary"
             >
               {saveMutation.isPending
-                ? "Saving..."
+                ? t("common.saving")
                 : editingId
-                  ? "Update"
-                  : "Create"}
+                  ? t("common.update")
+                  : t("common.create")}
             </button>
             <button type="button" onClick={handleClose} className="btn-secondary">
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </form>
@@ -192,19 +194,19 @@ export default function Assets() {
             <thead className="border-b border-surface-200 bg-surface-50">
               <tr>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Title
+                  {t("assets.titleField")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Type
+                  {t("assets.typeField")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  URL
+                  {t("assets.urlField")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Backlinks
+                  {t("assets.backlinksCount")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Published
+                  {t("assets.publishedField")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600" />
               </tr>
@@ -222,7 +224,7 @@ export default function Assets() {
                     colSpan={6}
                     className="px-4 py-12 text-center text-surface-500"
                   >
-                    No assets yet.
+                    {t("assets.noAssetsYet")}
                   </td>
                 </tr>
               ) : (

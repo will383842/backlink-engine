@@ -4,9 +4,11 @@ import { Plus, Users, Mail, Trophy } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Campaign } from "@/types";
+import { useTranslation } from "@/i18n";
 
 export default function Campaigns() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [showForm, setShowForm] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -48,7 +50,7 @@ export default function Campaigns() {
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Campaign created");
+      toast.success(t("campaigns.campaignCreated"));
       queryClient.invalidateQueries({ queryKey: ["campaigns"] });
       resetForm();
     },
@@ -66,7 +68,7 @@ export default function Campaigns() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim() || !mailwizzListUid.trim()) {
-      toast.error("Name and MailWizz List UID are required");
+      toast.error(t("campaigns.nameAndUidRequired"));
       return;
     }
     createMutation.mutate();
@@ -77,22 +79,22 @@ export default function Campaigns() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-surface-900">
-          {campaigns?.length ?? 0} Campaigns
+          {campaigns?.length ?? 0} {t("campaigns.title")}
         </h3>
         <button onClick={() => setShowForm(!showForm)} className="btn-primary">
           <Plus size={16} className="mr-1.5" />
-          New Campaign
+          {t("campaigns.newCampaign")}
         </button>
       </div>
 
       {/* Create form */}
       {showForm && (
         <form onSubmit={handleSubmit} className="card space-y-4">
-          <h4 className="font-semibold text-surface-900">Create Campaign</h4>
+          <h4 className="font-semibold text-surface-900">{t("campaigns.createCampaign")}</h4>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Name <span className="text-red-500">*</span>
+                {t("campaigns.name")} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -104,39 +106,39 @@ export default function Campaigns() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Language
+                {t("campaigns.campaignLanguage")}
               </label>
               <select
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
                 className="input-field"
               >
-                <option value="fr">French</option>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="de">German</option>
-                <option value="pt">Portuguese</option>
-                <option value="it">Italian</option>
+                <option value="fr">{t("campaigns.french")}</option>
+                <option value="en">{t("campaigns.english")}</option>
+                <option value="es">{t("campaigns.spanish")}</option>
+                <option value="de">{t("campaigns.german")}</option>
+                <option value="pt">{t("campaigns.portuguese")}</option>
+                <option value="it">{t("campaigns.italian")}</option>
               </select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Target Tier
+                {t("campaigns.targetTier")}
               </label>
               <select
                 value={targetTier}
                 onChange={(e) => setTargetTier(e.target.value)}
                 className="input-field"
               >
-                <option value="">Any</option>
-                <option value="1">Tier 1</option>
-                <option value="2">Tier 2</option>
-                <option value="3">Tier 3</option>
+                <option value="">{t("campaigns.any")}</option>
+                <option value="1">{t("prospects.tier")} 1</option>
+                <option value="2">{t("prospects.tier")} 2</option>
+                <option value="3">{t("prospects.tier")} 3</option>
               </select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Target Country
+                {t("campaigns.targetCountry")}
               </label>
               <input
                 type="text"
@@ -148,7 +150,7 @@ export default function Campaigns() {
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                MailWizz List UID <span className="text-red-500">*</span>
+                {t("campaigns.mailwizzListUid")} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -165,10 +167,10 @@ export default function Campaigns() {
               disabled={createMutation.isPending}
               className="btn-primary"
             >
-              {createMutation.isPending ? "Creating..." : "Create"}
+              {createMutation.isPending ? t("common.creating") : t("common.create")}
             </button>
             <button type="button" onClick={resetForm} className="btn-secondary">
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </form>
@@ -181,7 +183,7 @@ export default function Campaigns() {
         </div>
       ) : !campaigns?.length ? (
         <div className="card text-center text-surface-500">
-          No campaigns yet. Create one to get started.
+          {t("campaigns.noCampaignsYet")}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -202,7 +204,7 @@ export default function Campaigns() {
                       : "bg-surface-100 text-surface-500"
                   }`}
                 >
-                  {c.isActive ? "Active" : "Inactive"}
+                  {c.isActive ? t("common.active") : t("common.inactive")}
                 </span>
               </div>
               <p className="mb-3 text-xs text-surface-500">
@@ -216,21 +218,21 @@ export default function Campaigns() {
                   <p className="mt-1 text-lg font-bold text-surface-900">
                     {c.totalEnrolled}
                   </p>
-                  <p className="text-xs text-surface-500">Enrolled</p>
+                  <p className="text-xs text-surface-500">{t("campaigns.enrolled")}</p>
                 </div>
                 <div>
                   <Mail size={14} className="mx-auto text-surface-400" />
                   <p className="mt-1 text-lg font-bold text-surface-900">
                     {c.totalReplied}
                   </p>
-                  <p className="text-xs text-surface-500">Replied</p>
+                  <p className="text-xs text-surface-500">{t("campaigns.replied")}</p>
                 </div>
                 <div>
                   <Trophy size={14} className="mx-auto text-surface-400" />
                   <p className="mt-1 text-lg font-bold text-emerald-600">
                     {c.totalWon}
                   </p>
-                  <p className="text-xs text-surface-500">Won</p>
+                  <p className="text-xs text-surface-500">{t("campaigns.won")}</p>
                 </div>
               </div>
             </div>
@@ -241,22 +243,22 @@ export default function Campaigns() {
       {/* Enrollments detail */}
       {selectedId && enrollments && (
         <div className="card">
-          <h4 className="mb-4 font-semibold text-surface-900">Enrollments</h4>
+          <h4 className="mb-4 font-semibold text-surface-900">{t("campaigns.enrollments")}</h4>
           {!enrollments.length ? (
-            <p className="text-sm text-surface-400">No enrollments yet.</p>
+            <p className="text-sm text-surface-400">{t("campaigns.noEnrollmentsYet")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-surface-200">
                   <tr>
                     <th className="pb-2 font-medium text-surface-500">
-                      Domain
+                      {t("prospects.domain")}
                     </th>
                     <th className="pb-2 font-medium text-surface-500">
-                      Status
+                      {t("prospects.status")}
                     </th>
                     <th className="pb-2 font-medium text-surface-500">
-                      Enrolled At
+                      {t("campaigns.enrolledAt")}
                     </th>
                   </tr>
                 </thead>

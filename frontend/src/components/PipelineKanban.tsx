@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import ScoreBadge from "@/components/ScoreBadge";
 import { useProspects, useUpdateProspect } from "@/hooks/useApi";
 import type { Prospect, ProspectStatus } from "@/types";
+import { useTranslation } from "@/i18n";
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -16,18 +17,18 @@ import type { Prospect, ProspectStatus } from "@/types";
 
 interface KanbanColumn {
   id: ProspectStatus;
-  label: string;
+  labelKey: string;
   color: string; // Tailwind header bg color
 }
 
 const COLUMNS: KanbanColumn[] = [
-  { id: "NEW", label: "New", color: "bg-surface-200" },
-  { id: "READY_TO_CONTACT", label: "Ready to Contact", color: "bg-blue-200" },
-  { id: "CONTACTED_EMAIL", label: "Contacted (Email)", color: "bg-blue-300" },
-  { id: "CONTACTED_MANUAL", label: "Contacted (Manual)", color: "bg-blue-300" },
-  { id: "REPLIED", label: "Replied", color: "bg-yellow-200" },
-  { id: "NEGOTIATING", label: "Negotiating", color: "bg-orange-200" },
-  { id: "WON", label: "Won", color: "bg-green-200" },
+  { id: "NEW", labelKey: "kanban.new", color: "bg-surface-200" },
+  { id: "READY_TO_CONTACT", labelKey: "kanban.readyToContact", color: "bg-blue-200" },
+  { id: "CONTACTED_EMAIL", labelKey: "kanban.contactedEmail", color: "bg-blue-300" },
+  { id: "CONTACTED_MANUAL", labelKey: "kanban.contactedManual", color: "bg-blue-300" },
+  { id: "REPLIED", labelKey: "kanban.replied", color: "bg-yellow-200" },
+  { id: "NEGOTIATING", labelKey: "kanban.negotiating", color: "bg-orange-200" },
+  { id: "WON", labelKey: "kanban.won", color: "bg-green-200" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,7 @@ const KanbanCard: React.FC<CardProps> = ({ prospect, isDragged, onDragStart, onD
 
 const PipelineKanban: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { data: prospectData, isLoading } = useProspects({ limit: 500 });
   const updateProspect = useUpdateProspect();
 
@@ -184,7 +186,7 @@ const PipelineKanban: React.FC = () => {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-        <span className="ml-3 text-sm text-surface-500">Loading pipeline...</span>
+        <span className="ml-3 text-sm text-surface-500">{t("kanban.loadingPipeline")}</span>
       </div>
     );
   }
@@ -212,7 +214,7 @@ const PipelineKanban: React.FC = () => {
               className={`flex items-center justify-between rounded-t-xl px-3 py-2 ${column.color}`}
             >
               <h3 className="text-xs font-semibold uppercase tracking-wide text-surface-700">
-                {column.label}
+                {t(column.labelKey)}
               </h3>
               <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white/60 px-1.5 text-xs font-medium text-surface-700">
                 {prospects.length}
@@ -223,7 +225,7 @@ const PipelineKanban: React.FC = () => {
             <div className="flex-1 space-y-2 p-2" style={{ minHeight: 120 }}>
               {prospects.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-xs text-surface-400">
-                  No prospects
+                  {t("kanban.noProspects")}
                 </div>
               ) : (
                 prospects.map((prospect) => (

@@ -18,53 +18,58 @@ import {
   LogOut,
   RefreshCcw,
 } from "lucide-react";
+import { useTranslation } from "@/i18n";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: string;
   icon: React.ReactNode;
 }
 
 const navItems: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: <LayoutDashboard size={20} /> },
-  { to: "/prospects", label: "Prospects", icon: <Users size={20} /> },
-  { to: "/quick-add", label: "Quick Add", icon: <PlusCircle size={20} /> },
-  { to: "/import", label: "Bulk Import", icon: <Upload size={20} /> },
-  { to: "/campaigns", label: "Campaigns", icon: <Send size={20} /> },
-  { to: "/templates", label: "Templates", icon: <FileText size={20} /> },
-  { to: "/backlinks", label: "Backlinks", icon: <Link2 size={20} /> },
-  { to: "/assets", label: "Assets", icon: <Package size={20} /> },
-  { to: "/replies", label: "Replies", icon: <Mail size={20} /> },
-  { to: "/recontact", label: "Recontact", icon: <RefreshCcw size={20} /> },
-  { to: "/suppression", label: "Suppression", icon: <ShieldOff size={20} /> },
-  { to: "/settings", label: "Settings", icon: <Settings size={20} /> },
-  { to: "/reports", label: "Reports", icon: <BarChart3 size={20} /> },
+  { to: "/", labelKey: "nav.dashboard", icon: <LayoutDashboard size={20} /> },
+  { to: "/prospects", labelKey: "nav.prospects", icon: <Users size={20} /> },
+  { to: "/quick-add", labelKey: "nav.quickAdd", icon: <PlusCircle size={20} /> },
+  { to: "/import", labelKey: "nav.bulkImport", icon: <Upload size={20} /> },
+  { to: "/campaigns", labelKey: "nav.campaigns", icon: <Send size={20} /> },
+  { to: "/templates", labelKey: "nav.templates", icon: <FileText size={20} /> },
+  { to: "/backlinks", labelKey: "nav.backlinks", icon: <Link2 size={20} /> },
+  { to: "/assets", labelKey: "nav.assets", icon: <Package size={20} /> },
+  { to: "/replies", labelKey: "nav.replies", icon: <Mail size={20} /> },
+  { to: "/recontact", labelKey: "nav.recontact", icon: <RefreshCcw size={20} /> },
+  { to: "/suppression", labelKey: "nav.suppression", icon: <ShieldOff size={20} /> },
+  { to: "/settings", labelKey: "nav.settings", icon: <Settings size={20} /> },
+  { to: "/reports", labelKey: "nav.reports", icon: <BarChart3 size={20} /> },
 ];
 
-const pageTitles: Record<string, string> = {
-  "/": "Dashboard",
-  "/prospects": "Prospects",
-  "/quick-add": "Quick Add",
-  "/import": "Bulk Import",
-  "/campaigns": "Campaigns",
-  "/templates": "Templates",
-  "/backlinks": "Backlinks",
-  "/assets": "Assets",
-  "/replies": "Replies",
-  "/recontact": "Recontact Suggestions",
-  "/suppression": "Suppression List",
-  "/settings": "Settings",
-  "/reports": "Reports",
+const pageTitleKeys: Record<string, string> = {
+  "/": "pageTitles.dashboard",
+  "/prospects": "pageTitles.prospects",
+  "/quick-add": "pageTitles.quickAdd",
+  "/import": "pageTitles.bulkImport",
+  "/campaigns": "pageTitles.campaigns",
+  "/templates": "pageTitles.templates",
+  "/backlinks": "pageTitles.backlinks",
+  "/assets": "pageTitles.assets",
+  "/replies": "pageTitles.replies",
+  "/recontact": "pageTitles.recontact",
+  "/suppression": "pageTitles.suppression",
+  "/settings": "pageTitles.settings",
+  "/reports": "pageTitles.reports",
 };
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useTranslation();
 
-  const currentTitle =
-    pageTitles[location.pathname] ||
-    (location.pathname.startsWith("/prospects/") ? "Prospect Detail" : "");
+  const titleKey =
+    pageTitleKeys[location.pathname] ||
+    (location.pathname.startsWith("/prospects/") ? "pageTitles.prospectDetail" : "");
+
+  const currentTitle = titleKey ? t(titleKey) : "";
 
   function handleLogout() {
     localStorage.removeItem("bl_token");
@@ -118,7 +123,7 @@ export default function Layout() {
                   }
                 >
                   {item.icon}
-                  {item.label}
+                  {t(item.labelKey)}
                 </NavLink>
               </li>
             ))}
@@ -131,7 +136,7 @@ export default function Layout() {
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-surface-400 transition-colors hover:bg-surface-800 hover:text-white"
           >
             <LogOut size={20} />
-            Logout
+            {t("nav.logout")}
           </button>
         </div>
       </aside>
@@ -149,6 +154,8 @@ export default function Layout() {
           <h2 className="text-lg font-semibold text-surface-900">
             {currentTitle}
           </h2>
+          <div className="flex-1" />
+          <LanguageSwitcher />
         </header>
 
         {/* Page content */}

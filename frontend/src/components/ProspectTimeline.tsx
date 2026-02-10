@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useTimeline } from "@/hooks/useApi";
 import type { Event } from "@/types";
+import { useTranslation } from "@/i18n";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -108,43 +109,43 @@ function getSourceBadgeClasses(eventSource: string): string {
 // Build human-readable description from event data
 // ---------------------------------------------------------------------------
 
-function describeEvent(event: Event): string {
-  const data = event.data ?? {};
+function describeEvent(event: Event, t: (key: string, params?: Record<string, string | number>) => string): string {
+  const data = (event.data ?? {}) as Record<string, string>;
 
   switch (event.eventType) {
     case "prospect_created":
     case "prospect_ingested":
-      return `Prospect added${data.url ? ` from ${data.url}` : ""}`;
+      return data.url ? t("timeline.prospectAddedFrom", { url: data.url }) : t("timeline.prospectAdded");
     case "status_changed":
-      return `Status changed from ${data.from ?? "?"} to ${data.to ?? "?"}`;
+      return t("timeline.statusChanged", { from: data.from ?? "?", to: data.to ?? "?" });
     case "contact_added":
-      return `Contact added: ${data.email ?? "unknown"}${data.role ? ` (${data.role})` : ""}`;
+      return t("timeline.contactAdded", { email: data.email ?? "unknown" }) + (data.role ? ` (${data.role})` : "");
     case "email_sent":
     case "followup_sent":
-      return `Email sent${data.subject ? `: "${data.subject}"` : ""}${data.step ? ` (step ${data.step})` : ""}`;
+      return (data.subject ? t("timeline.emailSentSubject", { subject: data.subject }) : t("timeline.emailSent")) + (data.step ? ` (${t("timeline.step")} ${data.step})` : "");
     case "email_opened":
-      return `Email opened${data.subject ? `: "${data.subject}"` : ""}`;
+      return data.subject ? t("timeline.emailOpenedSubject", { subject: data.subject }) : t("timeline.emailOpened");
     case "enrolled":
-      return `Enrolled in campaign${data.campaignName ? ` "${data.campaignName}"` : ""}`;
+      return data.campaignName ? t("timeline.enrolledInCampaignName", { name: data.campaignName }) : t("timeline.enrolledInCampaign");
     case "reply_received":
     case "replied":
-      return `Reply received${data.category ? ` - ${data.category}` : ""}`;
+      return data.category ? t("timeline.replyReceivedCategory", { category: data.category }) : t("timeline.replyReceived");
     case "bounce":
-      return `Email bounced${data.email ? ` (${data.email})` : ""}`;
+      return data.email ? t("timeline.emailBouncedAddr", { email: data.email }) : t("timeline.emailBounced");
     case "unsubscribe":
-      return `Contact unsubscribed${data.email ? ` (${data.email})` : ""}`;
+      return data.email ? t("timeline.contactUnsubscribedAddr", { email: data.email }) : t("timeline.contactUnsubscribed");
     case "prospect_won":
-      return "Prospect marked as WON";
+      return t("timeline.prospectMarkedWon");
     case "prospect_lost":
-      return `Prospect marked as LOST${data.reason ? `: ${data.reason}` : ""}`;
+      return data.reason ? t("timeline.prospectMarkedLostReason", { reason: data.reason }) : t("timeline.prospectMarkedLost");
     case "link_verified":
-      return `Backlink verified${data.pageUrl ? ` on ${data.pageUrl}` : ""}`;
+      return data.pageUrl ? t("timeline.backlinkVerifiedOn", { url: data.pageUrl }) : t("timeline.backlinkVerified");
     case "link_lost":
-      return `Backlink lost${data.pageUrl ? ` on ${data.pageUrl}` : ""}`;
+      return data.pageUrl ? t("timeline.backlinkLostOn", { url: data.pageUrl }) : t("timeline.backlinkLost");
     case "backlink_detected":
-      return `New backlink detected${data.pageUrl ? ` on ${data.pageUrl}` : ""}`;
+      return data.pageUrl ? t("timeline.newBacklinkDetectedOn", { url: data.pageUrl }) : t("timeline.newBacklinkDetected");
     case "enrichment_complete":
-      return `Enrichment completed${data.mozDa ? ` (DA: ${data.mozDa})` : ""}`;
+      return data.mozDa ? t("timeline.enrichmentCompletedDa", { da: data.mozDa }) : t("timeline.enrichmentCompleted");
     default:
       return event.eventType.replace(/_/g, " ");
   }
@@ -155,13 +156,14 @@ function describeEvent(event: Event): string {
 // ---------------------------------------------------------------------------
 
 const ProspectTimeline: React.FC<ProspectTimelineProps> = ({ prospectId }) => {
+  const { t } = useTranslation();
   const { data: timelineData, isLoading, error } = useTimeline(prospectId);
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
-        <span className="ml-2 text-sm text-surface-500">Loading timeline...</span>
+        <span className="ml-2 text-sm text-surface-500">{t("timeline.loadingTimeline")}</span>
       </div>
     );
   }
@@ -169,7 +171,7 @@ const ProspectTimeline: React.FC<ProspectTimelineProps> = ({ prospectId }) => {
   if (error) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-        Failed to load timeline: {error.message}
+        {t("timeline.failedToLoad")} {error.message}
       </div>
     );
   }
@@ -179,7 +181,7 @@ const ProspectTimeline: React.FC<ProspectTimelineProps> = ({ prospectId }) => {
   if (events.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-surface-400">
-        No events yet for this prospect.
+        {t("timeline.noEventsYet")}
       </div>
     );
   }
@@ -222,13 +224,13 @@ const ProspectTimeline: React.FC<ProspectTimelineProps> = ({ prospectId }) => {
 
                 {/* Description */}
                 <p className="mt-0.5 text-sm text-surface-600">
-                  {describeEvent(event)}
+                  {describeEvent(event, t)}
                 </p>
 
                 {/* Contact info if present */}
                 {event.contact && (
                   <p className="mt-0.5 text-xs text-surface-400">
-                    Contact: {event.contact.name ?? event.contact.email}
+                    {t("timeline.contact")} {event.contact.name ?? event.contact.email}
                   </p>
                 )}
 
@@ -253,7 +255,7 @@ const ProspectTimeline: React.FC<ProspectTimelineProps> = ({ prospectId }) => {
       {/* Pagination info */}
       {timelineData && timelineData.total > timelineData.pageSize && (
         <p className="mt-4 text-center text-xs text-surface-400">
-          Showing {events.length} of {timelineData.total} events
+          {t("timeline.showingOf", { shown: events.length, total: timelineData.total })}
         </p>
       )}
     </div>

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import api from "@/lib/api";
 import type { DashboardData } from "@/types";
+import { useTranslation } from "@/i18n";
 
 function StatsCard({
   label,
@@ -46,6 +47,8 @@ function StatsCard({
 }
 
 export default function Dashboard() {
+  const { t } = useTranslation();
+
   const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ["dashboard"],
     queryFn: async () => {
@@ -65,7 +68,7 @@ export default function Dashboard() {
   if (error || !data) {
     return (
       <div className="card text-center text-red-600">
-        Failed to load dashboard data. Please try again.
+        {t("dashboard.failedToLoad")}
       </div>
     );
   }
@@ -76,23 +79,23 @@ export default function Dashboard() {
       <section>
         <div className="mb-3 flex items-center gap-2">
           <AlertTriangle size={20} className="text-red-500" />
-          <h3 className="text-lg font-semibold text-surface-900">Urgent</h3>
+          <h3 className="text-lg font-semibold text-surface-900">{t("dashboard.urgent")}</h3>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <StatsCard
-            label="Replies to Handle"
+            label={t("dashboard.repliesToHandle")}
             value={data.urgent.repliesToHandle}
             color="red"
             to="/replies"
           />
           <StatsCard
-            label="Bounces"
+            label={t("dashboard.bounces")}
             value={data.urgent.bounces}
             color="red"
             to="/replies?category=BOUNCE"
           />
           <StatsCard
-            label="Lost Backlinks"
+            label={t("dashboard.lostBacklinks")}
             value={data.urgent.lostBacklinks}
             color="red"
             to="/backlinks?isLive=false"
@@ -104,17 +107,17 @@ export default function Dashboard() {
       <section>
         <div className="mb-3 flex items-center gap-2">
           <ClipboardList size={20} className="text-amber-500" />
-          <h3 className="text-lg font-semibold text-surface-900">To-do</h3>
+          <h3 className="text-lg font-semibold text-surface-900">{t("dashboard.todo")}</h3>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <StatsCard
-            label="Prospects Ready to Contact"
+            label={t("dashboard.prospectsReady")}
             value={data.todo.prospectsReady}
             color="yellow"
             to="/prospects?status=READY_TO_CONTACT"
           />
           <StatsCard
-            label="Forms to Fill"
+            label={t("dashboard.formsToFill")}
             value={data.todo.formsToFill}
             color="yellow"
             to="/prospects?status=READY_TO_CONTACT"
@@ -127,12 +130,12 @@ export default function Dashboard() {
         <div className="mb-3 flex items-center gap-2">
           <TrendingUp size={20} className="text-emerald-500" />
           <h3 className="text-lg font-semibold text-surface-900">
-            Opportunities
+            {t("dashboard.opportunities")}
           </h3>
         </div>
         <div className="grid gap-4 sm:grid-cols-1">
           <StatsCard
-            label="LOST Prospects Recontactable"
+            label={t("dashboard.lostRecontactable")}
             value={data.opportunities.lostRecontactable}
             color="green"
             to="/recontact"
@@ -145,22 +148,22 @@ export default function Dashboard() {
         <div className="mb-3 flex items-center gap-2">
           <BarChart3 size={20} className="text-brand-500" />
           <h3 className="text-lg font-semibold text-surface-900">
-            Today's Stats
+            {t("dashboard.todaysStats")}
           </h3>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
-            label="Sent to MailWizz"
+            label={t("dashboard.sentToMailwizz")}
             value={data.stats.sentToMailwizz}
             color="blue"
           />
           <StatsCard
-            label="Replies Received"
+            label={t("dashboard.repliesReceived")}
             value={data.stats.repliesReceived}
             color="blue"
           />
           <StatsCard
-            label="Backlinks Won"
+            label={t("dashboard.backlinksWon")}
             value={data.stats.backlinksWon}
             color="blue"
           />
@@ -168,7 +171,7 @@ export default function Dashboard() {
             ([source, count]) => (
               <StatsCard
                 key={source}
-                label={`Added (${source})`}
+                label={`${t("dashboard.added")} (${source})`}
                 value={count}
                 color="blue"
               />

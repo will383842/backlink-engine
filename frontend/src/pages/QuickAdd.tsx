@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Globe, AlertTriangle, CheckCircle2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
+import { useTranslation } from "@/i18n";
 
 interface DedupResult {
   isDuplicate: boolean;
@@ -18,6 +19,7 @@ interface SitePreview {
 
 export default function QuickAdd() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   const [url, setUrl] = useState("");
   const [email, setEmail] = useState("");
@@ -67,7 +69,7 @@ export default function QuickAdd() {
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Prospect created successfully");
+      toast.success(t("quickAdd.prospectCreated"));
       queryClient.invalidateQueries({ queryKey: ["prospects"] });
       setUrl("");
       setEmail("");
@@ -82,7 +84,7 @@ export default function QuickAdd() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!url.trim()) {
-      toast.error("URL is required");
+      toast.error(t("quickAdd.urlRequired"));
       return;
     }
     createMutation.mutate();
@@ -92,13 +94,13 @@ export default function QuickAdd() {
     <div className="mx-auto max-w-2xl space-y-6">
       <form onSubmit={handleSubmit} className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
-          Add a Prospect
+          {t("quickAdd.title")}
         </h3>
 
         {/* URL */}
         <div>
           <label className="mb-1 block text-sm font-medium text-surface-700">
-            URL <span className="text-red-500">*</span>
+            {t("quickAdd.url")} <span className="text-red-500">*</span>
           </label>
           <div className="relative">
             <Globe
@@ -128,10 +130,10 @@ export default function QuickAdd() {
             <AlertTriangle size={20} className="shrink-0 text-amber-600" />
             <div>
               <p className="text-sm font-medium text-amber-800">
-                Duplicate detected
+                {t("quickAdd.duplicateDetected")}
               </p>
               <p className="text-sm text-amber-700">
-                This domain already exists with status:{" "}
+                {t("quickAdd.domainAlreadyExists")}{" "}
                 <strong>{dedup.existingStatus}</strong>
               </p>
             </div>
@@ -141,14 +143,14 @@ export default function QuickAdd() {
         {dedup && !dedup.isDuplicate && (
           <div className="flex items-center gap-2 text-sm text-emerald-600">
             <CheckCircle2 size={16} />
-            <span>No duplicate found</span>
+            <span>{t("quickAdd.noDuplicateFound")}</span>
           </div>
         )}
 
         {/* Email */}
         <div>
           <label className="mb-1 block text-sm font-medium text-surface-700">
-            Email
+            {t("quickAdd.email")}
           </label>
           <input
             type="email"
@@ -162,7 +164,7 @@ export default function QuickAdd() {
         {/* Name */}
         <div>
           <label className="mb-1 block text-sm font-medium text-surface-700">
-            Contact Name
+            {t("quickAdd.contactName")}
           </label>
           <input
             type="text"
@@ -176,7 +178,7 @@ export default function QuickAdd() {
         {/* Contact form URL */}
         <div>
           <label className="mb-1 block text-sm font-medium text-surface-700">
-            Contact Form URL
+            {t("quickAdd.contactFormUrl")}
           </label>
           <input
             type="url"
@@ -190,7 +192,7 @@ export default function QuickAdd() {
         {/* Notes */}
         <div>
           <label className="mb-1 block text-sm font-medium text-surface-700">
-            Notes
+            {t("quickAdd.notes")}
           </label>
           <textarea
             value={notes}
@@ -206,7 +208,7 @@ export default function QuickAdd() {
           disabled={createMutation.isPending}
           className="btn-primary w-full"
         >
-          {createMutation.isPending ? "Creating..." : "Create Prospect"}
+          {createMutation.isPending ? t("common.creating") : t("quickAdd.createProspect")}
         </button>
       </form>
 
@@ -214,19 +216,19 @@ export default function QuickAdd() {
       {preview && (
         <div className="card">
           <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-surface-500">
-            Site Preview
+            {t("quickAdd.sitePreview")}
           </h3>
           <p className="text-sm font-medium text-surface-900">
             {preview.title}
           </p>
           <p className="mt-1 text-xs text-surface-500">
-            Contact form detected:{" "}
+            {t("quickAdd.contactFormDetected")}{" "}
             <span
               className={
                 preview.hasContactForm ? "text-emerald-600" : "text-red-600"
               }
             >
-              {preview.hasContactForm ? "Yes" : "No"}
+              {preview.hasContactForm ? t("common.yes") : t("common.no")}
             </span>
           </p>
           {preview.contactPageContent && (

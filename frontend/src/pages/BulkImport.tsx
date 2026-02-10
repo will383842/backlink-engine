@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Upload, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
+import { useTranslation } from "@/i18n";
 
 interface ParsedRow {
   url: string;
@@ -24,13 +25,14 @@ interface BulkImportResult {
 
 export default function BulkImport() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [rawInput, setRawInput] = useState("");
   const [parsed, setParsed] = useState<DedupPreviewRow[] | null>(null);
   const [result, setResult] = useState<BulkImportResult | null>(null);
 
   function handleParse() {
     if (!rawInput.trim()) {
-      toast.error("Please paste some data");
+      toast.error(t("bulkImport.pasteData"));
       return;
     }
 
@@ -79,7 +81,7 @@ export default function BulkImport() {
     onSuccess: (data) => {
       if (data) {
         setResult(data);
-        toast.success(`Imported ${data.created} prospects`);
+        toast.success(t("bulkImport.imported", { count: data.created }));
         queryClient.invalidateQueries({ queryKey: ["prospects"] });
       }
     },
@@ -91,6 +93,8 @@ export default function BulkImport() {
     setResult(null);
   }
 
+  const nonDupCount = parsed?.filter((r) => !r.isDuplicate).length ?? 0;
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Input */}
@@ -99,11 +103,11 @@ export default function BulkImport() {
           <div className="flex items-center gap-2">
             <Upload size={20} className="text-brand-600" />
             <h3 className="text-lg font-semibold text-surface-900">
-              Bulk Import
+              {t("bulkImport.title")}
             </h3>
           </div>
           <p className="text-sm text-surface-500">
-            Paste a CSV (URL;email;name;notes) or simple URL list, one per line.
+            {t("bulkImport.instructions")}
           </p>
 
           <textarea
@@ -117,7 +121,7 @@ export default function BulkImport() {
 
           {!parsed ? (
             <button onClick={handleParse} className="btn-primary">
-              Parse & Check Duplicates
+              {t("bulkImport.parseAndCheck")}
             </button>
           ) : (
             <div className="flex gap-2">
@@ -127,11 +131,11 @@ export default function BulkImport() {
                 className="btn-primary"
               >
                 {importMutation.isPending
-                  ? "Importing..."
-                  : `Import ${parsed.filter((r) => !r.isDuplicate).length} Prospects`}
+                  ? t("common.importing")
+                  : t("bulkImport.importProspects", { count: nonDupCount })}
               </button>
               <button onClick={handleReset} className="btn-secondary">
-                Reset
+                {t("common.reset")}
               </button>
             </div>
           )}
@@ -146,19 +150,19 @@ export default function BulkImport() {
               <thead className="border-b border-surface-200 bg-surface-50">
                 <tr>
                   <th className="px-4 py-3 font-medium text-surface-600">
-                    Status
+                    {t("bulkImport.statusCol")}
                   </th>
                   <th className="px-4 py-3 font-medium text-surface-600">
-                    URL
+                    {t("bulkImport.urlCol")}
                   </th>
                   <th className="px-4 py-3 font-medium text-surface-600">
-                    Email
+                    {t("bulkImport.emailCol")}
                   </th>
                   <th className="px-4 py-3 font-medium text-surface-600">
-                    Name
+                    {t("bulkImport.nameCol")}
                   </th>
                   <th className="px-4 py-3 font-medium text-surface-600">
-                    Notes
+                    {t("bulkImport.notesCol")}
                   </th>
                 </tr>
               </thead>
@@ -172,12 +176,12 @@ export default function BulkImport() {
                       {row.isDuplicate ? (
                         <span className="flex items-center gap-1 text-xs text-amber-600">
                           <AlertTriangle size={14} />
-                          Dup ({row.existingStatus})
+                          {t("bulkImport.dupLabel")} ({row.existingStatus})
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 text-xs text-emerald-600">
                           <CheckCircle2 size={14} />
-                          New
+                          {t("bulkImport.newLabel")}
                         </span>
                       )}
                     </td>
@@ -199,7 +203,7 @@ export default function BulkImport() {
       {result && (
         <div className="card space-y-4">
           <h3 className="text-lg font-semibold text-surface-900">
-            Import Complete
+            {t("bulkImport.importComplete")}
           </h3>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="flex items-center gap-3 rounded-lg bg-emerald-50 p-4">
@@ -208,7 +212,7 @@ export default function BulkImport() {
                 <p className="text-2xl font-bold text-emerald-700">
                   {result.created}
                 </p>
-                <p className="text-sm text-emerald-600">Created</p>
+                <p className="text-sm text-emerald-600">{t("bulkImport.created")}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg bg-amber-50 p-4">
@@ -217,7 +221,7 @@ export default function BulkImport() {
                 <p className="text-2xl font-bold text-amber-700">
                   {result.duplicates}
                 </p>
-                <p className="text-sm text-amber-600">Duplicates</p>
+                <p className="text-sm text-amber-600">{t("bulkImport.duplicates")}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-lg bg-red-50 p-4">
@@ -226,12 +230,12 @@ export default function BulkImport() {
                 <p className="text-2xl font-bold text-red-700">
                   {result.errors}
                 </p>
-                <p className="text-sm text-red-600">Errors</p>
+                <p className="text-sm text-red-600">{t("bulkImport.errors")}</p>
               </div>
             </div>
           </div>
           <button onClick={handleReset} className="btn-primary">
-            Import More
+            {t("bulkImport.importMore")}
           </button>
         </div>
       )}

@@ -5,6 +5,7 @@ import { CheckCircle2, Eye } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Reply, ReplyCategory } from "@/types";
+import { useTranslation } from "@/i18n";
 
 const CATEGORY_COLORS: Record<string, string> = {
   INTERESTED: "bg-emerald-100 text-emerald-700",
@@ -34,6 +35,7 @@ const CATEGORY_OPTIONS: ReplyCategory[] = [
 
 export default function Replies() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [filterCategory, setFilterCategory] = useState<string>("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -53,7 +55,7 @@ export default function Replies() {
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Reply marked as handled");
+      toast.success(t("replies.replyMarkedHandled"));
       queryClient.invalidateQueries({ queryKey: ["replies"] });
     },
   });
@@ -67,7 +69,7 @@ export default function Replies() {
           onChange={(e) => setFilterCategory(e.target.value)}
           className="input-field w-auto"
         >
-          <option value="">All Categories</option>
+          <option value="">{t("replies.allCategories")}</option>
           {CATEGORY_OPTIONS.map((c) => (
             <option key={c} value={c}>
               {c.replace(/_/g, " ")}
@@ -77,7 +79,7 @@ export default function Replies() {
 
         <div className="flex-1" />
         <p className="text-sm text-surface-500">
-          {replies?.filter((r) => !r.isHandled).length ?? 0} unhandled
+          {replies?.filter((r) => !r.isHandled).length ?? 0} {t("replies.unhandled")}
         </p>
       </div>
 
@@ -88,7 +90,7 @@ export default function Replies() {
         </div>
       ) : !replies?.length ? (
         <div className="card text-center text-surface-500">
-          No replies found.
+          {t("replies.noRepliesFound")}
         </div>
       ) : (
         <div className="space-y-3">
@@ -108,7 +110,7 @@ export default function Replies() {
                   {r.category.replace(/_/g, " ")}
                 </span>
                 <span className="text-xs text-surface-500">
-                  {r.confidence}% confidence
+                  {r.confidence}% {t("replies.confidence")}
                 </span>
                 <div className="flex-1" />
                 <time className="text-xs text-surface-400">
@@ -128,7 +130,7 @@ export default function Replies() {
                   className="btn-secondary text-xs"
                 >
                   <Eye size={14} className="mr-1" />
-                  {expandedId === r.id ? "Collapse" : "View Full"}
+                  {expandedId === r.id ? t("replies.collapse") : t("replies.viewFull")}
                 </button>
                 {!r.isHandled && (
                   <button
@@ -137,7 +139,7 @@ export default function Replies() {
                     className="btn-secondary text-xs"
                   >
                     <CheckCircle2 size={14} className="mr-1" />
-                    Mark Handled
+                    {t("replies.markHandled")}
                   </button>
                 )}
               </div>
@@ -147,7 +149,7 @@ export default function Replies() {
                 <div className="mt-4 space-y-3 border-t border-surface-200 pt-4">
                   <div>
                     <h5 className="mb-1 text-xs font-semibold uppercase tracking-wider text-surface-500">
-                      Full Reply
+                      {t("replies.fullReply")}
                     </h5>
                     <div className="whitespace-pre-wrap rounded-lg bg-surface-50 p-3 text-sm text-surface-700">
                       {r.fullText}
@@ -156,7 +158,7 @@ export default function Replies() {
                   {r.suggestedAction && (
                     <div>
                       <h5 className="mb-1 text-xs font-semibold uppercase tracking-wider text-surface-500">
-                        Suggested Action
+                        {t("replies.suggestedAction")}
                       </h5>
                       <p className="text-sm text-brand-700">
                         {r.suggestedAction}

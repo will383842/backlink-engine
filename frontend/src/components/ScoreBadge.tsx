@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import React from "react";
+import { useTranslation } from "@/i18n";
 
 interface ScoreBadgeProps {
   score: number;
@@ -29,13 +30,14 @@ function getColorClasses(score: number): string {
 }
 
 const ScoreBadge: React.FC<ScoreBadgeProps> = ({ score, size = "md" }) => {
+  const { t } = useTranslation();
   const sizeClass = SIZE_CLASSES[size] ?? SIZE_CLASSES.md;
   const colorClass = getColorClasses(score);
 
   return (
     <div
       className={`inline-flex items-center justify-center rounded-full border-2 ${sizeClass} ${colorClass}`}
-      title={`Score: ${score}`}
+      title={t("score.scoreLabel", { score })}
     >
       {score || "--"}
     </div>

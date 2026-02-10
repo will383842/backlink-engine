@@ -4,6 +4,7 @@ import { Plus, Edit2, X } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { OutreachTemplate, TemplatePurpose } from "@/types";
+import { useTranslation } from "@/i18n";
 
 const PURPOSE_OPTIONS: TemplatePurpose[] = [
   "INITIAL_OUTREACH",
@@ -52,6 +53,7 @@ const emptyForm: TemplateForm = {
 
 export default function Templates() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<TemplateForm>(emptyForm);
@@ -76,22 +78,22 @@ export default function Templates() {
       return (await api.post("/templates", payload)).data;
     },
     onSuccess: () => {
-      toast.success(editingId ? "Template updated" : "Template created");
+      toast.success(editingId ? t("templates.templateUpdated") : t("templates.templateCreated"));
       queryClient.invalidateQueries({ queryKey: ["templates"] });
       handleClose();
     },
   });
 
-  function handleEdit(t: OutreachTemplate) {
-    setEditingId(t.id);
+  function handleEdit(tpl: OutreachTemplate) {
+    setEditingId(tpl.id);
     setForm({
-      name: t.name,
-      language: t.language,
-      purpose: t.purpose as TemplatePurpose,
-      subject: t.subject,
-      body: t.body,
-      formalityLevel: t.formalityLevel as TemplateForm["formalityLevel"],
-      culturalNotes: t.culturalNotes ?? "",
+      name: tpl.name,
+      language: tpl.language,
+      purpose: tpl.purpose as TemplatePurpose,
+      subject: tpl.subject,
+      body: tpl.body,
+      formalityLevel: tpl.formalityLevel as TemplateForm["formalityLevel"],
+      culturalNotes: tpl.culturalNotes ?? "",
     });
     setShowForm(true);
   }
@@ -105,7 +107,7 @@ export default function Templates() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!form.name.trim() || !form.subject.trim() || !form.body.trim()) {
-      toast.error("Name, subject and body are required");
+      toast.error(t("templates.nameSubjectBodyRequired"));
       return;
     }
     saveMutation.mutate();
@@ -113,9 +115,9 @@ export default function Templates() {
 
   // Group templates by language
   const grouped = (templates ?? []).reduce<Record<string, OutreachTemplate[]>>(
-    (acc, t) => {
-      if (!acc[t.language]) acc[t.language] = [];
-      acc[t.language].push(t);
+    (acc, tpl) => {
+      if (!acc[tpl.language]) acc[tpl.language] = [];
+      acc[tpl.language].push(tpl);
       return acc;
     },
     {}
@@ -126,7 +128,7 @@ export default function Templates() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-surface-900">
-          Outreach Templates
+          {t("templates.title")}
         </h3>
         <button
           onClick={() => {
@@ -136,7 +138,7 @@ export default function Templates() {
           }}
           className="btn-primary"
         >
-          <Plus size={16} className="mr-1.5" /> New Template
+          <Plus size={16} className="mr-1.5" /> {t("templates.newTemplate")}
         </button>
       </div>
 
@@ -145,7 +147,7 @@ export default function Templates() {
         <form onSubmit={handleSubmit} className="card space-y-4">
           <div className="flex items-center justify-between">
             <h4 className="font-semibold text-surface-900">
-              {editingId ? "Edit Template" : "New Template"}
+              {editingId ? t("templates.editTemplate") : t("templates.newTemplate")}
             </h4>
             <button type="button" onClick={handleClose}>
               <X size={20} className="text-surface-400 hover:text-surface-600" />
@@ -155,7 +157,7 @@ export default function Templates() {
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Name
+                {t("templates.name")}
               </label>
               <input
                 type="text"
@@ -167,24 +169,24 @@ export default function Templates() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Language
+                {t("templates.templateLanguage")}
               </label>
               <select
                 value={form.language}
                 onChange={(e) => setForm({ ...form, language: e.target.value })}
                 className="input-field"
               >
-                <option value="fr">French</option>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
-                <option value="de">German</option>
-                <option value="pt">Portuguese</option>
-                <option value="it">Italian</option>
+                <option value="fr">{t("campaigns.french")}</option>
+                <option value="en">{t("campaigns.english")}</option>
+                <option value="es">{t("campaigns.spanish")}</option>
+                <option value="de">{t("campaigns.german")}</option>
+                <option value="pt">{t("campaigns.portuguese")}</option>
+                <option value="it">{t("campaigns.italian")}</option>
               </select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Purpose
+                {t("templates.purpose")}
               </label>
               <select
                 value={form.purpose}
@@ -202,7 +204,7 @@ export default function Templates() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700">
-                Formality
+                {t("templates.formality")}
               </label>
               <select
                 value={form.formalityLevel}
@@ -214,16 +216,16 @@ export default function Templates() {
                 }
                 className="input-field"
               >
-                <option value="formal">Formal</option>
-                <option value="semi-formal">Semi-formal</option>
-                <option value="informal">Informal</option>
+                <option value="formal">{t("templates.formal")}</option>
+                <option value="semi-formal">{t("templates.semiFormal")}</option>
+                <option value="informal">{t("templates.informal")}</option>
               </select>
             </div>
           </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Subject
+              {t("templates.subject")}
             </label>
             <input
               type="text"
@@ -236,7 +238,7 @@ export default function Templates() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Body
+              {t("templates.body")}
             </label>
             <textarea
               value={form.body}
@@ -260,7 +262,7 @@ export default function Templates() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Cultural Notes
+              {t("templates.culturalNotes")}
             </label>
             <textarea
               value={form.culturalNotes}
@@ -280,13 +282,13 @@ export default function Templates() {
               className="btn-primary"
             >
               {saveMutation.isPending
-                ? "Saving..."
+                ? t("common.saving")
                 : editingId
-                  ? "Update"
-                  : "Create"}
+                  ? t("common.update")
+                  : t("common.create")}
             </button>
             <button type="button" onClick={handleClose} className="btn-secondary">
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </form>
@@ -299,7 +301,7 @@ export default function Templates() {
         </div>
       ) : !templates?.length ? (
         <div className="card text-center text-surface-500">
-          No templates yet.
+          {t("templates.noTemplatesYet")}
         </div>
       ) : (
         Object.entries(grouped).map(([lang, tpls]) => (
@@ -308,30 +310,30 @@ export default function Templates() {
               {lang.toUpperCase()} ({tpls.length})
             </h4>
             <div className="space-y-3">
-              {tpls.map((t) => (
+              {tpls.map((tpl) => (
                 <div
-                  key={t.id}
+                  key={tpl.id}
                   className="card flex items-start justify-between"
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h5 className="font-medium text-surface-900">{t.name}</h5>
-                      <span className={`badge ${PURPOSE_COLORS[t.purpose as TemplatePurpose]}`}>
-                        {t.purpose.replace(/_/g, " ")}
+                      <h5 className="font-medium text-surface-900">{tpl.name}</h5>
+                      <span className={`badge ${PURPOSE_COLORS[tpl.purpose as TemplatePurpose]}`}>
+                        {tpl.purpose.replace(/_/g, " ")}
                       </span>
                       <span className="badge bg-surface-100 text-surface-600">
-                        {t.formalityLevel}
+                        {tpl.formalityLevel}
                       </span>
                     </div>
                     <p className="mt-1 text-sm text-surface-600">
-                      Subject: {t.subject}
+                      {t("templates.subject")}: {tpl.subject}
                     </p>
                     <p className="mt-1 line-clamp-2 text-xs text-surface-400">
-                      {t.body}
+                      {tpl.body}
                     </p>
                   </div>
                   <button
-                    onClick={() => handleEdit(t)}
+                    onClick={() => handleEdit(tpl)}
                     className="ml-4 shrink-0 text-surface-400 hover:text-brand-600"
                   >
                     <Edit2 size={16} />

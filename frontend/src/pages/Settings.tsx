@@ -4,6 +4,7 @@ import { Save } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { AppSettings } from "@/types";
+import { useTranslation } from "@/i18n";
 
 const defaultSettings: AppSettings = {
   mailwizz: {
@@ -31,6 +32,7 @@ const defaultSettings: AppSettings = {
 
 export default function Settings() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
 
   const { data, isLoading } = useQuery<AppSettings>({
@@ -51,7 +53,7 @@ export default function Settings() {
       return res.data;
     },
     onSuccess: () => {
-      toast.success("Settings saved");
+      toast.success(t("settings.settingsSaved"));
       queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
   });
@@ -98,12 +100,12 @@ export default function Settings() {
       {/* MailWizz */}
       <section className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
-          MailWizz Configuration
+          {t("settings.mailwizzConfig")}
         </h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              API URL
+              {t("settings.apiUrl")}
             </label>
             <input
               type="url"
@@ -120,7 +122,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              API Key
+              {t("settings.apiKey")}
             </label>
             <input
               type="password"
@@ -137,7 +139,7 @@ export default function Settings() {
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              List UIDs by Language (one per line: lang=uid)
+              {t("settings.listUidsByLanguage")}
             </label>
             <textarea
               value={listUidsText}
@@ -162,12 +164,12 @@ export default function Settings() {
       {/* IMAP */}
       <section className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
-          IMAP Configuration
+          {t("settings.imapConfig")}
         </h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Host
+              {t("settings.host")}
             </label>
             <input
               type="text"
@@ -184,7 +186,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Port
+              {t("settings.port")}
             </label>
             <input
               type="number"
@@ -203,7 +205,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              User
+              {t("settings.user")}
             </label>
             <input
               type="text"
@@ -220,7 +222,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Password
+              {t("settings.password")}
             </label>
             <input
               type="password"
@@ -241,12 +243,12 @@ export default function Settings() {
       {/* Scoring */}
       <section className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
-          Scoring Thresholds
+          {t("settings.scoringThresholds")}
         </h3>
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Min Score for Contact
+              {t("settings.minScoreForContact")}
             </label>
             <input
               type="number"
@@ -267,7 +269,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Min DA for Contact
+              {t("settings.minDaForContact")}
             </label>
             <input
               type="number"
@@ -288,7 +290,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Neighborhood Threshold
+              {t("settings.neighborhoodThreshold")}
             </label>
             <input
               type="number"
@@ -313,12 +315,12 @@ export default function Settings() {
       {/* Recontact */}
       <section className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
-          Recontact Settings
+          {t("settings.recontactSettings")}
         </h3>
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Delay (months)
+              {t("settings.delayMonths")}
             </label>
             <input
               type="number"
@@ -339,7 +341,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Max Recontacts
+              {t("settings.maxRecontacts")}
             </label>
             <input
               type="number"
@@ -360,7 +362,7 @@ export default function Settings() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Min Score for Recontact
+              {t("settings.minScoreForRecontact")}
             </label>
             <input
               type="number"
@@ -390,7 +392,7 @@ export default function Settings() {
           className="btn-primary"
         >
           <Save size={16} className="mr-1.5" />
-          {saveMutation.isPending ? "Saving..." : "Save Settings"}
+          {saveMutation.isPending ? t("common.saving") : t("settings.saveSettings")}
         </button>
       </div>
     </form>

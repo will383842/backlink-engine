@@ -5,6 +5,7 @@ import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import api from "@/lib/api";
 import type { Prospect, ProspectStatus, PaginatedResponse } from "@/types";
+import { useTranslation } from "@/i18n";
 
 const STATUS_OPTIONS: ProspectStatus[] = [
   "NEW",
@@ -55,6 +56,7 @@ interface Filters {
 
 export default function Prospects() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Filters>({
     status: "",
@@ -118,7 +120,7 @@ export default function Prospects() {
             />
             <input
               type="text"
-              placeholder="Search by domain..."
+              placeholder={t("prospects.searchByDomain")}
               value={filters.search}
               onChange={(e) => updateFilter("search", e.target.value)}
               className="input-field pl-9"
@@ -131,7 +133,7 @@ export default function Prospects() {
             onChange={(e) => updateFilter("status", e.target.value)}
             className="input-field"
           >
-            <option value="">All Statuses</option>
+            <option value="">{t("prospects.allStatuses")}</option>
             {STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>
                 {s.replace(/_/g, " ")}
@@ -142,7 +144,7 @@ export default function Prospects() {
           {/* Country */}
           <input
             type="text"
-            placeholder="Country (e.g. FR)"
+            placeholder={t("prospects.countryPlaceholder")}
             value={filters.country}
             onChange={(e) => updateFilter("country", e.target.value)}
             className="input-field"
@@ -151,7 +153,7 @@ export default function Prospects() {
           {/* Language */}
           <input
             type="text"
-            placeholder="Language (e.g. fr)"
+            placeholder={t("prospects.languagePlaceholder")}
             value={filters.language}
             onChange={(e) => updateFilter("language", e.target.value)}
             className="input-field"
@@ -163,10 +165,10 @@ export default function Prospects() {
             onChange={(e) => updateFilter("tier", e.target.value)}
             className="input-field"
           >
-            <option value="">All Tiers</option>
-            <option value="1">Tier 1</option>
-            <option value="2">Tier 2</option>
-            <option value="3">Tier 3</option>
+            <option value="">{t("prospects.allTiers")}</option>
+            <option value="1">{t("prospects.tier")} 1</option>
+            <option value="2">{t("prospects.tier")} 2</option>
+            <option value="3">{t("prospects.tier")} 3</option>
           </select>
 
           {/* Source */}
@@ -175,16 +177,16 @@ export default function Prospects() {
             onChange={(e) => updateFilter("source", e.target.value)}
             className="input-field"
           >
-            <option value="">All Sources</option>
-            <option value="manual">Manual</option>
-            <option value="csv_import">CSV Import</option>
-            <option value="scraper">Scraper</option>
+            <option value="">{t("prospects.allSources")}</option>
+            <option value="manual">{t("prospects.manual")}</option>
+            <option value="csv_import">{t("prospects.csvImport")}</option>
+            <option value="scraper">{t("prospects.scraper")}</option>
           </select>
 
           {/* Score range */}
           <input
             type="number"
-            placeholder="Min Score"
+            placeholder={t("prospects.minScore")}
             value={filters.scoreMin}
             onChange={(e) => updateFilter("scoreMin", e.target.value)}
             className="input-field"
@@ -193,7 +195,7 @@ export default function Prospects() {
           />
           <input
             type="number"
-            placeholder="Max Score"
+            placeholder={t("prospects.maxScore")}
             value={filters.scoreMax}
             onChange={(e) => updateFilter("scoreMax", e.target.value)}
             className="input-field"
@@ -210,29 +212,29 @@ export default function Prospects() {
             <thead className="border-b border-surface-200 bg-surface-50">
               <tr>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Domain
+                  {t("prospects.domain")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Status
+                  {t("prospects.status")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Score
+                  {t("prospects.score")}
                 </th>
-                <th className="px-4 py-3 font-medium text-surface-600">DA</th>
+                <th className="px-4 py-3 font-medium text-surface-600">{t("prospects.da")}</th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Country
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  Language
+                  {t("prospects.country")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Tier
+                  {t("prospects.language")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Source
+                  {t("prospects.tier")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
-                  Contacted
+                  {t("prospects.source")}
+                </th>
+                <th className="px-4 py-3 font-medium text-surface-600">
+                  {t("prospects.contacted")}
                 </th>
               </tr>
             </thead>
@@ -249,7 +251,7 @@ export default function Prospects() {
                     colSpan={9}
                     className="px-4 py-12 text-center text-surface-500"
                   >
-                    No prospects found.
+                    {t("prospects.noProspectsFound")}
                   </td>
                 </tr>
               ) : (
@@ -293,7 +295,7 @@ export default function Prospects() {
         {data && data.totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-surface-200 px-4 py-3">
             <p className="text-sm text-surface-500">
-              Page {data.page} of {data.totalPages} ({data.total} total)
+              {t("common.page")} {data.page} {t("common.of")} {data.totalPages} ({data.total} {t("common.total")})
             </p>
             <div className="flex gap-2">
               <button
