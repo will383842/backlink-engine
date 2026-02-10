@@ -1,16 +1,15 @@
 #!/bin/bash
 # =============================================================================
 # Backlink Engine - Script d'installation automatique pour Hetzner VPS
-# Ubuntu 24.04 | Docker + Nginx + SSL + PostgreSQL + Redis
+# Ubuntu 24.04 | Docker + Nginx + PostgreSQL + Redis
+# SSL géré par Cloudflare (proxy orange, mode "Full")
 # =============================================================================
-# Usage: ssh root@VOTRE_IP "bash <(curl -s https://raw.githubusercontent.com/will383842/backlink-engine/main/deploy/setup-server.sh)"
-# Ou: scp deploy/setup-server.sh root@VOTRE_IP:/root/ && ssh root@VOTRE_IP "bash /root/setup-server.sh"
+# Usage: scp deploy/setup-server.sh root@VOTRE_IP:/root/ && ssh root@VOTRE_IP "bash /root/setup-server.sh"
 # =============================================================================
 
 set -euo pipefail
 
 DOMAIN="backlinks.sos-expat.com"
-EMAIL="williamsjullin@gmail.com"
 APP_DIR="/opt/backlink-engine"
 REPO="https://github.com/will383842/backlink-engine.git"
 
@@ -22,25 +21,24 @@ echo ""
 # ---------------------------------------------------------------------------
 # 1. System update + essentials
 # ---------------------------------------------------------------------------
-echo "[1/8] Mise à jour du système..."
+echo "[1/6] Mise à jour du système..."
 apt-get update -qq && apt-get upgrade -y -qq
 apt-get install -y -qq curl git ufw fail2ban
 
 # ---------------------------------------------------------------------------
 # 2. Firewall
 # ---------------------------------------------------------------------------
-echo "[2/8] Configuration du firewall..."
+echo "[2/6] Configuration du firewall..."
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow ssh
 ufw allow 80/tcp
-ufw allow 443/tcp
 echo "y" | ufw enable
 
 # ---------------------------------------------------------------------------
 # 3. Install Docker
 # ---------------------------------------------------------------------------
-echo "[3/8] Installation de Docker..."
+echo "[3/6] Installation de Docker..."
 if ! command -v docker &> /dev/null; then
     curl -fsSL https://get.docker.com | sh
     systemctl enable docker
@@ -51,7 +49,7 @@ echo "Docker version: $(docker --version)"
 # ---------------------------------------------------------------------------
 # 4. Clone the repository
 # ---------------------------------------------------------------------------
-echo "[4/8] Clonage du dépôt..."
+echo "[4/6] Clonage du dépôt..."
 if [ -d "$APP_DIR" ]; then
     echo "Répertoire existe déjà, mise à jour..."
     cd "$APP_DIR" && git pull origin main
@@ -63,7 +61,7 @@ cd "$APP_DIR"
 # ---------------------------------------------------------------------------
 # 5. Create .env file
 # ---------------------------------------------------------------------------
-echo "[5/8] Configuration de l'environnement..."
+echo "[5/6] Configuration de l'environnement..."
 if [ ! -f .env ]; then
     # Generate secure passwords
     POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 32)
@@ -120,68 +118,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Build frontend locally (for Nginx to serve)
+# 6. Start everything with Docker Compose
 # ---------------------------------------------------------------------------
-echo "[6/8] Build du frontend..."
-docker run --rm -v "$APP_DIR/frontend:/app" -w /app node:20-alpine sh -c "npm ci && VITE_API_URL=https://${DOMAIN} npx vite build"
-
-# ---------------------------------------------------------------------------
-# 7. Get SSL certificate (initial - HTTP only)
-# ---------------------------------------------------------------------------
-echo "[7/8] Obtention du certificat SSL..."
-
-# Start with HTTP-only nginx config first
-cat > deploy/nginx-initial.conf << 'NGINXEOF'
-server {
-    listen 80;
-    server_name backlinks.sos-expat.com;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
-    location / {
-        return 200 'Backlink Engine - SSL setup in progress...';
-        add_header Content-Type text/plain;
-    }
-}
-NGINXEOF
-
-# Start nginx temporarily for certbot challenge
-docker run -d --name bl-nginx-temp \
-    -p 80:80 \
-    -v "$APP_DIR/deploy/nginx-initial.conf:/etc/nginx/conf.d/default.conf:ro" \
-    -v bl_certbot_www:/var/www/certbot \
-    nginx:alpine
-
-# Get certificate
-docker run --rm \
-    -v bl_certbot_data:/etc/letsencrypt \
-    -v bl_certbot_www:/var/www/certbot \
-    certbot/certbot certonly \
-    --webroot \
-    --webroot-path=/var/www/certbot \
-    --email "$EMAIL" \
-    --agree-tos \
-    --no-eff-email \
-    -d "$DOMAIN"
-
-# Stop temporary nginx
-docker stop bl-nginx-temp && docker rm bl-nginx-temp
-
-# Map certbot volumes to docker compose volume names
-docker volume create --name backlink-engine_certbot_data 2>/dev/null || true
-docker volume create --name backlink-engine_certbot_www 2>/dev/null || true
-
-# Copy certbot data to compose volumes if needed
-# (the compose file references these volumes)
-
-echo "  Certificat SSL obtenu pour $DOMAIN"
-
-# ---------------------------------------------------------------------------
-# 8. Start everything with Docker Compose
-# ---------------------------------------------------------------------------
-echo "[8/8] Lancement de l'application..."
+echo "[6/6] Lancement de l'application..."
 cd "$APP_DIR"
 docker compose up -d --build
 
@@ -202,6 +141,10 @@ echo ""
 echo " URL:        https://$DOMAIN"
 echo " API:        https://$DOMAIN/api/health"
 echo " Config:     $APP_DIR/.env"
+echo ""
+echo " IMPORTANT: Vérifiez que dans Cloudflare:"
+echo "  - DNS: backlinks → $( curl -s ifconfig.me 2>/dev/null || echo 'VOTRE_IP' ) (proxy orange)"
+echo "  - SSL/TLS → Full"
 echo ""
 echo " Prochaines étapes:"
 echo "  1. Éditez .env pour ajouter vos clés API"
