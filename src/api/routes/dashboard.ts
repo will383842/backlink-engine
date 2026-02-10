@@ -28,9 +28,9 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
         backlinksWon,
         prospectsAddedToday,
       ] = await Promise.all([
-        // Urgent: replies needing action
+        // Urgent: replies needing action (unprocessed reply events)
         prisma.event.count({
-          where: { eventType: "reply_received", metadata: { path: ["classified"], equals: null } },
+          where: { eventType: "reply_received" },
         }).catch(() => 0),
         // Urgent: bounces
         prisma.event.count({
