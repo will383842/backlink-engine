@@ -164,7 +164,6 @@ export const fr = {
     any: "Tous",
     targetCountry: "Pays cible",
     mailwizzListUid: "MailWizz List UID",
-    nameAndUidRequired: "Le nom et le MailWizz List UID sont requis",
     campaignCreated: "Campagne creee",
     noCampaignsYet: "Aucune campagne pour le moment. Creez-en une pour commencer.",
     enrolled: "Inscrits",
@@ -178,7 +177,12 @@ export const fr = {
     spanish: "Espagnol",
     german: "Allemand",
     portuguese: "Portugais",
-    italian: "Italien",
+    russian: "Russe",
+    arabic: "Arabe",
+    chinese: "Chinois",
+    hindi: "Hindi",
+    nameRequired: "Le nom est requis",
+    listAutoResolved: "Le MailWizz List UID est resolu automatiquement depuis les Parametres.",
   },
 
   backlinks: {
@@ -293,6 +297,10 @@ export const fr = {
     minScoreForRecontact: "Score min pour recontact",
     saveSettings: "Enregistrer les parametres",
     settingsSaved: "Parametres enregistres",
+    aiConfig: "Configuration IA",
+    aiEnabled: "IA activee",
+    aiProvider: "Fournisseur",
+    aiApiKey: "Cle API IA",
   },
 
   reports: {

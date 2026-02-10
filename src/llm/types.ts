@@ -8,7 +8,7 @@ export { REPLY_CATEGORIES };
 export type { ReplyCategory };
 
 // ---------------------------------------------------------------------------
-// Categorisation result returned by Claude
+// Categorisation result returned by the LLM
 // ---------------------------------------------------------------------------
 
 export interface CategoryResult {

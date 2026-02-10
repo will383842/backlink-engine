@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { OutreachTemplate, TemplatePurpose } from "@/types";
 import { useTranslation } from "@/i18n";
+import { LANGUAGE_OPTIONS } from "@/lib/languageOptions";
 
 const PURPOSE_OPTIONS: TemplatePurpose[] = [
   "INITIAL_OUTREACH",
@@ -176,12 +177,11 @@ export default function Templates() {
                 onChange={(e) => setForm({ ...form, language: e.target.value })}
                 className="input-field"
               >
-                <option value="fr">{t("campaigns.french")}</option>
-                <option value="en">{t("campaigns.english")}</option>
-                <option value="es">{t("campaigns.spanish")}</option>
-                <option value="de">{t("campaigns.german")}</option>
-                <option value="pt">{t("campaigns.portuguese")}</option>
-                <option value="it">{t("campaigns.italian")}</option>
+                {LANGUAGE_OPTIONS.map((l) => (
+                  <option key={l.value} value={l.value}>
+                    {t(l.labelKey as never)}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

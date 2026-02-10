@@ -1,7 +1,7 @@
 /**
- * System prompt used by ClaudeClient.detectLanguage().
+ * System prompt used by LlmClient.detectLanguage().
  *
- * Instructs Claude to identify the language of a given text and
+ * Instructs the LLM to identify the language of a given text and
  * return a standardised 2-letter ISO 639-1 code.
  */
 export const LANGUAGE_DETECTION_PROMPT = `You are a language identification expert.

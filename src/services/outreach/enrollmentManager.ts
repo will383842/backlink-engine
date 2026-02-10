@@ -2,7 +2,6 @@
 // Enrollment Manager - Enroll a prospect into a MailWizz outreach campaign
 // ---------------------------------------------------------------------------
 
-import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "../../config/database.js";
 import {
   mailwizzConfig,
@@ -13,6 +12,7 @@ import { DA_THRESHOLDS, SCORE_THRESHOLDS } from "../../config/constants.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { MailWizzClient } from "./mailwizzClient.js";
 import { isInSuppressionList } from "../suppression/suppressionManager.js";
+import { getLlmClient } from "../../llm/index.js";
 
 const log = createChildLogger("enrollment");
 
@@ -100,9 +100,7 @@ export async function enrollProspect(
   }
 
   // 3. Check if already in MailWizz
-  const listUid = campaign.mailwizzListUid ?? getListUid(
-    (prospect.language ?? campaign.language) as SupportedLanguage,
-  );
+  const listUid = await resolveListUid(campaign, prospect);
 
   const mailwizz = new MailWizzClient(mailwizzConfig.apiUrl, mailwizzConfig.apiKey);
   const existing = await mailwizz.searchSubscriber(listUid, contact.email);
@@ -136,11 +134,12 @@ export async function enrollProspect(
     return;
   }
 
-  // 5. Generate personalized line via Claude
-  const personalizedLine = await generatePersonalizedLine(
-    prospect,
-    contact,
+  // 5. Generate personalized line via LLM
+  const personalizedLine = await getLlmClient().generatePersonalizedLine(
     campaign.language,
+    prospect.domain,
+    undefined,
+    prospect.country ?? undefined,
   );
 
   // 6. Generate unique campaign reference
@@ -224,49 +223,31 @@ export async function enrollProspect(
 }
 
 // ---------------------------------------------------------------------------
-// Personalized line generation (Claude)
+// List UID resolution: campaign override → DB settings → env vars
 // ---------------------------------------------------------------------------
 
-async function generatePersonalizedLine(
+async function resolveListUid(
+  campaign: CampaignForEnrollment,
   prospect: ProspectForEnrollment,
-  contact: ContactForEnrollment,
-  campaignLanguage: string,
 ): Promise<string> {
+  // 1. Campaign-level override
+  if (campaign.mailwizzListUid) return campaign.mailwizzListUid;
+
+  // 2. Try DB settings
+  const lang = (prospect.language ?? campaign.language) as SupportedLanguage;
   try {
-    const anthropic = new Anthropic();
-
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 150,
-      messages: [
-        {
-          role: "user",
-          content: `You are writing a personalized opening line for a backlink outreach email.
-
-Context:
-- Blog/site: ${prospect.domain}
-- Contact name: ${contact.name ?? "Unknown"}
-- Country: ${prospect.country ?? "Unknown"}
-- Language: ${campaignLanguage}
-
-Write a single, natural-sounding personalized opening line (1-2 sentences max) in ${campaignLanguage} that:
-- References their website naturally
-- Feels genuine, not templated
-- Does NOT mention backlinks or SEO
-- Is appropriate for a first contact
-
-Return ONLY the personalized line, nothing else.`,
-        },
-      ],
-    });
-
-    const textBlock = message.content.find((b) => b.type === "text");
-    return textBlock?.text?.trim() ?? "";
-  } catch (err) {
-    log.error({ err, prospectId: prospect.id }, "Failed to generate personalized line");
-    // Fallback: empty personalized line (template will handle it)
-    return "";
+    const row = await prisma.appSetting.findUnique({ where: { key: "mailwizz" } });
+    if (row) {
+      const mw = row.value as Record<string, unknown>;
+      const listUids = mw.listUids as Record<string, string> | undefined;
+      if (listUids?.[lang]) return listUids[lang];
+    }
+  } catch {
+    // fall through to env vars
   }
+
+  // 3. Env vars (via config)
+  return getListUid(lang);
 }
 
 // ---------------------------------------------------------------------------

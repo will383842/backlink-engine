@@ -292,7 +292,20 @@ model SuppressionEntry {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 11. User
+// 11. AppSetting (key-value JSON store)
+// ─────────────────────────────────────────────────────────────
+
+model AppSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 12. User
 // ─────────────────────────────────────────────────────────────
 
 model User {

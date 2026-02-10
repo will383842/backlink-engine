@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Campaign } from "@/types";
 import { useTranslation } from "@/i18n";
+import { LANGUAGE_OPTIONS } from "@/lib/languageOptions";
 
 export default function Campaigns() {
   const queryClient = useQueryClient();
@@ -17,7 +18,6 @@ export default function Campaigns() {
   const [language, setLanguage] = useState("fr");
   const [targetTier, setTargetTier] = useState("");
   const [targetCountry, setTargetCountry] = useState("");
-  const [mailwizzListUid, setMailwizzListUid] = useState("");
 
   const { data: campaigns, isLoading } = useQuery<Campaign[]>({
     queryKey: ["campaigns"],
@@ -45,7 +45,7 @@ export default function Campaigns() {
         language,
         targetTier: targetTier ? parseInt(targetTier) : null,
         targetCountry: targetCountry || null,
-        mailwizzListUid,
+        sequenceConfig: {},
       });
       return res.data;
     },
@@ -62,13 +62,12 @@ export default function Campaigns() {
     setLanguage("fr");
     setTargetTier("");
     setTargetCountry("");
-    setMailwizzListUid("");
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!name.trim() || !mailwizzListUid.trim()) {
-      toast.error(t("campaigns.nameAndUidRequired"));
+    if (!name.trim()) {
+      toast.error(t("campaigns.nameRequired"));
       return;
     }
     createMutation.mutate();
@@ -113,12 +112,11 @@ export default function Campaigns() {
                 onChange={(e) => setLanguage(e.target.value)}
                 className="input-field"
               >
-                <option value="fr">{t("campaigns.french")}</option>
-                <option value="en">{t("campaigns.english")}</option>
-                <option value="es">{t("campaigns.spanish")}</option>
-                <option value="de">{t("campaigns.german")}</option>
-                <option value="pt">{t("campaigns.portuguese")}</option>
-                <option value="it">{t("campaigns.italian")}</option>
+                {LANGUAGE_OPTIONS.map((l) => (
+                  <option key={l.value} value={l.value}>
+                    {t(l.labelKey as never)}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -149,16 +147,9 @@ export default function Campaigns() {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-surface-700">
-                {t("campaigns.mailwizzListUid")} <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={mailwizzListUid}
-                onChange={(e) => setMailwizzListUid(e.target.value)}
-                className="input-field font-mono text-xs"
-                placeholder="abc123def456"
-              />
+              <p className="text-xs text-surface-400">
+                {t("campaigns.listAutoResolved")}
+              </p>
             </div>
           </div>
           <div className="flex gap-2">

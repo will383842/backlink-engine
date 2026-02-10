@@ -166,7 +166,6 @@ export const en: TranslationKeys = {
     any: "Any",
     targetCountry: "Target Country",
     mailwizzListUid: "MailWizz List UID",
-    nameAndUidRequired: "Name and MailWizz List UID are required",
     campaignCreated: "Campaign created",
     noCampaignsYet: "No campaigns yet. Create one to get started.",
     enrolled: "Enrolled",
@@ -180,7 +179,12 @@ export const en: TranslationKeys = {
     spanish: "Spanish",
     german: "German",
     portuguese: "Portuguese",
-    italian: "Italian",
+    russian: "Russian",
+    arabic: "Arabic",
+    chinese: "Chinese",
+    hindi: "Hindi",
+    nameRequired: "Name is required",
+    listAutoResolved: "MailWizz List UID is auto-resolved from Settings.",
   },
 
   backlinks: {
@@ -295,6 +299,10 @@ export const en: TranslationKeys = {
     minScoreForRecontact: "Min Score for Recontact",
     saveSettings: "Save Settings",
     settingsSaved: "Settings saved",
+    aiConfig: "AI Configuration",
+    aiEnabled: "AI Enabled",
+    aiProvider: "Provider",
+    aiApiKey: "AI API Key",
   },
 
   reports: {

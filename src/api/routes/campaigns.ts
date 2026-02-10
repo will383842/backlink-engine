@@ -112,7 +112,7 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
       schema: {
         body: {
           type: "object",
-          required: ["name", "language", "sequenceConfig"],
+          required: ["name", "language"],
           properties: {
             name: { type: "string", minLength: 1, maxLength: 200 },
             language: { type: "string", minLength: 2, maxLength: 5 },
@@ -137,7 +137,7 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
           targetTier: body.targetTier ?? null,
           targetCountry: body.targetCountry ?? null,
           mailwizzListUid: body.mailwizzListUid ?? null,
-          sequenceConfig: body.sequenceConfig as unknown as import("@prisma/client").Prisma.InputJsonValue,
+          sequenceConfig: (body.sequenceConfig ?? {}) as unknown as import("@prisma/client").Prisma.InputJsonValue,
           stopOnReply: body.stopOnReply ?? true,
           stopOnUnsub: body.stopOnUnsub ?? true,
           stopOnBounce: body.stopOnBounce ?? true,

@@ -54,4 +54,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]

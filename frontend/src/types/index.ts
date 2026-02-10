@@ -428,6 +428,11 @@ export interface AppSettings {
     maxRecontacts: number;
     minScoreForRecontact: number;
   };
+  ai: {
+    enabled: boolean;
+    provider: string;
+    apiKey: string;
+  };
 }
 
 // ---------------------------------------------------------------------------

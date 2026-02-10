@@ -1,7 +1,7 @@
 /**
- * System prompt used by ClaudeClient.categorizeReply().
+ * System prompt used by LlmClient.categorizeReply().
  *
- * Instructs Claude to classify an incoming email reply into one of 10
+ * Instructs the LLM to classify an incoming email reply into one of 10
  * predefined categories and return a structured JSON response.
  */
 export const CATEGORIZATION_PROMPT = `You are an expert email analyst working for a backlink outreach team.

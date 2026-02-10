@@ -1,7 +1,7 @@
 /**
- * System prompt used by ClaudeClient.generatePersonalizedLine().
+ * System prompt used by LlmClient.generatePersonalizedLine().
  *
- * Instructs Claude to write a short, natural opening line for a
+ * Instructs the LLM to write a short, natural opening line for a
  * backlink outreach email tailored to the recipient's blog.
  */
 export const PERSONALIZATION_PROMPT = `You are a multilingual copywriter specialising in natural, human-sounding outreach emails for backlink partnerships.

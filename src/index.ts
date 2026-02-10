@@ -18,10 +18,14 @@ import assetsRoutes from "./api/routes/assets.js";
 import templatesRoutes from "./api/routes/templates.js";
 import dashboardRoutes from "./api/routes/dashboard.js";
 import suppressionRoutes from "./api/routes/suppression.js";
+import settingsRoutes from "./api/routes/settings.js";
+import repliesRoutes from "./api/routes/replies.js";
+import reportsRoutes from "./api/routes/reports.js";
 import ingestRoutes from "./api/routes/ingest.js";
 import webhooksRoutes from "./api/routes/webhooks.js";
 import authRoutes from "./api/routes/auth.js";
 import { registerJwt } from "./api/middleware/auth.js";
+import { resetLlmClient } from "./llm/index.js";
 
 // ---------------------------------------------------------------------------
 // BullMQ queues, cron scheduler & workers
@@ -120,6 +124,9 @@ await app.register(assetsRoutes, { prefix: "/api/assets" });
 await app.register(templatesRoutes, { prefix: "/api/templates" });
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 await app.register(suppressionRoutes, { prefix: "/api/suppression" });
+await app.register(settingsRoutes, { prefix: "/api/settings" });
+await app.register(repliesRoutes, { prefix: "/api/replies" });
+await app.register(reportsRoutes, { prefix: "/api/reports" });
 
 // Health check
 app.get("/api/health", async () => {
@@ -176,6 +183,22 @@ try {
   // Verify Redis connectivity
   await redis.ping();
   logger.info("Redis connection verified.");
+
+  // Load AI settings from DB and initialise LLM client
+  try {
+    const aiRow = await prisma.appSetting.findUnique({ where: { key: "ai" } });
+    if (aiRow) {
+      const ai = aiRow.value as Record<string, unknown>;
+      resetLlmClient({
+        apiKey: (ai.apiKey as string) || undefined,
+        enabled: ai.enabled !== false,
+      });
+    }
+  } catch {
+    // Table might not exist yet (first run before migration)
+    logger.warn("Could not load AI settings from DB, using env defaults.");
+  }
+  logger.info("LLM client initialised.");
 
   // Initialise BullMQ queues (must happen before cron jobs or workers)
   setupQueues();

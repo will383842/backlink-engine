@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save } from "lucide-react";
+import { Save, Bot } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { AppSettings } from "@/types";
@@ -27,6 +27,11 @@ const defaultSettings: AppSettings = {
     delayMonths: 6,
     maxRecontacts: 3,
     minScoreForRecontact: 50,
+  },
+  ai: {
+    enabled: true,
+    provider: "openai",
+    apiKey: "",
   },
 };
 
@@ -379,6 +384,73 @@ export default function Settings() {
               className="input-field"
               min={0}
               max={100}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* AI */}
+      <section className="card space-y-4">
+        <h3 className="flex items-center gap-2 text-lg font-semibold text-surface-900">
+          <Bot size={20} />
+          {t("settings.aiConfig")}
+        </h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-surface-700">
+              {t("settings.aiEnabled")}
+            </label>
+            <button
+              type="button"
+              onClick={() =>
+                setSettings({
+                  ...settings,
+                  ai: { ...settings.ai, enabled: !settings.ai.enabled },
+                })
+              }
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                settings.ai.enabled ? "bg-brand-600" : "bg-surface-300"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                  settings.ai.enabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700">
+              {t("settings.aiProvider")}
+            </label>
+            <select
+              value={settings.ai.provider}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  ai: { ...settings.ai, provider: e.target.value },
+                })
+              }
+              className="input-field"
+            >
+              <option value="openai">OpenAI (GPT-4o-mini)</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700">
+              {t("settings.aiApiKey")}
+            </label>
+            <input
+              type="password"
+              value={settings.ai.apiKey}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  ai: { ...settings.ai, apiKey: e.target.value },
+                })
+              }
+              className="input-field"
+              placeholder="sk-..."
             />
           </div>
         </div>
