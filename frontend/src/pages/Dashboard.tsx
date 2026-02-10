@@ -65,6 +65,11 @@ export default function Dashboard() {
     );
   }
 
+  const urgent = data?.urgent ?? { repliesToHandle: 0, bounces: 0, lostBacklinks: 0 };
+  const todo = data?.todo ?? { prospectsReady: 0, formsToFill: 0 };
+  const opportunities = data?.opportunities ?? { lostRecontactable: 0 };
+  const stats = data?.stats ?? { sentToMailwizz: 0, repliesReceived: 0, backlinksWon: 0, prospectsAddedBySource: {} };
+
   if (error || !data) {
     return (
       <div className="card text-center text-red-600">
@@ -84,19 +89,19 @@ export default function Dashboard() {
         <div className="grid gap-4 sm:grid-cols-3">
           <StatsCard
             label={t("dashboard.repliesToHandle")}
-            value={data.urgent.repliesToHandle}
+            value={urgent.repliesToHandle}
             color="red"
             to="/replies"
           />
           <StatsCard
             label={t("dashboard.bounces")}
-            value={data.urgent.bounces}
+            value={urgent.bounces}
             color="red"
             to="/replies?category=BOUNCE"
           />
           <StatsCard
             label={t("dashboard.lostBacklinks")}
-            value={data.urgent.lostBacklinks}
+            value={urgent.lostBacklinks}
             color="red"
             to="/backlinks?isLive=false"
           />
@@ -112,13 +117,13 @@ export default function Dashboard() {
         <div className="grid gap-4 sm:grid-cols-2">
           <StatsCard
             label={t("dashboard.prospectsReady")}
-            value={data.todo.prospectsReady}
+            value={todo.prospectsReady}
             color="yellow"
             to="/prospects?status=READY_TO_CONTACT"
           />
           <StatsCard
             label={t("dashboard.formsToFill")}
-            value={data.todo.formsToFill}
+            value={todo.formsToFill}
             color="yellow"
             to="/prospects?status=READY_TO_CONTACT"
           />
@@ -136,7 +141,7 @@ export default function Dashboard() {
         <div className="grid gap-4 sm:grid-cols-1">
           <StatsCard
             label={t("dashboard.lostRecontactable")}
-            value={data.opportunities.lostRecontactable}
+            value={opportunities.lostRecontactable}
             color="green"
             to="/recontact"
           />
@@ -154,20 +159,20 @@ export default function Dashboard() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatsCard
             label={t("dashboard.sentToMailwizz")}
-            value={data.stats.sentToMailwizz}
+            value={stats.sentToMailwizz}
             color="blue"
           />
           <StatsCard
             label={t("dashboard.repliesReceived")}
-            value={data.stats.repliesReceived}
+            value={stats.repliesReceived}
             color="blue"
           />
           <StatsCard
             label={t("dashboard.backlinksWon")}
-            value={data.stats.backlinksWon}
+            value={stats.backlinksWon}
             color="blue"
           />
-          {Object.entries(data.stats.prospectsAddedBySource).map(
+          {Object.entries(stats.prospectsAddedBySource || {}).map(
             ([source, count]) => (
               <StatsCard
                 key={source}
