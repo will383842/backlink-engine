@@ -62,7 +62,7 @@ export default function Templates() {
     queryKey: ["templates"],
     queryFn: async () => {
       const res = await api.get("/templates");
-      return res.data;
+      return res.data?.data ?? res.data ?? [];
     },
   });
 
@@ -114,7 +114,7 @@ export default function Templates() {
   }
 
   // Group templates by language
-  const grouped = (templates ?? []).reduce<Record<string, OutreachTemplate[]>>(
+  const grouped = (Array.isArray(templates) ? templates : []).reduce<Record<string, OutreachTemplate[]>>(
     (acc, tpl) => {
       if (!acc[tpl.language]) acc[tpl.language] = [];
       acc[tpl.language].push(tpl);
