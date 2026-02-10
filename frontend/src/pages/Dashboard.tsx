@@ -53,7 +53,7 @@ export default function Dashboard() {
     queryKey: ["dashboard"],
     queryFn: async () => {
       const res = await api.get("/dashboard/today");
-      return res.data;
+      return res.data as DashboardData;
     },
   });
 

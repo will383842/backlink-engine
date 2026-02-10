@@ -16,96 +16,78 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      // Urgent items: follow-ups that are overdue
-      const overdueFollowups = await prisma.prospect.findMany({
-        where: {
-          nextFollowupAt: { lt: now },
-          status: { in: ["OUTREACH", "FOLLOW_UP", "NEGOTIATION"] },
-        },
-        orderBy: { nextFollowupAt: "asc" },
-        take: 20,
-        select: {
-          id: true,
-          domain: true,
-          status: true,
-          nextFollowupAt: true,
-          tier: true,
-          contacts: {
-            select: { id: true, email: true, name: true },
-            take: 1,
-          },
-        },
-      });
-
-      // To-do items: follow-ups due today
-      const endOfDay = new Date(startOfDay);
-      endOfDay.setDate(endOfDay.getDate() + 1);
-
-      const todayFollowups = await prisma.prospect.findMany({
-        where: {
-          nextFollowupAt: { gte: now, lt: endOfDay },
-          status: { in: ["OUTREACH", "FOLLOW_UP", "NEGOTIATION"] },
-        },
-        orderBy: { nextFollowupAt: "asc" },
-        take: 20,
-        select: {
-          id: true,
-          domain: true,
-          status: true,
-          nextFollowupAt: true,
-          tier: true,
-        },
-      });
-
-      // Opportunities: new high-score prospects not yet contacted
-      const opportunities = await prisma.prospect.findMany({
-        where: {
-          status: "NEW",
-          score: { gte: 50 },
-        },
-        orderBy: { score: "desc" },
-        take: 10,
-        select: {
-          id: true,
-          domain: true,
-          score: true,
-          tier: true,
-          mozDa: true,
-          language: true,
-          country: true,
-        },
-      });
-
-      // Today's stats
       const [
-        prospectsCreatedToday,
-        emailsSentToday,
-        repliesReceivedToday,
-        backlinksWonToday,
+        repliesToHandle,
+        bounces,
+        lostBacklinks,
+        prospectsReady,
+        formsToFill,
+        lostRecontactable,
+        sentToMailwizz,
+        repliesReceived,
+        backlinksWon,
+        prospectsAddedToday,
       ] = await Promise.all([
-        prisma.prospect.count({ where: { createdAt: { gte: startOfDay } } }),
+        // Urgent: replies needing action
+        prisma.event.count({
+          where: { eventType: "reply_received", metadata: { path: ["classified"], equals: null } },
+        }).catch(() => 0),
+        // Urgent: bounces
+        prisma.event.count({
+          where: { eventType: { in: ["hard_bounce", "soft_bounce", "bounce"] } },
+        }).catch(() => 0),
+        // Urgent: lost backlinks
+        prisma.backlink.count({
+          where: { isLive: false },
+        }).catch(() => 0),
+        // Todo: prospects ready to contact
+        prisma.prospect.count({
+          where: { status: "READY_TO_CONTACT" },
+        }).catch(() => 0),
+        // Todo: prospects with contact forms to fill
+        prisma.prospect.count({
+          where: { contactFormUrl: { not: null }, status: "NEW" },
+        }).catch(() => 0),
+        // Opportunities: lost prospects recontactable
+        prisma.prospect.count({
+          where: { status: "LOST", score: { gte: 30 } },
+        }).catch(() => 0),
+        // Stats: sent today
         prisma.event.count({
           where: { eventType: "email_sent", createdAt: { gte: startOfDay } },
-        }),
+        }).catch(() => 0),
+        // Stats: replies received today
         prisma.event.count({
           where: { eventType: "reply_received", createdAt: { gte: startOfDay } },
-        }),
+        }).catch(() => 0),
+        // Stats: backlinks won today
         prisma.backlink.count({
           where: { createdAt: { gte: startOfDay } },
-        }),
+        }).catch(() => 0),
+        // Stats: prospects added today
+        prisma.prospect.count({
+          where: { createdAt: { gte: startOfDay } },
+        }).catch(() => 0),
       ]);
 
       return reply.send({
-        data: {
-          urgent: overdueFollowups,
-          todo: todayFollowups,
-          opportunities,
-          stats: {
-            prospectsCreatedToday,
-            emailsSentToday,
-            repliesReceivedToday,
-            backlinksWonToday,
-          },
+        urgent: {
+          repliesToHandle,
+          bounces,
+          lostBacklinks,
+        },
+        todo: {
+          prospectsReady,
+          formsToFill,
+        },
+        opportunities: {
+          lostRecontactable,
+        },
+        stats: {
+          sentToMailwizz,
+          repliesReceived,
+          backlinksWon,
+          prospectsAddedBySource: { manual: prospectsAddedToday },
         },
       });
     },
