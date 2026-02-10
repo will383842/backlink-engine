@@ -45,7 +45,7 @@ export default function Replies() {
       const params: Record<string, string> = {};
       if (filterCategory) params.category = filterCategory;
       const res = await api.get("/replies", { params });
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 

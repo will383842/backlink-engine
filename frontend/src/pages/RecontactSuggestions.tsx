@@ -38,7 +38,7 @@ export default function RecontactSuggestions() {
     queryKey: ["recontact-suggestions"],
     queryFn: async () => {
       const res = await api.get("/prospects/recontact-suggestions");
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 

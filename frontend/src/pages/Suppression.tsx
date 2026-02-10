@@ -18,7 +18,7 @@ export default function Suppression() {
     queryKey: ["suppression"],
     queryFn: async () => {
       const res = await api.get("/suppression");
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 

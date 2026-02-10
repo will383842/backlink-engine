@@ -31,7 +31,7 @@ export default function Assets() {
     queryKey: ["assets"],
     queryFn: async () => {
       const res = await api.get("/assets");
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 

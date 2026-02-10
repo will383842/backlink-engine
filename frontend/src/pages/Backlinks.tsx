@@ -27,7 +27,7 @@ export default function Backlinks() {
       if (filterLive) params.isLive = filterLive;
       if (filterType) params.linkType = filterType;
       const res = await api.get("/backlinks", { params });
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 

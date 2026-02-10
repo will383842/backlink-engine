@@ -39,7 +39,7 @@ export default function Settings() {
     queryKey: ["settings"],
     queryFn: async () => {
       const res = await api.get("/settings");
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 

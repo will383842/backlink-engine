@@ -51,7 +51,7 @@ export default function EnrollPreview({
     queryKey: ["campaigns"],
     queryFn: async () => {
       const res = await api.get("/campaigns");
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 
@@ -62,7 +62,7 @@ export default function EnrollPreview({
         const res = await api.get(
           `/prospects/${prospectId}/enroll-preview?campaignId=${selectedCampaignId}`
         );
-        return res.data;
+        return res.data?.data ?? res.data;
       },
       enabled: !!selectedCampaignId,
     });

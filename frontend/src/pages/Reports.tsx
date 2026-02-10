@@ -43,7 +43,7 @@ export default function Reports() {
     queryKey: ["reports"],
     queryFn: async () => {
       const res = await api.get("/reports");
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 

@@ -23,7 +23,7 @@ export default function Campaigns() {
     queryKey: ["campaigns"],
     queryFn: async () => {
       const res = await api.get("/campaigns");
-      return res.data;
+      return res.data?.data ?? res.data;
     },
   });
 
@@ -33,7 +33,7 @@ export default function Campaigns() {
     queryKey: ["campaign-enrollments", selectedId],
     queryFn: async () => {
       const res = await api.get(`/campaigns/${selectedId}/enrollments`);
-      return res.data;
+      return res.data?.data ?? res.data;
     },
     enabled: !!selectedId,
   });
