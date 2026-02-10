@@ -1,0 +1,307 @@
+// ─────────────────────────────────────────────────────────────
+// Backlink Engine – Prisma Schema
+// ─────────────────────────────────────────────────────────────
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─────────────────────────────────────────────────────────────
+// 1. Prospect
+// ─────────────────────────────────────────────────────────────
+
+model Prospect {
+  id                     Int        @id @default(autoincrement())
+  domain                 String     @unique
+  source                 String     @default("manual") // manual | csv_import | scraper
+  language               String?
+  country                String?    @db.VarChar(3)
+  tier                   Int        @default(1)
+  score                  Int        @default(0)
+  mozDa                  Int?
+  openPagerank           Decimal?
+  spamScore              Int        @default(0)
+  hasRealTraffic         Boolean    @default(false)
+  isPbn                  Boolean    @default(false)
+  linkNeighborhoodScore  Int?
+  outboundCategories     Json?
+  contactFormUrl         String?
+  status                 String     @default("NEW")
+  firstContactedAt       DateTime?
+  lastContactedAt        DateTime?
+  nextFollowupAt         DateTime?
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+
+  sourceUrls  SourceUrl[]
+  contacts    Contact[]
+  enrollments Enrollment[]
+  events      Event[]
+  backlinks   Backlink[]
+
+  @@index([status])
+  @@index([tier])
+  @@index([country])
+  @@index([language])
+  @@index([nextFollowupAt])
+  @@index([score])
+
+  @@map("prospects")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 2. SourceUrl
+// ─────────────────────────────────────────────────────────────
+
+model SourceUrl {
+  id             Int       @id @default(autoincrement())
+  prospectId     Int
+  url            String
+  urlNormalized  String    @unique
+  canonicalUrl   String?
+  title          String?
+  metaDescription String?
+  discoveredVia  String    @default("manual")
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  prospect  Prospect   @relation(fields: [prospectId], references: [id])
+  backlinks Backlink[]
+
+  @@index([prospectId])
+
+  @@map("source_urls")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 3. Contact
+// ─────────────────────────────────────────────────────────────
+
+model Contact {
+  id              Int        @id @default(autoincrement())
+  prospectId      Int
+  email           String
+  emailNormalized String     @unique
+  name            String?
+  role            String     @default("unknown")
+  emailStatus     String     @default("unverified")
+  discoveredVia   String     @default("manual")
+  optedOut        Boolean    @default(false)
+  optedOutAt      DateTime?
+  createdAt       DateTime   @default(now())
+
+  prospect    Prospect     @relation(fields: [prospectId], references: [id])
+  enrollments Enrollment[]
+  events      Event[]
+
+  @@index([prospectId])
+  @@index([emailStatus])
+
+  @@map("contacts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4. Campaign
+// ─────────────────────────────────────────────────────────────
+
+model Campaign {
+  id               Int      @id @default(autoincrement())
+  name             String
+  language         String
+  targetTier       Int?
+  targetCountry    String?
+  mailwizzListUid  String?
+  sequenceConfig   Json
+  stopOnReply      Boolean  @default(true)
+  stopOnUnsub      Boolean  @default(true)
+  stopOnBounce     Boolean  @default(true)
+  totalEnrolled    Int      @default(0)
+  totalReplied     Int      @default(0)
+  totalWon         Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  enrollments Enrollment[]
+
+  @@index([isActive])
+  @@index([language])
+
+  @@map("campaigns")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 5. Enrollment
+// ─────────────────────────────────────────────────────────────
+
+model Enrollment {
+  id                      Int        @id @default(autoincrement())
+  contactId               Int
+  campaignId              Int
+  prospectId              Int
+  mailwizzSubscriberUid   String?
+  mailwizzListUid         String?
+  campaignRef             String?
+  currentStep             Int        @default(0)
+  status                  String     @default("active")
+  stoppedReason           String?
+  enrolledAt              DateTime   @default(now())
+  lastSentAt              DateTime?
+  nextSendAt              DateTime?
+  completedAt             DateTime?
+
+  contact   Contact   @relation(fields: [contactId], references: [id])
+  campaign  Campaign  @relation(fields: [campaignId], references: [id])
+  prospect  Prospect  @relation(fields: [prospectId], references: [id])
+  events    Event[]
+
+  @@unique([contactId, campaignId])
+  @@index([status])
+  @@index([nextSendAt])
+  @@index([prospectId])
+  @@index([campaignId])
+
+  @@map("enrollments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 6. Event (append-only)
+// ─────────────────────────────────────────────────────────────
+
+model Event {
+  id           Int       @id @default(autoincrement())
+  prospectId   Int
+  contactId    Int?
+  enrollmentId Int?
+  eventType    String
+  eventSource  String
+  userId       Int?
+  data         Json?
+  createdAt    DateTime  @default(now())
+
+  prospect   Prospect    @relation(fields: [prospectId], references: [id])
+  contact    Contact?    @relation(fields: [contactId], references: [id])
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id])
+
+  @@index([prospectId])
+  @@index([contactId])
+  @@index([enrollmentId])
+  @@index([eventType])
+  @@index([createdAt])
+
+  @@map("events")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 7. Backlink
+// ─────────────────────────────────────────────────────────────
+
+model Backlink {
+  id              Int        @id @default(autoincrement())
+  prospectId      Int
+  sourceUrlId     Int?
+  pageUrl         String
+  targetUrl       String
+  anchorText      String?
+  linkType        String     @default("dofollow")
+  isVerified      Boolean    @default(false)
+  lastVerifiedAt  DateTime?
+  isLive          Boolean    @default(true)
+  lostAt          DateTime?
+  hasWidget       Boolean    @default(false)
+  hasBadge        Boolean    @default(false)
+  firstDetectedAt DateTime?
+  createdAt       DateTime   @default(now())
+
+  prospect  Prospect   @relation(fields: [prospectId], references: [id])
+  sourceUrl SourceUrl? @relation(fields: [sourceUrlId], references: [id])
+
+  @@index([prospectId])
+  @@index([sourceUrlId])
+  @@index([isLive])
+  @@index([targetUrl])
+
+  @@map("backlinks")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 8. LinkableAsset
+// ─────────────────────────────────────────────────────────────
+
+model LinkableAsset {
+  id                  Int       @id @default(autoincrement())
+  title               String
+  slug                String    @unique
+  assetType           String
+  url                 String
+  description         String?
+  availableLanguages  Json      @default("[\"fr\",\"en\"]")
+  totalBacklinks      Int       @default(0)
+  totalMentions       Int       @default(0)
+  isPublished         Boolean   @default(false)
+  publishedAt         DateTime?
+  createdAt           DateTime  @default(now())
+
+  @@index([assetType])
+  @@index([isPublished])
+
+  @@map("linkable_assets")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 9. OutreachTemplate
+// ─────────────────────────────────────────────────────────────
+
+model OutreachTemplate {
+  id              Int      @id @default(autoincrement())
+  name            String
+  language        String
+  purpose         String
+  subject         String
+  body            String
+  formalityLevel  String   @default("formal")
+  culturalNotes   String?
+  timesUsed       Int      @default(0)
+  replyRate       Decimal?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@index([language])
+  @@index([purpose])
+  @@index([isActive])
+
+  @@map("outreach_templates")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 10. SuppressionEntry
+// ─────────────────────────────────────────────────────────────
+
+model SuppressionEntry {
+  id              Int      @id @default(autoincrement())
+  emailNormalized String   @unique
+  reason          String
+  source          String
+  createdAt       DateTime @default(now())
+
+  @@map("suppression_entries")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 11. User
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  name         String
+  role         String   @default("ops")
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  @@map("users")
+}

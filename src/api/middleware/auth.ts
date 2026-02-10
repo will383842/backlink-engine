@@ -1,0 +1,156 @@
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import type { preHandlerHookHandler } from "fastify";
+
+// ─────────────────────────────────────────────────────────────
+// Augment Fastify request with user payload after JWT verification
+// ─────────────────────────────────────────────────────────────
+
+declare module "@fastify/jwt" {
+  interface FastifyJWT {
+    payload: { id: number; email: string; role: string };
+    user: { id: number; email: string; role: string };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// JWT-based user authentication (Authorization: Bearer <token>)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fastify preHandler that validates a JWT from the Authorization
+ * header and populates `request.user`.
+ *
+ * Usage:
+ *   fastify.addHook("preHandler", authenticateUser);
+ *   // or per-route:
+ *   { preHandler: [authenticateUser] }
+ */
+export const authenticateUser: preHandlerHookHandler = async (
+  request: FastifyRequest,
+  reply: FastifyReply,
+) => {
+  try {
+    await request.jwtVerify();
+  } catch (err) {
+    return reply.status(401).send({
+      statusCode: 401,
+      error: "Unauthorized",
+      message: "Invalid or missing authentication token",
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// API-key authentication for machine-to-machine endpoints (ingest)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fastify preHandler that validates the X-Api-Key header against
+ * the INGEST_API_KEY environment variable.
+ *
+ * Usage:
+ *   { preHandler: [authenticateApiKey] }
+ */
+export const authenticateApiKey: preHandlerHookHandler = async (
+  request: FastifyRequest,
+  reply: FastifyReply,
+) => {
+  const expectedKey = process.env["INGEST_API_KEY"];
+  if (!expectedKey) {
+    request.log.error("INGEST_API_KEY is not configured on the server");
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: "Ingest API key not configured",
+    });
+  }
+
+  const providedKey = request.headers["x-api-key"];
+  if (!providedKey || providedKey !== expectedKey) {
+    return reply.status(401).send({
+      statusCode: 401,
+      error: "Unauthorized",
+      message: "Invalid or missing API key",
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Webhook shared-secret authentication
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Fastify preHandler that validates the x-webhook-secret header
+ * against the MAILWIZZ_WEBHOOK_SECRET environment variable.
+ *
+ * Usage:
+ *   { preHandler: [authenticateWebhook] }
+ */
+export const authenticateWebhook: preHandlerHookHandler = async (
+  request: FastifyRequest,
+  reply: FastifyReply,
+) => {
+  const expectedSecret = process.env["MAILWIZZ_WEBHOOK_SECRET"];
+  if (!expectedSecret) {
+    request.log.error("MAILWIZZ_WEBHOOK_SECRET is not configured on the server");
+    return reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: "Webhook secret not configured",
+    });
+  }
+
+  const providedSecret = request.headers["x-webhook-secret"];
+  if (!providedSecret || providedSecret !== expectedSecret) {
+    return reply.status(401).send({
+      statusCode: 401,
+      error: "Unauthorized",
+      message: "Invalid or missing webhook secret",
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// Param parsing helper
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Parse a route :id parameter to a number, throwing a 400 if
+ * the value is not a valid integer.
+ *
+ * @example
+ *   const id = parseIdParam(request.params.id); // throws 400 on NaN
+ */
+export function parseIdParam(raw: string): number {
+  const id = parseInt(raw, 10);
+  if (Number.isNaN(id)) {
+    const err = new Error(`Invalid ID parameter: "${raw}"`);
+    (err as NodeJS.ErrnoException & { statusCode: number }).statusCode = 400;
+    throw err;
+  }
+  return id;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Plugin: register @fastify/jwt with the shared JWT_SECRET
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Call once during server bootstrap to register the @fastify/jwt plugin.
+ *
+ * ```ts
+ * import { registerJwt } from "./api/middleware/auth.js";
+ * await registerJwt(app);
+ * ```
+ */
+export async function registerJwt(app: FastifyInstance): Promise<void> {
+  const secret = process.env["JWT_SECRET"];
+  if (!secret) {
+    throw new Error("JWT_SECRET environment variable is required");
+  }
+
+  await app.register(import("@fastify/jwt"), {
+    secret,
+    sign: { expiresIn: "24h" },
+  });
+}
