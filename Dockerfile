@@ -52,6 +52,10 @@ RUN apk add --no-cache wget
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
 
+# FIX: Run as non-root user for security
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3000
 
 CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]

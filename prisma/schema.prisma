@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// Backlink Engine – Prisma Schema
+// Backlink Engine – Prisma Schema (Enhanced with Enums & Cascades)
 // ─────────────────────────────────────────────────────────────
 
 datasource db {
@@ -12,31 +12,109 @@ generator client {
 }
 
 // ─────────────────────────────────────────────────────────────
+// ENUMS (Type Safety)
+// ─────────────────────────────────────────────────────────────
+
+enum ProspectStatus {
+  NEW
+  ENRICHING
+  READY_TO_CONTACT
+  CONTACTED_EMAIL
+  CONTACTED_MANUAL
+  FOLLOWUP_DUE
+  REPLIED
+  NEGOTIATING
+  WON
+  LINK_PENDING
+  LINK_VERIFIED
+  LINK_LOST
+  RE_CONTACTED
+  LOST
+  DO_NOT_CONTACT
+}
+
+enum ProspectSource {
+  manual
+  csv_import
+  scraper
+}
+
+enum EmailStatus {
+  unverified
+  verified
+  invalid
+}
+
+enum EnrollmentStatus {
+  active
+  stopped
+  completed
+}
+
+enum LinkType {
+  dofollow
+  nofollow
+  sponsored
+  ugc
+  mixed
+}
+
+enum Language {
+  fr
+  en
+  de
+  es
+  pt
+  ru
+  ar
+  zh
+  hi
+}
+
+enum UserRole {
+  ops
+  admin
+}
+
+enum ProspectCategory {
+  blogger
+  association
+  partner
+  influencer
+  media
+  agency
+  corporate
+  ecommerce
+  other
+}
+
+// ─────────────────────────────────────────────────────────────
 // 1. Prospect
 // ─────────────────────────────────────────────────────────────
 
 model Prospect {
-  id                     Int        @id @default(autoincrement())
-  domain                 String     @unique
-  source                 String     @default("manual") // manual | csv_import | scraper
-  language               String?
-  country                String?    @db.VarChar(3)
-  tier                   Int        @default(1)
-  score                  Int        @default(0)
+  id                     Int               @id @default(autoincrement())
+  domain                 String            @unique
+  source                 ProspectSource    @default(manual)
+  category               ProspectCategory  @default(blogger)
+  language               Language?
+  country                String?           @db.VarChar(2) // ISO 3166-1 alpha-2
+  tier                   Int               @default(1)
+  score                  Int            @default(0)
   mozDa                  Int?
   openPagerank           Decimal?
-  spamScore              Int        @default(0)
-  hasRealTraffic         Boolean    @default(false)
-  isPbn                  Boolean    @default(false)
+  spamScore              Int            @default(0)
+  hasRealTraffic         Boolean        @default(false)
+  isPbn                  Boolean        @default(false)
   linkNeighborhoodScore  Int?
   outboundCategories     Json?
   contactFormUrl         String?
-  status                 String     @default("NEW")
+  status                 ProspectStatus @default(NEW)
   firstContactedAt       DateTime?
   lastContactedAt        DateTime?
   nextFollowupAt         DateTime?
-  createdAt              DateTime   @default(now())
-  updatedAt              DateTime   @updatedAt
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 
   sourceUrls  SourceUrl[]
   contacts    Contact[]
@@ -44,12 +122,19 @@ model Prospect {
   events      Event[]
   backlinks   Backlink[]
 
+  // Simple indexes
   @@index([status])
   @@index([tier])
   @@index([country])
   @@index([language])
+  @@index([category])
   @@index([nextFollowupAt])
   @@index([score])
+  // Composite indexes for common queries
+  @@index([status, score])
+  @@index([status, tier])
+  @@index([category, language])
+  @@index([category, country])
 
   @@map("prospects")
 }
@@ -59,18 +144,18 @@ model Prospect {
 // ─────────────────────────────────────────────────────────────
 
 model SourceUrl {
-  id             Int       @id @default(autoincrement())
-  prospectId     Int
-  url            String
-  urlNormalized  String    @unique
-  canonicalUrl   String?
-  title          String?
+  id              Int      @id @default(autoincrement())
+  prospectId      Int
+  url             String
+  urlNormalized   String   @unique
+  canonicalUrl    String?
+  title           String?
   metaDescription String?
-  discoveredVia  String    @default("manual")
-  notes          String?
-  createdAt      DateTime  @default(now())
+  discoveredVia   String   @default("manual")
+  notes           String?
+  createdAt       DateTime @default(now())
 
-  prospect  Prospect   @relation(fields: [prospectId], references: [id])
+  prospect  Prospect   @relation(fields: [prospectId], references: [id], onDelete: Cascade)
   backlinks Backlink[]
 
   @@index([prospectId])
@@ -83,24 +168,25 @@ model SourceUrl {
 // ─────────────────────────────────────────────────────────────
 
 model Contact {
-  id              Int        @id @default(autoincrement())
+  id              Int         @id @default(autoincrement())
   prospectId      Int
   email           String
-  emailNormalized String     @unique
+  emailNormalized String      @unique
   name            String?
-  role            String     @default("unknown")
-  emailStatus     String     @default("unverified")
-  discoveredVia   String     @default("manual")
-  optedOut        Boolean    @default(false)
+  role            String      @default("unknown")
+  emailStatus     EmailStatus @default(unverified)
+  discoveredVia   String      @default("manual")
+  optedOut        Boolean     @default(false)
   optedOutAt      DateTime?
-  createdAt       DateTime   @default(now())
+  createdAt       DateTime    @default(now())
 
-  prospect    Prospect     @relation(fields: [prospectId], references: [id])
+  prospect    Prospect     @relation(fields: [prospectId], references: [id], onDelete: Cascade)
   enrollments Enrollment[]
   events      Event[]
 
   @@index([prospectId])
   @@index([emailStatus])
+  @@index([optedOut])
 
   @@map("contacts")
 }
@@ -110,26 +196,28 @@ model Contact {
 // ─────────────────────────────────────────────────────────────
 
 model Campaign {
-  id               Int      @id @default(autoincrement())
-  name             String
-  language         String
-  targetTier       Int?
-  targetCountry    String?
-  mailwizzListUid  String?
-  sequenceConfig   Json
-  stopOnReply      Boolean  @default(true)
-  stopOnUnsub      Boolean  @default(true)
-  stopOnBounce     Boolean  @default(true)
-  totalEnrolled    Int      @default(0)
-  totalReplied     Int      @default(0)
-  totalWon         Int      @default(0)
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
+  id              Int               @id @default(autoincrement())
+  name            String
+  language        Language
+  targetTier      Int?
+  targetCountry   String?
+  targetCategory  ProspectCategory?
+  mailwizzListUid String?
+  sequenceConfig  Json
+  stopOnReply     Boolean   @default(true)
+  stopOnUnsub     Boolean   @default(true)
+  stopOnBounce    Boolean   @default(true)
+  totalEnrolled   Int       @default(0)
+  totalReplied    Int       @default(0)
+  totalWon        Int       @default(0)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
 
   enrollments Enrollment[]
 
   @@index([isActive])
   @@index([language])
+  @@index([isActive, language])
 
   @@map("campaigns")
 }
@@ -139,31 +227,32 @@ model Campaign {
 // ─────────────────────────────────────────────────────────────
 
 model Enrollment {
-  id                      Int        @id @default(autoincrement())
-  contactId               Int
-  campaignId              Int
-  prospectId              Int
-  mailwizzSubscriberUid   String?
-  mailwizzListUid         String?
-  campaignRef             String?
-  currentStep             Int        @default(0)
-  status                  String     @default("active")
-  stoppedReason           String?
-  enrolledAt              DateTime   @default(now())
-  lastSentAt              DateTime?
-  nextSendAt              DateTime?
-  completedAt             DateTime?
+  id                    Int              @id @default(autoincrement())
+  contactId             Int
+  campaignId            Int
+  prospectId            Int
+  mailwizzSubscriberUid String?
+  mailwizzListUid       String?
+  campaignRef           String?
+  currentStep           Int              @default(0)
+  status                EnrollmentStatus @default(active)
+  stoppedReason         String?
+  enrolledAt            DateTime         @default(now())
+  lastSentAt            DateTime?
+  nextSendAt            DateTime?
+  completedAt           DateTime?
 
-  contact   Contact   @relation(fields: [contactId], references: [id])
-  campaign  Campaign  @relation(fields: [campaignId], references: [id])
-  prospect  Prospect  @relation(fields: [prospectId], references: [id])
-  events    Event[]
+  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  prospect Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  events   Event[]
 
   @@unique([contactId, campaignId])
   @@index([status])
   @@index([nextSendAt])
   @@index([prospectId])
   @@index([campaignId])
+  @@index([status, nextSendAt])
 
   @@map("enrollments")
 }
@@ -183,15 +272,17 @@ model Event {
   data         Json?
   createdAt    DateTime  @default(now())
 
-  prospect   Prospect    @relation(fields: [prospectId], references: [id])
-  contact    Contact?    @relation(fields: [contactId], references: [id])
-  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id])
+  prospect   Prospect    @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  contact    Contact?    @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  enrollment Enrollment? @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([prospectId])
   @@index([contactId])
   @@index([enrollmentId])
   @@index([eventType])
   @@index([createdAt])
+  @@index([eventType, createdAt])
 
   @@map("events")
 }
@@ -201,29 +292,30 @@ model Event {
 // ─────────────────────────────────────────────────────────────
 
 model Backlink {
-  id              Int        @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   prospectId      Int
   sourceUrlId     Int?
   pageUrl         String
   targetUrl       String
   anchorText      String?
-  linkType        String     @default("dofollow")
-  isVerified      Boolean    @default(false)
+  linkType        LinkType  @default(dofollow)
+  isVerified      Boolean   @default(false)
   lastVerifiedAt  DateTime?
-  isLive          Boolean    @default(true)
+  isLive          Boolean   @default(true)
   lostAt          DateTime?
-  hasWidget       Boolean    @default(false)
-  hasBadge        Boolean    @default(false)
+  hasWidget       Boolean   @default(false)
+  hasBadge        Boolean   @default(false)
   firstDetectedAt DateTime?
-  createdAt       DateTime   @default(now())
+  createdAt       DateTime  @default(now())
 
-  prospect  Prospect   @relation(fields: [prospectId], references: [id])
-  sourceUrl SourceUrl? @relation(fields: [sourceUrlId], references: [id])
+  prospect  Prospect   @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  sourceUrl SourceUrl? @relation(fields: [sourceUrlId], references: [id], onDelete: SetNull)
 
   @@index([prospectId])
   @@index([sourceUrlId])
   @@index([isLive])
   @@index([targetUrl])
+  @@index([prospectId, isLive])
 
   @@map("backlinks")
 }
@@ -233,18 +325,18 @@ model Backlink {
 // ─────────────────────────────────────────────────────────────
 
 model LinkableAsset {
-  id                  Int       @id @default(autoincrement())
-  title               String
-  slug                String    @unique
-  assetType           String
-  url                 String
-  description         String?
-  availableLanguages  Json      @default("[\"fr\",\"en\"]")
-  totalBacklinks      Int       @default(0)
-  totalMentions       Int       @default(0)
-  isPublished         Boolean   @default(false)
-  publishedAt         DateTime?
-  createdAt           DateTime  @default(now())
+  id                 Int       @id @default(autoincrement())
+  title              String
+  slug               String    @unique
+  assetType          String
+  url                String
+  description        String?
+  availableLanguages Json      @default("[\"fr\",\"en\"]")
+  totalBacklinks     Int       @default(0)
+  totalMentions      Int       @default(0)
+  isPublished        Boolean   @default(false)
+  publishedAt        DateTime?
+  createdAt          DateTime  @default(now())
 
   @@index([assetType])
   @@index([isPublished])
@@ -257,22 +349,25 @@ model LinkableAsset {
 // ─────────────────────────────────────────────────────────────
 
 model OutreachTemplate {
-  id              Int      @id @default(autoincrement())
-  name            String
-  language        String
-  purpose         String
-  subject         String
-  body            String
-  formalityLevel  String   @default("formal")
-  culturalNotes   String?
-  timesUsed       Int      @default(0)
-  replyRate       Decimal?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
+  id             Int               @id @default(autoincrement())
+  name           String
+  language       Language
+  category       ProspectCategory?
+  purpose        String
+  subject        String
+  body           String
+  formalityLevel String            @default("formal")
+  culturalNotes  String?
+  timesUsed      Int               @default(0)
+  replyRate      Decimal?
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
 
   @@index([language])
+  @@index([category])
   @@index([purpose])
   @@index([isActive])
+  @@index([language, category])
 
   @@map("outreach_templates")
 }
@@ -312,9 +407,11 @@ model User {
   id           Int      @id @default(autoincrement())
   email        String   @unique
   name         String
-  role         String   @default("ops")
+  role         UserRole @default(ops)
   passwordHash String
   createdAt    DateTime @default(now())
+
+  events Event[]
 
   @@map("users")
 }

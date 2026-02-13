@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { preHandlerHookHandler } from "fastify";
+import { redis } from "../../config/redis.js";
 
 // ─────────────────────────────────────────────────────────────
 // Augment Fastify request with user payload after JWT verification
@@ -37,6 +38,19 @@ export const authenticateUser: preHandlerHookHandler = async (
       error: "Unauthorized",
       message: "Invalid or missing authentication token",
     });
+  }
+
+  // FIX: Check JWT blacklist
+  const token = request.headers.authorization?.split(" ")[1];
+  if (token) {
+    const isBlacklisted = await redis.exists(`jwt:blacklist:${token}`);
+    if (isBlacklisted) {
+      return reply.status(401).send({
+        statusCode: 401,
+        error: "Unauthorized",
+        message: "Token has been revoked",
+      });
+    }
   }
 };
 
@@ -147,6 +161,26 @@ export async function registerJwt(app: FastifyInstance): Promise<void> {
   const secret = process.env["JWT_SECRET"];
   if (!secret) {
     throw new Error("JWT_SECRET environment variable is required");
+  }
+
+  // Validate JWT secret strength (warnings instead of errors for flexibility)
+  if (secret.length < 32) {
+    console.warn(
+      "⚠️  JWT_SECRET is short (" + secret.length + " chars). " +
+      "Recommended: min 32 characters for production. " +
+      "Generate with: openssl rand -base64 48"
+    );
+  }
+
+  if (
+    secret.includes("change-me") ||
+    secret.includes("your-secret") ||
+    secret === "secret"
+  ) {
+    console.warn(
+      "⚠️  JWT_SECRET looks like a default value. " +
+      "Change it for production! Generate with: openssl rand -base64 48"
+    );
   }
 
   await app.register(import("@fastify/jwt"), {

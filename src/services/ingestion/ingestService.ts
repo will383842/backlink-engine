@@ -7,6 +7,7 @@ import { createChildLogger } from "../../utils/logger.js";
 import { normalizeUrl, extractDomain } from "../../utils/urlNormalizer.js";
 import { detectLanguage } from "../enrichment/languageDetector.js";
 import { detectCountry } from "../enrichment/countryDetector.js";
+import { enrichmentQueue } from "../../jobs/queue.js";
 
 const log = createChildLogger("ingest");
 
@@ -20,6 +21,7 @@ export interface IngestInput {
   name?: string;
   language?: string;
   country?: string;
+  category?: string;
   contactFormUrl?: string;
   notes?: string;
   source: "manual" | "csv_import" | "scraper";
@@ -98,6 +100,7 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
         data: {
           domain,
           source: data.source,
+          category: data.category || "blogger",
           language: language !== "unknown" ? language : null,
           country: country || null,
           contactFormUrl: data.contactFormUrl,
@@ -223,9 +226,19 @@ async function triggerEnrichmentJob(
   domain: string,
 ): Promise<void> {
   try {
-    // TODO: Import the BullMQ enrichment queue and add job
-    // import { enrichmentQueue } from "../../jobs/enrichmentQueue.js";
-    // await enrichmentQueue.add("enrich-prospect", { prospectId, domain });
+    // FIX: Trigger BullMQ enrichment job
+    await enrichmentQueue.add(
+      "auto-score",
+      {
+        type: "auto-score" as const,
+        prospectId,
+      },
+      {
+        jobId: `enrich-${prospectId}`,
+        removeOnComplete: { count: 500 },
+        removeOnFail: { count: 1000 },
+      },
+    );
 
     // Update prospect status to ENRICHING
     await prisma.prospect.update({

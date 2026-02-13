@@ -52,8 +52,29 @@ const app = Fastify({
 
 // ---- Plugins -------------------------------------------------------------
 
+// CORS configuration (flexible but secure)
+const corsOrigin = process.env.CORS_ORIGIN;
+
+// Warn if CORS is not configured in production
+if (!corsOrigin && process.env.NODE_ENV === "production") {
+  log.warn(
+    "⚠️  CORS_ORIGIN not set in production - allowing all origins. " +
+    "Set CORS_ORIGIN='https://yourdomain.com' for better security."
+  );
+}
+
 await app.register(cors, {
-  origin: process.env.CORS_ORIGIN ?? true,
+  origin: corsOrigin
+    ? (origin, callback) => {
+        const allowedOrigins = corsOrigin.split(",").map((o) => o.trim());
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          log.warn({ origin, allowedOrigins }, "CORS request from unauthorized origin");
+          callback(new Error("Not allowed by CORS"), false);
+        }
+      }
+    : true, // Allow all origins if not configured (with warning above)
   credentials: true,
 });
 

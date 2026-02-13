@@ -3,6 +3,9 @@ import { redis } from "../../config/redis.js";
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
+import { calculateScore } from "../../services/enrichment/scoreCalculator.js";
+import { detectLanguageFromUrl, detectLanguageFromDomain } from "../../services/enrichment/languageDetector.js";
+import { detectCountryFromDomain } from "../../services/enrichment/countryDetector.js";
 
 const log = createChildLogger("enrichment-worker");
 
@@ -170,48 +173,9 @@ async function checkGoogleSafeBrowsing(domain: string): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
-// Score calculation
+// Score calculation (using centralized scoreCalculator service)
 // ---------------------------------------------------------------------------
-
-/**
- * Compute a composite quality score (0-100) from enrichment signals.
- */
-function calculateCompositeScore(params: {
-  openPageRank: number | null;
-  mozDa: number | null;
-  spamScore: number;
-  hasContactForm: boolean;
-}): number {
-  let score = 0;
-  let factors = 0;
-
-  // Open PageRank contributes up to 10 points mapped to 0-40
-  if (params.openPageRank !== null) {
-    score += Math.min(params.openPageRank, 10) * 4; // max 40
-    factors++;
-  }
-
-  // Moz DA is already 0-100, scale to 0-40
-  if (params.mozDa !== null) {
-    score += (params.mozDa / 100) * 40;
-    factors++;
-  }
-
-  // If we have no external signals, base score on basic signals
-  if (factors === 0) {
-    score = 25; // neutral baseline
-  }
-
-  // Contact form availability bonus
-  if (params.hasContactForm) {
-    score += 10;
-  }
-
-  // Spam penalty
-  score -= params.spamScore;
-
-  return Math.max(0, Math.min(100, Math.round(score)));
-}
+// FIX: Use centralized scoreCalculator instead of duplicate inline formula
 
 // ---------------------------------------------------------------------------
 // Worker processor
@@ -236,42 +200,93 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     data: { status: "ENRICHING" },
   });
 
-  // 3. Call external APIs in parallel
+  // 3. Detect language and country if not already set (smart enrichment)
+  let detectedLanguage: string | null = null;
+  let detectedCountry: string | null = null;
+
+  if (!prospect.language || !prospect.country) {
+    // Get first source URL for language detection
+    const sourceUrl = await prisma.sourceUrl.findFirst({
+      where: { prospectId },
+      select: { url: true },
+    });
+
+    if (sourceUrl && !prospect.language) {
+      // Try URL content detection first
+      detectedLanguage = await detectLanguageFromUrl(sourceUrl.url);
+
+      // Fallback to domain TLD if URL detection fails
+      if (!detectedLanguage) {
+        detectedLanguage = detectLanguageFromDomain(domain);
+      }
+    }
+
+    if (!prospect.country) {
+      detectedCountry = detectCountryFromDomain(domain);
+    }
+  }
+
+  // 4. Call external APIs in parallel
   const [openPageRank, mozDa, spamPenalty] = await Promise.all([
     fetchOpenPageRank(domain),
     fetchMozDomainAuthority(domain),
     checkGoogleSafeBrowsing(domain),
   ]);
 
-  // 4. Calculate composite score
-  const compositeScore = calculateCompositeScore({
-    openPageRank,
-    mozDa,
-    spamScore: spamPenalty,
-    hasContactForm: !!prospect.contactFormUrl,
-  });
+  // 5. Determine tier from score first (needed for score calculation)
+  let preliminaryScore = 0;
+  if (openPageRank !== null) preliminaryScore += Math.min(openPageRank, 10) * 4;
+  if (mozDa !== null) preliminaryScore += (mozDa / 100) * 40;
+  if (preliminaryScore === 0) preliminaryScore = 25;
+  if (!!prospect.contactFormUrl) preliminaryScore += 10;
+  preliminaryScore -= spamPenalty;
 
-  // 5. Determine tier from score
   let tier: number;
-  if (compositeScore >= 70) tier = 1;
-  else if (compositeScore >= 40) tier = 2;
-  else if (compositeScore >= 20) tier = 3;
+  if (preliminaryScore >= 70) tier = 1;
+  else if (preliminaryScore >= 40) tier = 2;
+  else if (preliminaryScore >= 20) tier = 3;
   else tier = 4;
 
-  // 6. Update prospect in DB
-  await prisma.prospect.update({
-    where: { id: prospectId },
-    data: {
-      openPagerank: openPageRank,
-      mozDa,
-      spamScore: prospect.spamScore + spamPenalty,
-      score: compositeScore,
-      tier,
-      status: "READY_TO_CONTACT",
-    },
+  // 6. Calculate final composite score using scoreCalculator
+  const compositeScore = calculateScore({
+    openPagerank: openPageRank,
+    mozDa,
+    tier,
+    linkNeighborhoodScore: null,  // TODO: Add neighborhood analysis
+    relevanceScore: null,         // TODO: Add content relevance
+    hasSocialPresence: false,     // TODO: Add social detection
   });
 
-  // 7. Log enrichment event
+  // 7. Apply spam penalty
+  const finalScore = Math.max(0, Math.min(100, Math.round(compositeScore - spamPenalty)));
+
+  // 8. Build conditional update data (smart enrichment - preserve existing values)
+  const updateData: Record<string, unknown> = {
+    openPagerank: openPageRank,
+    mozDa,
+    spamScore: spamPenalty,
+    score: finalScore,
+    tier,
+    status: "READY_TO_CONTACT",
+  };
+
+  // Only update language if not already set
+  if (!prospect.language && detectedLanguage) {
+    updateData["language"] = detectedLanguage;
+  }
+
+  // Only update country if not already set
+  if (!prospect.country && detectedCountry) {
+    updateData["country"] = detectedCountry;
+  }
+
+  // 9. Update prospect in DB
+  await prisma.prospect.update({
+    where: { id: prospectId },
+    data: updateData,
+  });
+
+  // 10. Log enrichment event
   await prisma.event.create({
     data: {
       prospectId,
@@ -281,13 +296,18 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
         openPageRank,
         mozDa,
         spamPenalty,
-        compositeScore,
+        compositeScore: finalScore,
         tier,
+        detectedLanguage: detectedLanguage ?? null,
+        detectedCountry: detectedCountry ?? null,
       },
     },
   });
 
-  log.info({ prospectId, domain, compositeScore, tier }, "Enrichment complete.");
+  log.info(
+    { prospectId, domain, finalScore, tier, detectedLanguage, detectedCountry },
+    "Enrichment complete."
+  );
 }
 
 async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> {

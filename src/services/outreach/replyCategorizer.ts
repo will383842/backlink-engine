@@ -282,7 +282,8 @@ async function applyAutomaticActions(
         data: { totalReplied: { increment: 1 } },
       });
 
-      if (category === "ALREADY_LINKED") {
+      // FIX: Increment totalWon for both INTERESTED and ALREADY_LINKED
+      if (category === "ALREADY_LINKED" || category === "INTERESTED") {
         await prisma.campaign.update({
           where: { id: enrollment.campaignId },
           data: { totalWon: { increment: 1 } },

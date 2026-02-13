@@ -22,6 +22,7 @@ interface CreateCampaignBody {
   language: string;
   targetTier?: number;
   targetCountry?: string;
+  targetCategory?: string;
   mailwizzListUid?: string;
   sequenceConfig: Record<string, unknown>;
   stopOnReply?: boolean;
@@ -34,6 +35,7 @@ interface UpdateCampaignBody {
   language?: string;
   targetTier?: number;
   targetCountry?: string;
+  targetCategory?: string;
   mailwizzListUid?: string;
   sequenceConfig?: Record<string, unknown>;
   stopOnReply?: boolean;
@@ -118,6 +120,7 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
             language: { type: "string", minLength: 2, maxLength: 5 },
             targetTier: { type: "integer", minimum: 1, maximum: 5 },
             targetCountry: { type: "string" },
+            targetCategory: { type: "string", enum: ["blogger", "association", "partner", "influencer", "media", "agency", "corporate", "ecommerce", "other"] },
             mailwizzListUid: { type: "string" },
             sequenceConfig: { type: "object" },
             stopOnReply: { type: "boolean" },
@@ -136,6 +139,7 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
           language: body.language,
           targetTier: body.targetTier ?? null,
           targetCountry: body.targetCountry ?? null,
+          targetCategory: body.targetCategory ?? null,
           mailwizzListUid: body.mailwizzListUid ?? null,
           sequenceConfig: (body.sequenceConfig ?? {}) as unknown as import("@prisma/client").Prisma.InputJsonValue,
           stopOnReply: body.stopOnReply ?? true,
@@ -165,6 +169,7 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
             language: { type: "string" },
             targetTier: { type: "integer" },
             targetCountry: { type: "string" },
+            targetCategory: { type: "string" },
             mailwizzListUid: { type: "string" },
             sequenceConfig: { type: "object" },
             stopOnReply: { type: "boolean" },
@@ -193,6 +198,7 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
       if (body.language !== undefined) updateData["language"] = body.language;
       if (body.targetTier !== undefined) updateData["targetTier"] = body.targetTier;
       if (body.targetCountry !== undefined) updateData["targetCountry"] = body.targetCountry;
+      if (body.targetCategory !== undefined) updateData["targetCategory"] = body.targetCategory;
       if (body.mailwizzListUid !== undefined) updateData["mailwizzListUid"] = body.mailwizzListUid;
       if (body.sequenceConfig !== undefined) updateData["sequenceConfig"] = body.sequenceConfig;
       if (body.stopOnReply !== undefined) updateData["stopOnReply"] = body.stopOnReply;
@@ -442,6 +448,121 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
       });
 
       return reply.status(204).send();
+    },
+  );
+
+  // ───── POST /:id/enroll-preview ─── Preview eligible prospects
+  app.post<{ Params: CampaignParams; Body: { filters?: Record<string, unknown> } }>(
+    "/:id/enroll-preview",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+        body: {
+          type: "object",
+          properties: {
+            filters: { type: "object" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const campaignId = parseIdParam(request.params.id);
+      const { filters } = request.body;
+
+      // Validate campaign exists
+      const campaign = await prisma.campaign.findUnique({ where: { id: campaignId } });
+      if (!campaign) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: `Campaign ${campaignId} not found`,
+        });
+      }
+
+      // Build where clause for eligible prospects
+      const where: Record<string, unknown> = {
+        status: { in: ["READY_TO_CONTACT", "CONTACTED_EMAIL", "FOLLOWUP_DUE"] },
+      };
+
+      // Apply campaign target filters
+      if (campaign.targetTier) {
+        where["tier"] = campaign.targetTier;
+      }
+      if (campaign.targetCountry) {
+        where["country"] = campaign.targetCountry;
+      }
+      if (campaign.targetCategory) {
+        where["category"] = campaign.targetCategory;
+      }
+      if (campaign.language) {
+        where["language"] = campaign.language;
+      }
+
+      // Apply additional user filters
+      if (filters) {
+        Object.assign(where, filters);
+      }
+
+      // Count eligible prospects with at least one verified contact
+      const eligibleProspects = await prisma.prospect.findMany({
+        where: {
+          ...where,
+          contacts: {
+            some: {
+              emailStatus: "verified",
+              optedOut: false,
+            },
+          },
+        },
+        select: {
+          id: true,
+          domain: true,
+          tier: true,
+          score: true,
+          status: true,
+          contacts: {
+            where: {
+              emailStatus: "verified",
+              optedOut: false,
+            },
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
+          },
+        },
+        take: 100, // Limit preview to 100 prospects
+      });
+
+      const totalEligible = await prisma.prospect.count({
+        where: {
+          ...where,
+          contacts: {
+            some: {
+              emailStatus: "verified",
+              optedOut: false,
+            },
+          },
+        },
+      });
+
+      return reply.send({
+        campaignId,
+        campaignName: campaign.name,
+        totalEligible,
+        preview: eligibleProspects,
+        filters: {
+          targetTier: campaign.targetTier,
+          targetCountry: campaign.targetCountry,
+          language: campaign.language,
+          ...filters,
+        },
+      });
     },
   );
 }

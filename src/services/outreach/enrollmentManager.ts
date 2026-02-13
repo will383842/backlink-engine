@@ -13,6 +13,7 @@ import { createChildLogger } from "../../utils/logger.js";
 import { MailWizzClient } from "./mailwizzClient.js";
 import { isInSuppressionList } from "../suppression/suppressionManager.js";
 import { getLlmClient } from "../../llm/index.js";
+import { getMailwizzConfig } from "../mailwizz/config.js";
 
 const log = createChildLogger("enrollment");
 
@@ -67,6 +68,29 @@ export async function enrollProspect(
   campaignId: number,
 ): Promise<void> {
   log.info({ prospectId, campaignId }, "Starting enrollment");
+
+  // 0. Check MailWizz kill switch
+  const mwConfig = await getMailwizzConfig();
+
+  if (!mwConfig.enabled) {
+    log.warn({ prospectId, campaignId }, "MailWizz disabled, enrollment skipped");
+    await logEvent(prospectId, null, null, "ENROLLMENT_BLOCKED", {
+      reason: "mailwizz_disabled",
+    });
+    return;
+  }
+
+  if (mwConfig.dryRun) {
+    log.info(
+      { prospectId, campaignId },
+      "DRY RUN MODE - Simulating enrollment without sending to MailWizz"
+    );
+    await logEvent(prospectId, null, null, "ENROLLMENT_DRY_RUN", {
+      campaignId,
+      prospectId,
+    });
+    return;
+  }
 
   // 1. Load data
   const prospect = await prisma.prospect.findUniqueOrThrow({

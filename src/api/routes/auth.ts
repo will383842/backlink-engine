@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import bcrypt from "bcryptjs";
 import { prisma } from "../../config/database.js";
 import { authenticateUser } from "../middleware/auth.js";
+import { redis } from "../../config/redis.js";
 
 // ─────────────────────────────────────────────────────────────
 // Request types
@@ -103,17 +104,33 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ───── POST /logout ─── Logout (stateless JWT) ──────────
+  // ───── POST /logout ─── Logout (JWT blacklist) ──────────
   app.post(
     "/logout",
-    async (_request: FastifyRequest, reply: FastifyReply) => {
-      // JWT is stateless; the client simply discards the token.
-      // If token revocation is needed later, implement a Redis-backed
-      // token blacklist checked in the authenticateUser middleware.
+    {
+      preHandler: [authenticateUser],
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      // FIX: Implement JWT blacklist with Redis
+      const token = request.headers.authorization?.split(" ")[1];
 
-      // TODO: if Redis blacklist is implemented, add token to blacklist here:
-      //   const token = request.headers.authorization?.split(" ")[1];
-      //   if (token) await redis.set(`blacklist:${token}`, "1", "EX", 86400);
+      if (token) {
+        try {
+          // Decode token to get expiration time
+          const decoded = app.jwt.decode(token) as { exp: number } | null;
+
+          if (decoded?.exp) {
+            const ttl = decoded.exp - Math.floor(Date.now() / 1000);
+
+            // Only blacklist if token hasn't expired yet
+            if (ttl > 0) {
+              await redis.setex(`jwt:blacklist:${token}`, ttl, "1");
+            }
+          }
+        } catch (err) {
+          // Token decode failed, skip blacklisting
+        }
+      }
 
       return reply.send({ message: "Logged out successfully" });
     },

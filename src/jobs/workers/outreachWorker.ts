@@ -3,6 +3,7 @@ import { redis } from "../../config/redis.js";
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { mailwizzConfig, isMailwizzConfigured } from "../../config/mailwizz.js";
+import { isMailwizzReady } from "../../services/mailwizz/config.js";
 import { QUEUE_NAMES } from "../queue.js";
 
 const log = createChildLogger("outreach-worker");
@@ -39,8 +40,9 @@ async function addSubscriberToMailwizz(
   email: string,
   fields: Record<string, string>
 ): Promise<MailwizzApiResult> {
-  if (!isMailwizzConfigured()) {
-    return { success: false, error: "MailWizz not configured" };
+  const ready = await isMailwizzReady();
+  if (!ready) {
+    return { success: false, error: "MailWizz not ready (disabled or in dry-run mode)" };
   }
 
   try {
