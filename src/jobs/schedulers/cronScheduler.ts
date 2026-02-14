@@ -14,6 +14,7 @@ const log = createChildLogger("cron-scheduler");
  *
  * Schedule overview:
  *  - Enrichment auto-score:        every 5 minutes (new prospects)
+ *  - Auto-enrollment:              every 10 minutes (enroll ready prospects)
  *  - Outreach retry-failed:        every hour
  *  - Reply IMAP check:             every 5 minutes
  *  - Verification check-backlinks: every Sunday at 02:00
@@ -46,7 +47,29 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: enrichment auto-score (every 5 min).");
 
   // -----------------------------------------------------------------------
-  // 2. Outreach: retry failed MailWizz calls every hour
+  // 2. Auto-enrollment: enroll ready prospects every 10 minutes
+  // -----------------------------------------------------------------------
+  await outreachQueue.upsertJobScheduler(
+    "auto-enrollment",
+    {
+      pattern: "*/10 * * * *", // every 10 minutes
+    },
+    {
+      name: "auto-enroll-prospects",
+      data: {
+        type: "auto-enrollment",
+        triggeredAt: new Date().toISOString(),
+      },
+      opts: {
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 200 },
+      },
+    }
+  );
+  log.info("Scheduled: auto-enrollment (every 10 min).");
+
+  // -----------------------------------------------------------------------
+  // 3. Outreach: retry failed MailWizz calls every hour
   // -----------------------------------------------------------------------
   await outreachQueue.upsertJobScheduler(
     "outreach-retry-failed",
@@ -65,7 +88,7 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: outreach retry-failed (every hour).");
 
   // -----------------------------------------------------------------------
-  // 3. Reply: IMAP check every 5 minutes
+  // 4. Reply: IMAP check every 5 minutes
   // -----------------------------------------------------------------------
   await replyQueue.upsertJobScheduler(
     "reply-imap-check",
@@ -84,7 +107,7 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: reply IMAP check (every 5 min).");
 
   // -----------------------------------------------------------------------
-  // 4. Verification: check all backlinks every Sunday at 02:00 UTC
+  // 5. Verification: check all backlinks every Sunday at 02:00 UTC
   // -----------------------------------------------------------------------
   await verificationQueue.upsertJobScheduler(
     "verification-check-backlinks",
@@ -103,7 +126,7 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: verification check-backlinks (Sunday 02:00 UTC).");
 
   // -----------------------------------------------------------------------
-  // 5. Verification: check for link loss every Sunday at 03:00 UTC
+  // 6. Verification: check for link loss every Sunday at 03:00 UTC
   // -----------------------------------------------------------------------
   await verificationQueue.upsertJobScheduler(
     "verification-check-link-loss",
@@ -122,7 +145,7 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: verification check-link-loss (Sunday 03:00 UTC).");
 
   // -----------------------------------------------------------------------
-  // 6. Reporting: daily stats every day at 23:59 UTC
+  // 7. Reporting: daily stats every day at 23:59 UTC
   // -----------------------------------------------------------------------
   await reportingQueue.upsertJobScheduler(
     "reporting-daily-stats",

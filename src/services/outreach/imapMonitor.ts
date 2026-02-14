@@ -116,8 +116,25 @@ export function stopImapMonitor(): void {
  * 3. For each email, try to match to an enrollment by sender email or subject
  * 4. If matched, extract reply text and run through replyCategorizer
  * 5. Mark email as processed
+ *
+ * NOTE: IMAP is currently a stub. Reply tracking is disabled until:
+ *   1. IMAP credentials are configured (IMAP_HOST, IMAP_USER, IMAP_PASSWORD)
+ *   2. imapflow library is installed: npm install imapflow
+ *   3. Implementation is completed (see TODO comments below)
+ *
+ * ALTERNATIVE: Use MailWizz webhooks for reply tracking (recommended)
  */
 export async function checkForReplies(): Promise<void> {
+  // Check if IMAP is configured
+  const host = process.env["IMAP_HOST"];
+  const user = process.env["IMAP_USER"];
+  const password = process.env["IMAP_PASSWORD"];
+
+  if (!host || !user || !password) {
+    log.debug("IMAP not configured, skipping reply check");
+    return;
+  }
+
   log.info("Checking for new replies");
 
   // TODO: Replace with actual IMAP library (e.g. imapflow or imap-simple)
@@ -159,8 +176,8 @@ export async function checkForReplies(): Promise<void> {
 
     log.info({ processed: messages.length }, "IMAP check complete");
   } catch (err) {
-    log.error({ err }, "Failed to check IMAP for replies");
-    throw err;
+    log.warn({ err }, "IMAP check failed (stub implementation)");
+    // Don't throw - IMAP is optional until fully implemented
   }
 }
 

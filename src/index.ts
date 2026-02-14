@@ -33,6 +33,7 @@ import { resetLlmClient } from "./llm/index.js";
 import { setupQueues, closeQueues } from "./jobs/queue.js";
 import { setupCronJobs } from "./jobs/schedulers/cronScheduler.js";
 import { startEnrichmentWorker } from "./jobs/workers/enrichmentWorker.js";
+import { startAutoEnrollmentWorker } from "./jobs/workers/autoEnrollmentWorker.js";
 import { startOutreachWorker } from "./jobs/workers/outreachWorker.js";
 import { startReplyWorker } from "./jobs/workers/replyWorker.js";
 import { startVerificationWorker } from "./jobs/workers/verificationWorker.js";
@@ -231,6 +232,7 @@ try {
 
   // Start all BullMQ workers
   startEnrichmentWorker();
+  startAutoEnrollmentWorker();
   startOutreachWorker();
   startReplyWorker();
   startVerificationWorker();
