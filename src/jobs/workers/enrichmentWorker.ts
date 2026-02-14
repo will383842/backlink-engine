@@ -389,6 +389,7 @@ async function autoEnrollIfEligible(prospectId: number): Promise<void> {
       },
     });
   }
+}
 
 async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> {
   const { type } = job.data;

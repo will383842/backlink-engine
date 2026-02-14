@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser } from "../middleware/auth.js";
+import { getCached, DASHBOARD_CACHE } from "../../services/cacheService.js";
 
 // ─────────────────────────────────────────────────────────────
 // Plugin
@@ -16,18 +17,23 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
       const now = new Date();
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      const [
-        repliesToHandle,
-        bounces,
-        lostBacklinks,
-        prospectsReady,
-        formsToFill,
-        lostRecontactable,
-        sentToMailwizz,
-        repliesReceived,
-        backlinksWon,
-        prospectsAddedToday,
-      ] = await Promise.all([
+      // Use Redis cache (TTL: 60s) to avoid hitting PostgreSQL on every request
+      const data = await getCached(
+        DASHBOARD_CACHE.TODAY,
+        DASHBOARD_CACHE.TTL,
+        async () => {
+          const [
+            repliesToHandle,
+            bounces,
+            lostBacklinks,
+            prospectsReady,
+            formsToFill,
+            lostRecontactable,
+            sentToMailwizz,
+            repliesReceived,
+            backlinksWon,
+            prospectsAddedToday,
+          ] = await Promise.all([
         // Urgent: replies needing action (unprocessed reply events)
         prisma.event.count({
           where: { eventType: "reply_received" },
@@ -68,28 +74,32 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
         prisma.prospect.count({
           where: { createdAt: { gte: startOfDay } },
         }).catch(() => 0),
-      ]);
+          ]);
 
-      return reply.send({
-        urgent: {
-          repliesToHandle,
-          bounces,
-          lostBacklinks,
+          return {
+            urgent: {
+              repliesToHandle,
+              bounces,
+              lostBacklinks,
+            },
+            todo: {
+              prospectsReady,
+              formsToFill,
+            },
+            opportunities: {
+              lostRecontactable,
+            },
+            stats: {
+              sentToMailwizz,
+              repliesReceived,
+              backlinksWon,
+              prospectsAddedBySource: { manual: prospectsAddedToday },
+            },
+          };
         },
-        todo: {
-          prospectsReady,
-          formsToFill,
-        },
-        opportunities: {
-          lostRecontactable,
-        },
-        stats: {
-          sentToMailwizz,
-          repliesReceived,
-          backlinksWon,
-          prospectsAddedBySource: { manual: prospectsAddedToday },
-        },
-      });
+      );
+
+      return reply.send(data);
     },
   );
 
@@ -102,7 +112,12 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
       const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-      const [
+      // Use Redis cache (TTL: 60s)
+      const data = await getCached(
+        DASHBOARD_CACHE.STATS,
+        DASHBOARD_CACHE.TTL,
+        async () => {
+          const [
         totalProspects,
         totalContacts,
         totalBacklinks,
@@ -156,39 +171,41 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
             createdAt: { gte: startOfLastMonth, lte: endOfLastMonth },
           },
         }),
-      ]);
+          ]);
 
-      const overallReplyRate =
-        emailsSentThisMonth > 0
-          ? Math.round((repliesThisMonth / emailsSentThisMonth) * 10000) / 100
-          : 0;
+          const overallReplyRate =
+            emailsSentThisMonth > 0
+              ? Math.round((repliesThisMonth / emailsSentThisMonth) * 10000) / 100
+              : 0;
 
-      return reply.send({
-        data: {
-          totals: {
-            prospects: totalProspects,
-            contacts: totalContacts,
-            backlinks: totalBacklinks,
-            liveBacklinks,
-            campaigns: totalCampaigns,
-            activeCampaigns,
-            enrollments: totalEnrollments,
-          },
-          thisMonth: {
-            prospects: prospectsThisMonth,
-            backlinks: backlinksThisMonth,
-            replies: repliesThisMonth,
-            emailsSent: emailsSentThisMonth,
-            replyRate: overallReplyRate,
-          },
-          lastMonth: {
-            prospects: prospectsLastMonth,
-            backlinks: backlinksLastMonth,
-            replies: repliesLastMonth,
-            emailsSent: emailsSentLastMonth,
-          },
+          return {
+            totals: {
+              prospects: totalProspects,
+              contacts: totalContacts,
+              backlinks: totalBacklinks,
+              liveBacklinks,
+              campaigns: totalCampaigns,
+              activeCampaigns,
+              enrollments: totalEnrollments,
+            },
+            thisMonth: {
+              prospects: prospectsThisMonth,
+              backlinks: backlinksThisMonth,
+              replies: repliesThisMonth,
+              emailsSent: emailsSentThisMonth,
+              replyRate: overallReplyRate,
+            },
+            lastMonth: {
+              prospects: prospectsLastMonth,
+              backlinks: backlinksLastMonth,
+              replies: repliesLastMonth,
+              emailsSent: emailsSentLastMonth,
+            },
+          };
         },
-      });
+      );
+
+      return reply.send({ data });
     },
   );
 
@@ -196,38 +213,45 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
   app.get(
     "/pipeline",
     async (_request: FastifyRequest, reply: FastifyReply) => {
-      // Get counts for each status
-      const statusCounts = await prisma.prospect.groupBy({
-        by: ["status"],
-        _count: { _all: true },
-        orderBy: { _count: { status: "desc" } },
-      });
+      // Use Redis cache (TTL: 60s)
+      const data = await getCached(
+        DASHBOARD_CACHE.PIPELINE,
+        DASHBOARD_CACHE.TTL,
+        async () => {
+          // Get counts for each status
+          const statusCounts = await prisma.prospect.groupBy({
+            by: ["status"],
+            _count: { _all: true },
+            orderBy: { _count: { status: "desc" } },
+          });
 
-      // Transform into a map
-      const pipeline: Record<string, number> = {};
-      for (const entry of statusCounts) {
-        pipeline[entry.status] = entry._count._all;
-      }
+          // Transform into a map
+          const pipeline: Record<string, number> = {};
+          for (const entry of statusCounts) {
+            pipeline[entry.status] = entry._count._all;
+          }
 
-      // Also get tier distribution
-      const tierCounts = await prisma.prospect.groupBy({
-        by: ["tier"],
-        _count: { _all: true },
-        orderBy: { tier: "asc" },
-      });
+          // Also get tier distribution
+          const tierCounts = await prisma.prospect.groupBy({
+            by: ["tier"],
+            _count: { _all: true },
+            orderBy: { tier: "asc" },
+          });
 
-      const tiers: Record<string, number> = {};
-      for (const entry of tierCounts) {
-        tiers[`tier_${entry.tier}`] = entry._count._all;
-      }
+          const tiers: Record<string, number> = {};
+          for (const entry of tierCounts) {
+            tiers[`tier_${entry.tier}`] = entry._count._all;
+          }
 
-      return reply.send({
-        data: {
-          byStatus: pipeline,
-          byTier: tiers,
-          total: Object.values(pipeline).reduce((sum, n) => sum + n, 0),
+          return {
+            byStatus: pipeline,
+            byTier: tiers,
+            total: Object.values(pipeline).reduce((sum, n) => sum + n, 0),
+          };
         },
-      });
+      );
+
+      return reply.send({ data });
     },
   );
 }
