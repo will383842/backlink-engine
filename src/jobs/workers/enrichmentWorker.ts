@@ -6,6 +6,9 @@ import { QUEUE_NAMES } from "../queue.js";
 import { calculateScore } from "../../services/enrichment/scoreCalculator.js";
 import { detectLanguageFromUrl, detectLanguageFromDomain } from "../../services/enrichment/languageDetector.js";
 import { detectCountryFromDomain } from "../../services/enrichment/countryDetector.js";
+import { canAutoEnroll, isProspectEligible } from "../../services/autoEnrollment/config.js";
+import { findBestCampaign, isAlreadyEnrolled } from "../../services/autoEnrollment/campaignSelector.js";
+import { enrollProspect } from "../../services/outreach/enrollmentManager.js";
 
 const log = createChildLogger("enrichment-worker");
 
@@ -308,7 +311,84 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     { prospectId, domain, finalScore, tier, detectedLanguage, detectedCountry },
     "Enrichment complete."
   );
+
+  // 11. Try auto-enrollment if enabled
+  await autoEnrollIfEligible(prospectId);
 }
+
+// ---------------------------------------------------------------------------
+// Auto-enrollment after enrichment
+// ---------------------------------------------------------------------------
+
+/**
+ * Automatically enroll a prospect in the best matching campaign if eligible.
+ * This is called after enrichment completes successfully.
+ */
+async function autoEnrollIfEligible(prospectId: number): Promise<void> {
+  try {
+    // 1. Check if auto-enrollment is globally enabled and within throttle limits
+    const throttleCheck = await canAutoEnroll();
+    if (!throttleCheck.allowed) {
+      log.debug(
+        { prospectId, reason: throttleCheck.reason },
+        "Auto-enrollment blocked by throttle."
+      );
+      return;
+    }
+
+    // 2. Check if prospect meets eligibility criteria
+    const eligibilityCheck = await isProspectEligible(prospectId);
+    if (!eligibilityCheck.eligible) {
+      log.debug(
+        { prospectId, reason: eligibilityCheck.reason },
+        "Prospect not eligible for auto-enrollment."
+      );
+      return;
+    }
+
+    // 3. Check if already enrolled in any campaign
+    const alreadyEnrolled = await isAlreadyEnrolled(prospectId);
+    if (alreadyEnrolled) {
+      log.debug(
+        { prospectId },
+        "Prospect already enrolled in a campaign, skipping auto-enrollment."
+      );
+      return;
+    }
+
+    // 4. Find the best matching campaign
+    const campaign = await findBestCampaign(prospectId);
+    if (!campaign) {
+      log.debug({ prospectId }, "No suitable campaign found for auto-enrollment.");
+      return;
+    }
+
+    // 5. ENROLL!
+    log.info(
+      { prospectId, campaignId: campaign.id, campaignName: campaign.name },
+      "Auto-enrolling prospect into campaign."
+    );
+
+    await enrollProspect(prospectId, campaign.id);
+
+    log.info(
+      { prospectId, campaignId: campaign.id },
+      "Auto-enrollment successful!"
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    log.error({ err: message, prospectId }, "Auto-enrollment failed.");
+
+    // Log failure event but don't throw (enrichment itself succeeded)
+    await prisma.event.create({
+      data: {
+        prospectId,
+        eventType: "auto_enrollment_failed",
+        eventSource: "enrichment_worker",
+        data: { error: message },
+      },
+    });
+  }
 
 async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> {
   const { type } = job.data;

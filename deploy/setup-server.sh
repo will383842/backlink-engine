@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-DOMAIN="backlinks.sos-expat.com"
+DOMAIN="backlinks.life-expat.com"
 APP_DIR="/opt/backlink-engine"
 REPO="https://github.com/will383842/backlink-engine.git"
 

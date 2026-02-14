@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser } from "../middleware/auth.js";
+import {
+  getAutoEnrollmentConfig,
+  updateAutoEnrollmentConfig,
+  getThrottleStats,
+} from "../../services/autoEnrollment/config.js";
 
 // ─────────────────────────────────────────────────────────────
 // Global settings management
@@ -186,4 +191,56 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
     return reply.status(204).send();
   });
+
+  // ───── GET /auto-enrollment ─── Get auto-enrollment config ──
+  app.get("/auto-enrollment", async (request, reply) => {
+    const config = await getAutoEnrollmentConfig();
+    const stats = await getThrottleStats();
+
+    return reply.send({
+      data: {
+        config,
+        stats,
+      },
+    });
+  });
+
+  // ───── PUT /auto-enrollment ─── Update auto-enrollment config
+  app.put<{
+    Body: {
+      enabled?: boolean;
+      maxPerHour?: number;
+      maxPerDay?: number;
+      minScore?: number;
+      minTier?: number;
+      allowedCategories?: string[];
+      allowedLanguages?: string[];
+      requireVerifiedEmail?: boolean;
+    };
+  }>(
+    "/auto-enrollment",
+    {
+      schema: {
+        body: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            maxPerHour: { type: "number", minimum: 0 },
+            maxPerDay: { type: "number", minimum: 0 },
+            minScore: { type: "number", minimum: 0, maximum: 100 },
+            minTier: { type: "number", minimum: 1, maximum: 4 },
+            allowedCategories: { type: "array", items: { type: "string" } },
+            allowedLanguages: { type: "array", items: { type: "string" } },
+            requireVerifiedEmail: { type: "boolean" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      await updateAutoEnrollmentConfig(request.body);
+      const updated = await getAutoEnrollmentConfig();
+
+      return reply.send({ data: updated });
+    },
+  );
 }
