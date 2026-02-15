@@ -81,34 +81,143 @@ export async function detectLanguageFromUrl(url: string): Promise<string | null>
 }
 
 /**
- * Detect language from domain TLD (fallback heuristic).
+ * Detect language from domain TLD (ENHANCED - always returns a value).
  *
  * Examples:
  * - example.fr → fr
  * - example.de → de
  * - example.co.uk → en
+ * - example.com → en (fallback)
  */
-export function detectLanguageFromDomain(domain: string): string | null {
+export function detectLanguageFromDomain(domain: string): string {
   const tldMap: Record<string, string> = {
+    // European languages
     fr: "fr",
     de: "de",
     es: "es",
     pt: "pt",
+    it: "it",
+    nl: "nl",
+    be: "fr", // Belgium (Dutch/French - default French for MailWizz)
+    ch: "de", // Switzerland (German/French/Italian - default German)
+    at: "de", // Austria (German)
+    pl: "pl",
+    se: "en", // Sweden (we support Swedish but fallback to English if not in enum)
+    no: "en", // Norway
+    fi: "en", // Finland
+    dk: "en", // Denmark
+    ie: "en", // Ireland
+    gr: "en", // Greece
+    cz: "en", // Czech Republic
+    ro: "en", // Romania
+    hu: "en", // Hungary
+    bg: "en", // Bulgaria
+    sk: "en", // Slovakia
+    hr: "en", // Croatia
+    si: "en", // Slovenia
+    lt: "en", // Lithuania
+    lv: "en", // Latvia
+    ee: "en", // Estonia
+
+    // Russian & Eastern Europe
     ru: "ru",
+    ua: "ru", // Ukraine
+    by: "ru", // Belarus
+
+    // Americas
+    us: "en",
+    ca: "en", // Canada
+    mx: "es",
+    br: "pt",
+    ar: "es", // Argentina
+    cl: "es", // Chile
+    co: "es", // Colombia
+    pe: "es", // Peru
+    ve: "es", // Venezuela
+
+    // Asia
     cn: "zh",
-    in: "hi",
-    uk: "en",
+    hk: "zh",
+    tw: "zh",
+    jp: "en", // Japan (we don't support Japanese in enum)
+    kr: "en", // Korea
+    in: "hi", // India
+    au: "en",
+    nz: "en",
+    sg: "en",
+    th: "en", // Thailand
+    my: "en", // Malaysia
+    ph: "en", // Philippines
+    id: "en", // Indonesia
+    vn: "en", // Vietnam
+
+    // Middle East & Africa
+    ae: "ar",
+    sa: "ar",
+    il: "en", // Israel
+    tr: "en", // Turkey
+    eg: "ar",
+    za: "en",
+    ng: "en",
+    ke: "en",
+
+    // Generic TLDs - default to English
     com: "en",
     org: "en",
     net: "en",
+    io: "en",
+    co: "en",
+    info: "en",
+    biz: "en",
+    app: "en",
+    dev: "en",
   };
 
   const parts = domain.split(".");
-  const tld = parts[parts.length - 1];
 
+  // Try last part (TLD)
+  const tld = parts[parts.length - 1];
   if (tld && tldMap[tld]) {
     return tldMap[tld];
   }
 
-  return null;
+  // Try second-level for .co.uk, .com.au, etc.
+  if (parts.length >= 3) {
+    const secondLevel = parts[parts.length - 2];
+    if (secondLevel && tldMap[secondLevel]) {
+      return tldMap[secondLevel];
+    }
+  }
+
+  // Check for language keywords in domain name
+  const domainLower = domain.toLowerCase();
+  const languageKeywords: Record<string, string> = {
+    french: "fr",
+    francais: "fr",
+    france: "fr",
+    deutsch: "de",
+    german: "de",
+    germany: "de",
+    spanish: "es",
+    espanol: "es",
+    spain: "es",
+    portuguese: "pt",
+    portugal: "pt",
+    russian: "ru",
+    russia: "ru",
+    chinese: "zh",
+    china: "zh",
+    hindi: "hi",
+    india: "hi",
+    arabic: "ar",
+  };
+
+  for (const [keyword, lang] of Object.entries(languageKeywords)) {
+    if (domainLower.includes(keyword)) {
+      return lang;
+    }
+  }
+
+  // Ultimate fallback: English
+  return "en";
 }

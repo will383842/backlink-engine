@@ -203,31 +203,41 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     data: { status: "ENRICHING" },
   });
 
-  // 3. Detect language and country if not already set (smart enrichment)
-  let detectedLanguage: string | null = null;
-  let detectedCountry: string | null = null;
+  // 3. Detect language and country (ENHANCED - always detect)
+  let detectedLanguage: string;
+  let detectedCountry: string;
 
-  if (!prospect.language || !prospect.country) {
-    // Get first source URL for language detection
-    const sourceUrl = await prisma.sourceUrl.findFirst({
-      where: { prospectId },
-      select: { url: true },
-    });
+  // Get first source URL for language detection
+  const sourceUrl = await prisma.sourceUrl.findFirst({
+    where: { prospectId },
+    select: { url: true },
+  });
 
-    if (sourceUrl && !prospect.language) {
-      // Try URL content detection first
-      detectedLanguage = await detectLanguageFromUrl(sourceUrl.url);
+  if (sourceUrl) {
+    // Try URL content detection first (most accurate)
+    const urlLang = await detectLanguageFromUrl(sourceUrl.url);
 
-      // Fallback to domain TLD if URL detection fails
-      if (!detectedLanguage) {
-        detectedLanguage = detectLanguageFromDomain(domain);
-      }
-    }
-
-    if (!prospect.country) {
-      detectedCountry = detectCountryFromDomain(domain);
-    }
+    // Use URL detection if successful, otherwise use TLD-based detection
+    detectedLanguage = urlLang || detectLanguageFromDomain(domain);
+  } else {
+    // No source URL, use TLD-based detection
+    detectedLanguage = detectLanguageFromDomain(domain);
   }
+
+  // Country detection (TLD + keyword + character analysis)
+  detectedCountry = detectCountryFromDomain(domain);
+
+  log.info(
+    {
+      prospectId,
+      domain,
+      detectedLanguage,
+      detectedCountry,
+      hadExistingLanguage: !!prospect.language,
+      hadExistingCountry: !!prospect.country,
+    },
+    "Language and country detected"
+  );
 
   // 4. Call external APIs in parallel
   const [openPageRank, mozDa, spamPenalty] = await Promise.all([
@@ -273,15 +283,28 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     status: "READY_TO_CONTACT",
   };
 
-  // Only update language if not already set
-  if (!prospect.language && detectedLanguage) {
+  // ALWAYS update language and country (override user input if detection is better)
+  // Priority: User input > URL detection > TLD detection
+  if (!prospect.language) {
+    // No user input → use detection
     updateData["language"] = detectedLanguage;
+  } else {
+    // User provided language → keep it (unless it's invalid)
+    const validLanguages = ["fr", "en", "de", "es", "pt", "ru", "ar", "zh", "hi"];
+    if (!validLanguages.includes(prospect.language)) {
+      log.warn(
+        { prospectId, invalidLanguage: prospect.language },
+        "Invalid language detected, replacing with auto-detected value"
+      );
+      updateData["language"] = detectedLanguage;
+    }
   }
 
-  // Only update country if not already set
-  if (!prospect.country && detectedCountry) {
+  if (!prospect.country) {
+    // No user input → use detection
     updateData["country"] = detectedCountry;
   }
+  // Note: If user provided country, we keep it (they know better than TLD heuristic)
 
   // 9. Update prospect in DB
   await prisma.prospect.update({
