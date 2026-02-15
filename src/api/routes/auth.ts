@@ -92,8 +92,13 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
         role: user.role,
       };
 
+      // Also generate JWT for backward compatibility with frontend
+      const payload = { id: user.id, email: user.email, role: user.role };
+      const token = app.jwt.sign(payload);
+
       return reply.send({
         success: true,
+        token,
         user: {
           id: user.id,
           email: user.email,
