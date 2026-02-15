@@ -215,8 +215,8 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           type: "object",
           required: ["url"],
           properties: {
-            url: { type: "string", format: "uri" },
-            email: { type: "string", format: "email" },
+            url: { type: "string" }, // Removed strict URI format validation
+            email: { type: "string" }, // Removed strict email format validation
             name: { type: "string" },
             contactFormUrl: { type: "string" },
             notes: { type: "string" },
@@ -230,9 +230,19 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
     async (request, reply) => {
       const { url, email, name, contactFormUrl, notes, language, country, category } = request.body;
 
+      // Normalize URL before processing
+      const normalizedUrl = normalizeUrl(url);
+      if (!normalizedUrl) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "URL cannot be empty",
+        });
+      }
+
       // Use ingestService for proper pipeline (dedup + enrichment trigger)
       const result = await ingestProspect({
-        url,
+        url: normalizedUrl,
         email,
         name,
         contactFormUrl,
@@ -530,7 +540,58 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
     },
   );
 
-  // ───── POST /check-dedup ─── Check if domain exists ─────
+  // ───── GET /check-dedup ─── Check if domain exists (query string) ─────
+  app.get<{ Querystring: { url: string } }>(
+    "/check-dedup",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { url } = request.query;
+
+      try {
+        const normalized = normalizeUrl(url);
+        if (!normalized) {
+          return reply.status(400).send({
+            statusCode: 400,
+            error: "Bad Request",
+            message: "URL cannot be empty",
+          });
+        }
+
+        const domain = new URL(normalized).hostname.replace(/^www\./, "");
+        const existing = await prisma.prospect.findUnique({
+          where: { domain },
+          select: { id: true, domain: true, status: true, createdAt: true },
+        });
+
+        if (existing) {
+          return reply.send({
+            exists: true,
+            prospect: existing,
+          });
+        }
+
+        return reply.send({ exists: false });
+      } catch (err) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Invalid URL format",
+        });
+      }
+    },
+  );
+
+  // ───── POST /check-dedup ─── Check if domain exists (body) ─────
   app.post<{ Body: { url: string } }>(
     "/check-dedup",
     {
@@ -581,7 +642,84 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
     },
   );
 
-  // ───── POST /site-preview ─── Scrape site for preview ───
+  // ───── GET /site-preview ─── Scrape site for preview (query string) ───
+  app.get<{ Querystring: { url: string } }>(
+    "/site-preview",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          required: ["url"],
+          properties: {
+            url: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { url } = request.query;
+
+      try {
+        const normalized = normalizeUrl(url);
+        if (!normalized) {
+          return reply.status(400).send({
+            statusCode: 400,
+            error: "Bad Request",
+            message: "URL cannot be empty",
+          });
+        }
+
+        // Simple fetch with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(normalized, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (compatible; BacklinkEngine/1.0; +https://example.com/bot)",
+          },
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          return reply.status(400).send({
+            statusCode: 400,
+            error: "Bad Request",
+            message: `Failed to fetch URL: ${response.status} ${response.statusText}`,
+          });
+        }
+
+        const html = await response.text();
+
+        // Extract title and meta description (simple regex for speed)
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const descMatch = html.match(
+          /<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i,
+        );
+
+        const domain = new URL(normalized).hostname.replace(/^www\./, "");
+
+        return reply.send({
+          url: normalized,
+          domain,
+          title: titleMatch?.[1]?.trim() ?? "No title found",
+          description: descMatch?.[1]?.trim() ?? "No description found",
+        });
+      } catch (err) {
+        return reply.status(500).send({
+          statusCode: 500,
+          error: "Internal Server Error",
+          message:
+            err instanceof Error
+              ? `Failed to preview site: ${err.message}`
+              : "Failed to preview site",
+        });
+      }
+    },
+  );
+
+  // ───── POST /site-preview ─── Scrape site for preview (body) ───
   app.post<{ Body: { url: string } }>(
     "/site-preview",
     {
