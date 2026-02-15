@@ -7,6 +7,8 @@ import { logger } from "./utils/logger.js";
 import { prisma, disconnectDatabase } from "./config/database.js";
 import { redis, disconnectRedis } from "./config/redis.js";
 
+const log = logger;  // Alias for convenience
+
 // ---------------------------------------------------------------------------
 // Route plugins
 // ---------------------------------------------------------------------------
@@ -16,6 +18,7 @@ import contactsRoutes from "./api/routes/contacts.js";
 import backlinksRoutes from "./api/routes/backlinks.js";
 import assetsRoutes from "./api/routes/assets.js";
 import templatesRoutes from "./api/routes/templates.js";
+import { messageTemplatesRoutes } from "./api/routes/messageTemplates.js";
 import dashboardRoutes from "./api/routes/dashboard.js";
 import suppressionRoutes from "./api/routes/suppression.js";
 import settingsRoutes from "./api/routes/settings.js";
@@ -144,6 +147,7 @@ await app.register(contactsRoutes, { prefix: "/api/contacts" });
 await app.register(backlinksRoutes, { prefix: "/api/backlinks" });
 await app.register(assetsRoutes, { prefix: "/api/assets" });
 await app.register(templatesRoutes, { prefix: "/api/templates" });
+await app.register(messageTemplatesRoutes);
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 await app.register(suppressionRoutes, { prefix: "/api/suppression" });
 await app.register(settingsRoutes, { prefix: "/api/settings" });

@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { FastifyInstance } from "fastify";
-import { prisma } from "../../db.js";
+import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 
 const log = createChildLogger("message-templates-api");
