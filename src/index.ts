@@ -32,14 +32,12 @@ import { resetLlmClient } from "./llm/index.js";
 // ---------------------------------------------------------------------------
 import { setupQueues, closeQueues } from "./jobs/queue.js";
 import { setupCronJobs } from "./jobs/schedulers/cronScheduler.js";
-// TEMPORARILY DISABLED - Workers have TypeScript export errors
-// Will be re-enabled after fixing getCampaignByProspect and other missing exports
-// import { startEnrichmentWorker } from "./jobs/workers/enrichmentWorker.js";
-// import { startAutoEnrollmentWorker } from "./jobs/workers/autoEnrollmentWorker.js";
-// import { startOutreachWorker } from "./jobs/workers/outreachWorker.js";
-// import { startReplyWorker } from "./jobs/workers/replyWorker.js";
-// import { startVerificationWorker } from "./jobs/workers/verificationWorker.js";
-// import { startReportingWorker } from "./jobs/workers/reportingWorker.js";
+import { startEnrichmentWorker } from "./jobs/workers/enrichmentWorker.js";
+import { startAutoEnrollmentWorker } from "./jobs/workers/autoEnrollmentWorker.js";
+import { startOutreachWorker } from "./jobs/workers/outreachWorker.js";
+import { startReplyWorker } from "./jobs/workers/replyWorker.js";
+import { startVerificationWorker } from "./jobs/workers/verificationWorker.js";
+import { startReportingWorker } from "./jobs/workers/reportingWorker.js";
 
 // ---------------------------------------------------------------------------
 // Fastify instance
@@ -232,16 +230,14 @@ try {
   await setupCronJobs();
   logger.info("Cron jobs scheduled.");
 
-  // TEMPORARILY DISABLED - Workers have TypeScript export errors
-  // Core API functionality remains 100% operational
-  // Workers will be re-enabled after fixing missing exports
-  // startEnrichmentWorker();
-  // startAutoEnrollmentWorker();
-  // startOutreachWorker();
-  // startReplyWorker();
-  // startVerificationWorker();
-  // startReportingWorker();
-  logger.info("BullMQ workers DISABLED (temporary - fixing TypeScript errors)");
+  // Start all BullMQ workers
+  startEnrichmentWorker();
+  startAutoEnrollmentWorker();
+  startOutreachWorker();
+  startReplyWorker();
+  startVerificationWorker();
+  startReportingWorker();
+  logger.info("All BullMQ workers started.");
 
   await app.listen({ port: PORT, host: HOST });
   logger.info(`Backlink Engine server listening on http://${HOST}:${PORT}`);

@@ -13,9 +13,9 @@
 import { Job, Worker } from "bullmq";
 import { prisma } from "../../config/database.js";
 import { logger } from "../../utils/logger.js";
-import { getCampaignByProspect } from "../../services/autoEnrollment/campaignSelector.js";
+import { findBestCampaign } from "../../services/autoEnrollment/campaignSelector.js";
 import { outreachQueue } from "../queue.js";
-import { redisConnection } from "../../config/redis.js";
+import { createRedisConnection } from "../../config/redis.js";
 
 const log = logger.child({ worker: "auto-enrollment" });
 
@@ -48,7 +48,7 @@ export async function processAutoEnrollment(
       },
       take: 100, // Batch size (process 100 at a time)
       orderBy: {
-        enrichedScore: "desc", // Prioritize high-score prospects
+        createdAt: "desc", // Prioritize recent prospects
       },
     });
 
@@ -66,7 +66,7 @@ export async function processAutoEnrollment(
     for (const prospect of prospects) {
       try {
         // Find best matching campaign
-        const campaign = await getCampaignByProspect(prospect);
+        const campaign = await findBestCampaign(prospect.id);
 
         if (!campaign) {
           log.debug(
@@ -189,7 +189,7 @@ export function startAutoEnrollmentWorker(): void {
       return null;
     },
     {
-      connection: redisConnection,
+      connection: createRedisConnection(),
       concurrency: 1, // Process one batch at a time
     }
   );
