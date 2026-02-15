@@ -48,8 +48,7 @@ services:
     env_file:
       - .env
     environment:
-      # DATABASE_URL comes from .env with URL-encoded password
-      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379"
+      # DATABASE_URL and REDIS_URL come from .env with URL-encoded passwords
       NODE_ENV: production
     depends_on:
       postgres:
