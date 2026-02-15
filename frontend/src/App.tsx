@@ -9,6 +9,7 @@ import QuickAdd from "./pages/QuickAdd";
 import BulkImport from "./pages/BulkImport";
 import Campaigns from "./pages/Campaigns";
 import Templates from "./pages/Templates";
+import MessageTemplates from "./pages/MessageTemplates";
 import Backlinks from "./pages/Backlinks";
 import Assets from "./pages/Assets";
 import Replies from "./pages/Replies";
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="import" element={<BulkImport />} />
           <Route path="campaigns" element={<Campaigns />} />
           <Route path="templates" element={<Templates />} />
+          <Route path="message-templates" element={<MessageTemplates />} />
           <Route path="backlinks" element={<Backlinks />} />
           <Route path="assets" element={<Assets />} />
           <Route path="replies" element={<Replies />} />

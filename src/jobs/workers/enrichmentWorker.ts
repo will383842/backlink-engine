@@ -6,6 +6,10 @@ import { QUEUE_NAMES } from "../queue.js";
 import { calculateScore } from "../../services/enrichment/scoreCalculator.js";
 import { detectLanguageFromUrl, detectLanguageFromDomain } from "../../services/enrichment/languageDetector.js";
 import { detectCountryFromDomain } from "../../services/enrichment/countryDetector.js";
+import { getTimezoneForCountry } from "../../data/countries.js";
+import { detectAndAssignTags } from "../../services/tags/tagDetector.js";
+import { scrapeAndValidateEmails, extractNameFromEmailContext } from "../../services/scraping/emailScraper.js";
+import { detectContactForm, findContactFormUrl } from "../../services/scraping/contactFormDetector.js";
 import { canAutoEnroll, isProspectEligible } from "../../services/autoEnrollment/config.js";
 import { findBestCampaign, isAlreadyEnrolled } from "../../services/autoEnrollment/campaignSelector.js";
 import { enrollProspect } from "../../services/outreach/enrollmentManager.js";
@@ -227,17 +231,155 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
   // Country detection (TLD + keyword + character analysis)
   detectedCountry = detectCountryFromDomain(domain);
 
+  // Timezone detection based on country
+  const detectedTimezone = getTimezoneForCountry(detectedCountry);
+
   log.info(
     {
       prospectId,
       domain,
       detectedLanguage,
       detectedCountry,
+      detectedTimezone,
       hadExistingLanguage: !!prospect.language,
       hadExistingCountry: !!prospect.country,
+      hadExistingTimezone: !!prospect.timezone,
     },
-    "Language and country detected"
+    "Language, country, and timezone detected"
   );
+
+  // 3.5. Auto-scrape emails from source URL (if no contact exists yet)
+  const existingContacts = await prisma.contact.count({ where: { prospectId } });
+
+  if (existingContacts === 0 && sourceUrl) {
+    try {
+      log.info({ prospectId, url: sourceUrl.url }, "Scraping emails from source URL");
+
+      // FIXED: Now returns firstName/lastName directly (no double fetch!)
+      const scrapedEmails = await scrapeAndValidateEmails(sourceUrl.url);
+
+      if (scrapedEmails.length > 0) {
+        log.info({ prospectId, count: scrapedEmails.length }, `Found ${scrapedEmails.length} valid emails`);
+
+        // Create contacts for scraped emails (limit to 3 best emails)
+        const bestEmails = scrapedEmails
+          .filter(e => e.validation.status === "verified" || e.validation.status === "risky")
+          .slice(0, 3);
+
+        for (const item of bestEmails) {
+          try {
+            await prisma.contact.create({
+              data: {
+                prospectId,
+                email: item.email,
+                emailNormalized: item.email.toLowerCase(),
+                firstName: item.firstName || null,  // Already extracted!
+                lastName: item.lastName || null,    // Already extracted!
+                emailStatus: item.validation.status as any,
+                discoveredVia: "auto_scraper",
+              },
+            });
+
+            log.info(
+              { prospectId, email: item.email, firstName: item.firstName, lastName: item.lastName },
+              "Auto-created contact from scraper"
+            );
+          } catch (err) {
+            // Ignore duplicate email errors
+            log.debug({ err, email: item.email }, "Failed to create contact (probably duplicate)");
+          }
+        }
+
+        // Log event
+        await prisma.event.create({
+          data: {
+            prospectId,
+            eventType: "emails_scraped",
+            eventSource: "enrichment_worker",
+            data: {
+              scrapedCount: scrapedEmails.length,
+              createdCount: bestEmails.length,
+              emails: bestEmails.map(e => ({ email: e.email, firstName: e.firstName, lastName: e.lastName })),
+            } as any,
+          },
+        });
+      } else {
+        log.debug({ prospectId }, "No valid emails found on page");
+      }
+    } catch (err) {
+      log.error({ err, prospectId }, "Failed to scrape emails");
+      // Don't fail enrichment if scraping fails
+    }
+  }
+
+  // 3.6. Auto-detect contact form (if not already detected)
+  let hasContactForm = !!prospect.contactFormUrl;  // Track if form detected (for score calculation)
+
+  if (!prospect.contactFormUrl && sourceUrl) {
+    try {
+      log.info({ prospectId, url: sourceUrl.url }, "Detecting contact form");
+
+      // Try homepage first (most common location)
+      const homepageUrl = `https://${domain}`;
+      let formResult = await detectContactForm(homepageUrl);
+
+      // If not found on homepage, try to find contact page link and check there
+      if (!formResult.hasContactForm) {
+        const contactPageUrl = await findContactFormUrl(homepageUrl);
+        if (contactPageUrl) {
+          log.debug({ prospectId, contactPageUrl }, "Found contact page, checking for form");
+          formResult = await detectContactForm(contactPageUrl);
+        }
+      }
+
+      if (formResult.hasContactForm) {
+        log.info(
+          {
+            prospectId,
+            url: formResult.contactFormUrl,
+            fields: formResult.formFields,
+            hasCaptcha: formResult.hasCaptcha,
+            confidence: formResult.confidence,
+          },
+          "Contact form detected"
+        );
+
+        // Update prospect with form data
+        await prisma.prospect.update({
+          where: { id: prospectId },
+          data: {
+            contactFormUrl: formResult.contactFormUrl,
+            contactFormFields: formResult.formFields as any,
+            hasCaptcha: formResult.hasCaptcha,
+          },
+        });
+
+        // Track for score calculation
+        hasContactForm = true;
+
+        // Log event
+        await prisma.event.create({
+          data: {
+            prospectId,
+            eventType: "contact_form_detected",
+            eventSource: "enrichment_worker",
+            data: {
+              url: formResult.contactFormUrl,
+              fields: formResult.formFields,
+              hasCaptcha: formResult.hasCaptcha,
+              confidence: formResult.confidence,
+              method: formResult.detectionMethod,
+            } as any,
+          },
+        });
+      } else {
+        log.debug({ prospectId }, "No contact form found");
+      }
+    } catch (err) {
+      log.error({ err, prospectId }, "Failed to detect contact form");
+      // Don't fail enrichment if form detection fails
+    }
+  }
 
   // 4. Call external APIs in parallel
   const [openPageRank, mozDa, spamPenalty] = await Promise.all([
@@ -251,7 +393,7 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
   if (openPageRank !== null) preliminaryScore += Math.min(openPageRank, 10) * 4;
   if (mozDa !== null) preliminaryScore += (mozDa / 100) * 40;
   if (preliminaryScore === 0) preliminaryScore = 25;
-  if (!!prospect.contactFormUrl) preliminaryScore += 10;
+  if (hasContactForm) preliminaryScore += 10;  // FIXED: Use tracked value instead of prospect.contactFormUrl
   preliminaryScore -= spamPenalty;
 
   let tier: number;
@@ -283,7 +425,7 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     status: "READY_TO_CONTACT",
   };
 
-  // ALWAYS update language and country (override user input if detection is better)
+  // ALWAYS update language, country, and timezone (override user input if detection is better)
   // Priority: User input > URL detection > TLD detection
   if (!prospect.language) {
     // No user input → use detection
@@ -305,6 +447,11 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     updateData["country"] = detectedCountry;
   }
   // Note: If user provided country, we keep it (they know better than TLD heuristic)
+
+  // Always update timezone based on country (auto-sync with country)
+  if (!prospect.timezone || prospect.country !== detectedCountry) {
+    updateData["timezone"] = detectedTimezone;
+  }
 
   // 9. Update prospect in DB
   await prisma.prospect.update({
@@ -331,11 +478,35 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
   });
 
   log.info(
-    { prospectId, domain, finalScore, tier, detectedLanguage, detectedCountry },
+    { prospectId, domain, finalScore, tier, detectedLanguage, detectedCountry, detectedTimezone },
     "Enrichment complete."
   );
 
-  // 11. Try auto-enrollment if enabled
+  // 11. Auto-detect and assign tags
+  try {
+    // Check if prospect has verified email
+    const hasVerifiedEmail = await prisma.contact.findFirst({
+      where: {
+        prospectId,
+        emailStatus: "verified",
+      },
+    });
+
+    const tags = await detectAndAssignTags(prospectId, domain, undefined, {
+      category: prospect.category,
+      tier,
+      score: finalScore,
+      country: detectedCountry,
+      hasVerifiedEmail: !!hasVerifiedEmail,
+    });
+
+    log.info({ prospectId, tags }, `Auto-assigned ${tags.length} tags`);
+  } catch (err) {
+    log.error({ err, prospectId }, "Failed to auto-assign tags");
+    // Don't fail enrichment if tagging fails
+  }
+
+  // 12. Try auto-enrollment if enabled
   await autoEnrollIfEligible(prospectId);
 }
 

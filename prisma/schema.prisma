@@ -43,6 +43,9 @@ enum EmailStatus {
   unverified
   verified
   invalid
+  risky        // Suspicious but not confirmed invalid (e.g., catch-all domain)
+  disposable   // Temporary email service (10minutemail.com, etc.)
+  role         // Role-based email (info@, contact@, support@)
 }
 
 enum EnrollmentStatus {
@@ -88,6 +91,15 @@ enum ProspectCategory {
   other
 }
 
+enum TagCategory {
+  type      // Type de site (blogueur, presse, influenceur)
+  sector    // Secteur (assurance, finance, voyage, tech, santé)
+  quality   // Qualité (premium, verified, partner)
+  geography // Géographie (france, europe, international)
+  source    // Source (scraper, manual, import)
+  other
+}
+
 // ─────────────────────────────────────────────────────────────
 // 1. Prospect
 // ─────────────────────────────────────────────────────────────
@@ -99,6 +111,7 @@ model Prospect {
   category               ProspectCategory  @default(blogger)
   language               Language?
   country                String?           @db.VarChar(2) // ISO 3166-1 alpha-2
+  timezone               String?           @db.VarChar(50) // IANA timezone (e.g., "Europe/Paris")
   tier                   Int               @default(1)
   score                  Int            @default(0)
   mozDa                  Int?
@@ -109,6 +122,8 @@ model Prospect {
   linkNeighborhoodScore  Int?
   outboundCategories     Json?
   contactFormUrl         String?
+  contactFormFields      Json?             // Detected form fields: {name, email, message, subject, etc.}
+  hasCaptcha             Boolean?          // Whether form has CAPTCHA
   phone                  String?
   phoneCountryCode       String?           @db.VarChar(5) // +33, +49, etc.
   status                 ProspectStatus @default(NEW)
@@ -123,12 +138,14 @@ model Prospect {
   enrollments Enrollment[]
   events      Event[]
   backlinks   Backlink[]
+  tags        ProspectTag[]
 
   // Simple indexes
   @@index([status])
   @@index([tier])
   @@index([country])
   @@index([language])
+  @@index([timezone])
   @@index([category])
   @@index([nextFollowupAt])
   @@index([score])
@@ -174,7 +191,9 @@ model Contact {
   prospectId      Int
   email           String
   emailNormalized String      @unique
-  name            String?
+  firstName       String?
+  lastName        String?
+  name            String?     // DEPRECATED: Use firstName + lastName instead (kept for backward compatibility)
   role            String      @default("unknown")
   emailStatus     EmailStatus @default(unverified)
   discoveredVia   String      @default("manual")
@@ -416,4 +435,64 @@ model User {
   events Event[]
 
   @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────
+// 13. MessageTemplate (Contact form templates by language)
+// ─────────────────────────────────────────────────────────────
+
+model MessageTemplate {
+  id        Int               @id @default(autoincrement())
+  language  Language                        // Template language (fr, en, etc.)
+  category  ProspectCategory? @default(value: null)  // Optional category (blogger, media, etc.) - null = general template
+  subject   String                          // Sujet du message
+  body      String            @db.Text      // Corps du message avec variables: {siteName}, {yourName}, {yourCompany}, {yourWebsite}
+  isDefault Boolean           @default(false)  // Is this the default template for this language?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@unique([language, category])  // One template per language+category combination
+  @@index([language])
+  @@index([category])
+  @@index([isDefault])
+
+  @@map("message_templates")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Tag System (Multi-tagging for prospects)
+// ─────────────────────────────────────────────────────────────
+
+model Tag {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique // "presse_ecrite", "assurance", "premium"
+  label       String                // "Presse Écrite", "Assurance", "Premium"
+  description String?               // Description du tag
+  color       String      @default("#3B82F6") // Couleur hexa pour UI
+  category    TagCategory @default(other)
+  isAutoTag   Boolean     @default(false) // Auto-assigné par enrichissement
+  createdAt   DateTime    @default(now())
+  
+  prospects ProspectTag[]
+  
+  @@index([category])
+  @@index([isAutoTag])
+  
+  @@map("tags")
+}
+
+model ProspectTag {
+  prospectId Int
+  tagId      Int
+  assignedBy String   @default("auto") // "auto" | "user:{userId}" | "enrichment" | "manual"
+  createdAt  DateTime @default(now())
+  
+  prospect Prospect @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  @@id([prospectId, tagId])
+  @@index([prospectId])
+  @@index([tagId])
+  
+  @@map("prospect_tags")
 }
