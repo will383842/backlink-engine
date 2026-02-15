@@ -444,7 +444,7 @@ model User {
 model MessageTemplate {
   id        Int               @id @default(autoincrement())
   language  Language                        // Template language (fr, en, etc.)
-  category  ProspectCategory? @default(value: null)  // Optional category (blogger, media, etc.) - null = general template
+  category  ProspectCategory?               // Optional category (blogger, media, etc.) - null = general template
   subject   String                          // Sujet du message
   body      String            @db.Text      // Corps du message avec variables: {siteName}, {yourName}, {yourCompany}, {yourWebsite}
   isDefault Boolean           @default(false)  // Is this the default template for this language?
