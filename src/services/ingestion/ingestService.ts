@@ -5,8 +5,8 @@
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { normalizeUrl, extractDomain } from "../../utils/urlNormalizer.js";
-import { detectLanguage } from "../enrichment/languageDetector.js";
-import { detectCountry } from "../enrichment/countryDetector.js";
+// import { detectLanguage } from "../enrichment/languageDetector.js";
+// import { detectCountry } from "../enrichment/countryDetector.js";
 import { enrichmentQueue } from "../../jobs/queue.js";
 
 const log = createChildLogger("ingest");
@@ -90,8 +90,10 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
     }
 
     // 3. Detect language and country from TLD if not provided
-    const language = detectLanguage(domain, data.language);
-    const country = detectCountry(domain, data.country);
+    // const language = detectLanguage(domain, data.language);
+    // const country = detectCountry(domain, data.country);
+    const language = data.language || null;
+    const country = data.country || null;
 
     // 4. Create prospect, source URL, and optionally a contact in a transaction
     const result = await prisma.$transaction(async (tx) => {
