@@ -254,4 +254,191 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
       return reply.send({ data });
     },
   );
+
+  // ───── GET /campaigns ─── Campaign performance statistics ───────
+  app.get(
+    "/campaigns",
+    async (request: FastifyRequest<{
+      Querystring: {
+        campaignId?: string;
+        startDate?: string;
+        endDate?: string;
+      };
+    }>, reply: FastifyReply) => {
+      const { campaignId, startDate, endDate } = request.query;
+
+      // Date range filtering
+      const dateFilter: any = {};
+      if (startDate) dateFilter.gte = new Date(startDate);
+      if (endDate) dateFilter.lte = new Date(endDate);
+
+      // If specific campaign requested
+      if (campaignId) {
+        const campaign = await prisma.campaign.findUnique({
+          where: { id: parseInt(campaignId) },
+          include: {
+            tags: {
+              include: { tag: true },
+            },
+            _count: {
+              select: { enrollments: true },
+            },
+          },
+        });
+
+        if (!campaign) {
+          return reply.status(404).send({ error: 'Campaign not found' });
+        }
+
+        // Get detailed stats for this campaign
+        const enrollments = await prisma.enrollment.findMany({
+          where: { campaignId: parseInt(campaignId) },
+          include: {
+            prospect: {
+              include: {
+                events: {
+                  where: Object.keys(dateFilter).length > 0
+                    ? { createdAt: dateFilter }
+                    : undefined,
+                },
+              },
+            },
+          },
+        });
+
+        // Calculate metrics
+        let emailsSent = 0;
+        let delivered = 0;
+        let bounces = 0;
+        let opens = 0;
+        let clicks = 0;
+        let replies = 0;
+        let unsubscribes = 0;
+
+        for (const enrollment of enrollments) {
+          const events = enrollment.prospect.events;
+
+          emailsSent += events.filter(e => e.eventType === 'email_sent').length;
+          delivered += events.filter(e => e.eventType === 'delivered').length;
+          bounces += events.filter(e =>
+            ['bounce', 'hard_bounce', 'soft_bounce'].includes(e.eventType)
+          ).length;
+          opens += events.filter(e => e.eventType === 'email_opened').length;
+          clicks += events.filter(e => e.eventType === 'link_clicked').length;
+          replies += events.filter(e => e.eventType === 'reply_received').length;
+          unsubscribes += events.filter(e => e.eventType === 'unsubscribed').length;
+        }
+
+        // Calculate rates
+        const deliveryRate = emailsSent > 0 ? (delivered / emailsSent) * 100 : 0;
+        const bounceRate = emailsSent > 0 ? (bounces / emailsSent) * 100 : 0;
+        const openRate = delivered > 0 ? (opens / delivered) * 100 : 0;
+        const clickRate = opens > 0 ? (clicks / opens) * 100 : 0;
+        const replyRate = emailsSent > 0 ? (replies / emailsSent) * 100 : 0;
+
+        return reply.send({
+          campaign: {
+            id: campaign.id,
+            name: campaign.name,
+            language: campaign.language,
+            isActive: campaign.isActive,
+            tags: campaign.tags.map(ct => ct.tag),
+          },
+          metrics: {
+            totalEnrolled: campaign._count.enrollments,
+            emailsSent,
+            delivered,
+            bounces,
+            opens,
+            clicks,
+            replies,
+            unsubscribes,
+          },
+          rates: {
+            deliveryRate: Math.round(deliveryRate * 100) / 100,
+            bounceRate: Math.round(bounceRate * 100) / 100,
+            openRate: Math.round(openRate * 100) / 100,
+            clickRate: Math.round(clickRate * 100) / 100,
+            replyRate: Math.round(replyRate * 100) / 100,
+          },
+        });
+      }
+
+      // Otherwise, return stats for all campaigns
+      const campaigns = await prisma.campaign.findMany({
+        include: {
+          tags: {
+            include: { tag: true },
+          },
+          _count: {
+            select: { enrollments: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const campaignsStats = await Promise.all(
+        campaigns.map(async (campaign) => {
+          // Get event counts for this campaign's enrollments
+          const enrollments = await prisma.enrollment.findMany({
+            where: { campaignId: campaign.id },
+            select: { prospectId: true },
+          });
+
+          const prospectIds = enrollments.map(e => e.prospectId);
+
+          if (prospectIds.length === 0) {
+            return {
+              id: campaign.id,
+              name: campaign.name,
+              language: campaign.language,
+              isActive: campaign.isActive,
+              tags: campaign.tags.map(ct => ct.tag),
+              enrolled: 0,
+              sent: 0,
+              replied: 0,
+              won: 0,
+              replyRate: 0,
+            };
+          }
+
+          const whereEvents: any = {
+            prospectId: { in: prospectIds },
+          };
+          if (Object.keys(dateFilter).length > 0) {
+            whereEvents.createdAt = dateFilter;
+          }
+
+          const [sent, replied] = await Promise.all([
+            prisma.event.count({
+              where: { ...whereEvents, eventType: 'email_sent' },
+            }),
+            prisma.event.count({
+              where: { ...whereEvents, eventType: 'reply_received' },
+            }),
+          ]);
+
+          const replyRate = sent > 0 ? (replied / sent) * 100 : 0;
+
+          return {
+            id: campaign.id,
+            name: campaign.name,
+            language: campaign.language,
+            isActive: campaign.isActive,
+            tags: campaign.tags.map(ct => ct.tag),
+            enrolled: campaign._count.enrollments,
+            sent,
+            replied: campaign.totalReplied,
+            won: campaign.totalWon,
+            replyRate: Math.round(replyRate * 100) / 100,
+          };
+        })
+      );
+
+      return reply.send({
+        campaigns: campaignsStats,
+        total: campaigns.length,
+      });
+    },
+  );
 }

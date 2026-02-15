@@ -2,6 +2,8 @@ import "dotenv/config";
 
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import cookie from "@fastify/cookie";
+import session from "@fastify/session";
 import rateLimit from "@fastify/rate-limit";
 import { logger } from "./utils/logger.js";
 import { prisma, disconnectDatabase } from "./config/database.js";
@@ -27,6 +29,7 @@ import reportsRoutes from "./api/routes/reports.js";
 import ingestRoutes from "./api/routes/ingest.js";
 import webhooksRoutes from "./api/routes/webhooks.js";
 import authRoutes from "./api/routes/auth.js";
+import tagsRoutes from "./api/routes/tags.js";
 import { registerJwt } from "./api/middleware/auth.js";
 import { resetLlmClient } from "./llm/index.js";
 
@@ -88,7 +91,24 @@ await app.register(rateLimit, {
   redis,
 });
 
-// JWT authentication
+// Cookie support
+await app.register(cookie);
+
+// Session management with simple in-memory store (Redis store requires connect-redis)
+// For production Redis store, install @fastify/session-redis-store
+await app.register(session, {
+  secret: process.env.SESSION_SECRET || "backlink-engine-secret-change-in-production",
+  cookieName: "sessionId",
+  cookie: {
+    secure: false, // Set to true when HTTPS is configured
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+    sameSite: "lax",
+  },
+  saveUninitialized: false,
+});
+
+// JWT authentication (kept for backward compatibility, but sessions are preferred)
 await registerJwt(app);
 
 // ---- Global error handler -------------------------------------------------
@@ -148,6 +168,7 @@ await app.register(backlinksRoutes, { prefix: "/api/backlinks" });
 await app.register(assetsRoutes, { prefix: "/api/assets" });
 await app.register(templatesRoutes, { prefix: "/api/templates" });
 await app.register(messageTemplatesRoutes);
+await app.register(tagsRoutes, { prefix: "/api/tags" });
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 await app.register(suppressionRoutes, { prefix: "/api/suppression" });
 await app.register(settingsRoutes, { prefix: "/api/settings" });
