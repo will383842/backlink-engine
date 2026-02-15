@@ -39,15 +39,7 @@ export const tagsRoutes: FastifyPluginAsync = async (fastify) => {
   // ──────────────────────────────────────────────────────
   // GET /api/tags - List all tags
   // ──────────────────────────────────────────────────────
-  fastify.get('/', {
-    schema: {
-      querystring: z.object({
-        category: z.nativeEnum(TagCategory).optional(),
-        search: z.string().optional(),
-        includeStats: z.boolean().default(false),
-      }),
-    },
-  }, async (request, reply) => {
+  fastify.get('/', async (request, reply) => {
     const { category, search, includeStats } = request.query as any;
 
     const where: any = {};
@@ -109,11 +101,7 @@ export const tagsRoutes: FastifyPluginAsync = async (fastify) => {
   // ──────────────────────────────────────────────────────
   // POST /api/tags - Create new tag
   // ──────────────────────────────────────────────────────
-  fastify.post('/', {
-    schema: {
-      body: CreateTagSchema,
-    },
-  }, async (request, reply) => {
+  fastify.post('/', async (request, reply) => {
     const data = request.body as z.infer<typeof CreateTagSchema>;
 
     // Check if tag name already exists
@@ -145,11 +133,7 @@ export const tagsRoutes: FastifyPluginAsync = async (fastify) => {
   // ──────────────────────────────────────────────────────
   // PATCH /api/tags/:id - Update tag
   // ──────────────────────────────────────────────────────
-  fastify.patch('/:id', {
-    schema: {
-      body: UpdateTagSchema,
-    },
-  }, async (request, reply) => {
+  fastify.patch('/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
     const data = request.body as z.infer<typeof UpdateTagSchema>;
 
@@ -225,11 +209,7 @@ export const tagsRoutes: FastifyPluginAsync = async (fastify) => {
   // ──────────────────────────────────────────────────────
   // POST /api/tags/prospects/:prospectId - Assign tags to prospect
   // ──────────────────────────────────────────────────────
-  fastify.post('/prospects/:prospectId', {
-    schema: {
-      body: AssignTagsSchema,
-    },
-  }, async (request, reply) => {
+  fastify.post('/prospects/:prospectId', async (request, reply) => {
     const { prospectId } = request.params as { prospectId: string };
     const { tagIds } = request.body as z.infer<typeof AssignTagsSchema>;
 
@@ -272,11 +252,7 @@ export const tagsRoutes: FastifyPluginAsync = async (fastify) => {
   // ──────────────────────────────────────────────────────
   // POST /api/tags/campaigns/:campaignId - Assign tags to campaign
   // ──────────────────────────────────────────────────────
-  fastify.post('/campaigns/:campaignId', {
-    schema: {
-      body: AssignTagsSchema,
-    },
-  }, async (request, reply) => {
+  fastify.post('/campaigns/:campaignId', async (request, reply) => {
     const { campaignId } = request.params as { campaignId: string };
     const { tagIds } = request.body as z.infer<typeof AssignTagsSchema>;
 
