@@ -109,6 +109,8 @@ model Prospect {
   linkNeighborhoodScore  Int?
   outboundCategories     Json?
   contactFormUrl         String?
+  phone                  String?
+  phoneCountryCode       String?           @db.VarChar(5) // +33, +49, etc.
   status                 ProspectStatus @default(NEW)
   firstContactedAt       DateTime?
   lastContactedAt        DateTime?

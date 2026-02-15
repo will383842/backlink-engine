@@ -19,6 +19,8 @@ export interface IngestInput {
   url: string;
   email?: string;
   name?: string;
+  phone?: string;
+  phoneCountryCode?: string;
   language?: string;
   country?: string;
   category?: string;
@@ -106,6 +108,8 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
           language: language !== "unknown" ? language : null,
           country: country || null,
           contactFormUrl: data.contactFormUrl,
+          phone: data.phone || null,
+          phoneCountryCode: data.phoneCountryCode || null,
           status: "NEW",
         },
       });

@@ -39,6 +39,8 @@ interface CreateProspectBody {
   email?: string;
   name?: string;
   contactFormUrl?: string;
+  phone?: string;
+  phoneCountryCode?: string;
   notes?: string;
   language?: string;
   country?: string;
@@ -219,6 +221,8 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
             email: { type: "string" }, // Removed strict email format validation
             name: { type: "string" },
             contactFormUrl: { type: "string" },
+            phone: { type: "string" },
+            phoneCountryCode: { type: "string", maxLength: 5 },
             notes: { type: "string" },
             language: { type: "string", enum: ["fr", "en", "de", "es", "pt", "ru", "ar", "zh", "hi"] },
             country: { type: "string", minLength: 2, maxLength: 2 },
@@ -228,7 +232,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       },
     },
     async (request, reply) => {
-      const { url, email, name, contactFormUrl, notes, language, country, category } = request.body;
+      const { url, email, name, contactFormUrl, phone, phoneCountryCode, notes, language, country, category } = request.body;
 
       // Normalize URL before processing
       const normalizedUrl = normalizeUrl(url);
@@ -246,6 +250,8 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         email,
         name,
         contactFormUrl,
+        phone,
+        phoneCountryCode,
         notes,
         language,
         country,
@@ -934,7 +940,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
   );
 
   // ───── POST /:id/recontact ─── Re-contact a prospect ────
-  app.post<{ Params: ProspectParams; Body: { notes?: string } }>(
+  app.post<{ Params: ProspectParams; Body?: { notes?: string } }>(
     "/:id/recontact",
     {
       schema: {
@@ -943,17 +949,12 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           required: ["id"],
           properties: { id: { type: "string" } },
         },
-        body: {
-          type: "object",
-          properties: {
-            notes: { type: "string" },
-          },
-        },
+        // Body is optional - can be empty object or contain notes
       },
     },
     async (request, reply) => {
       const id = parseIdParam(request.params.id);
-      const { notes } = request.body;
+      const notes = request.body?.notes;
 
       const existing = await prisma.prospect.findUnique({ where: { id } });
       if (!existing) {
