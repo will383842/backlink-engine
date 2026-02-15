@@ -70,11 +70,14 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
+      # HTTPS disabled temporarily (no SSL certificates yet)
+      # - "443:443"
     volumes:
-      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # TEMPORARY: HTTP-only config (no SSL required)
+      - ./deploy/nginx-http-only.conf:/etc/nginx/conf.d/default.conf:ro
       - ./frontend/dist:/usr/share/nginx/html:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      # SSL volume disabled temporarily
+      # - ./ssl:/etc/nginx/ssl:ro
     depends_on:
       - app
     networks:
