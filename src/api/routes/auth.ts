@@ -46,6 +46,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
             type: "object",
             properties: {
               success: { type: "boolean" },
+              token: { type: "string" },
               user: {
                 type: "object",
                 properties: {
