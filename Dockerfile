@@ -3,17 +3,16 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install backend dependencies
+# Install backend dependencies (including tsx for runtime)
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
-# Copy source and build
+# Copy source
 COPY tsconfig.json ./
 COPY prisma ./prisma
 COPY src ./src
 
 RUN npx prisma generate
-RUN npx tsc
 
 # Install frontend dependencies and build
 COPY frontend/package.json frontend/package-lock.json ./frontend/
@@ -29,17 +28,18 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Install production dependencies only
+# Install production dependencies INCLUDING tsx for runtime TypeScript
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm ci --ignore-scripts
 
 # Copy Prisma schema + generated client
 COPY prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# Copy compiled backend
-COPY --from=builder /app/dist ./dist
+# Copy TypeScript source (will be run with tsx)
+COPY tsconfig.json ./
+COPY --from=builder /app/src ./src
 
 # Copy built frontend
 COPY --from=builder /app/frontend/dist ./frontend/dist
@@ -58,4 +58,4 @@ USER node
 
 EXPOSE 3000
 
-CMD ["node", "dist/index.js"]
+CMD ["npx", "tsx", "src/index.ts"]
