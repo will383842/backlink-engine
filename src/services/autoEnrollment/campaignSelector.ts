@@ -62,28 +62,24 @@ export async function findBestCampaign(
     .map((campaign) => {
       let score = 100; // Base score
 
-      // Filter by category if campaign has categoryFilter
-      if (campaign.categoryFilter) {
-        const allowedCategories = (campaign.categoryFilter as string[]) ?? [];
-        if (allowedCategories.length > 0 && !allowedCategories.includes(prospect.category)) {
+      // Filter by category if campaign has targetCategory
+      if (campaign.targetCategory) {
+        if (prospect.category !== campaign.targetCategory) {
           return null; // Skip this campaign
         }
       }
 
       // Bonus: Country match
-      if (campaign.countryFilter && prospect.country) {
-        const allowedCountries = (campaign.countryFilter as string[]) ?? [];
-        if (allowedCountries.length > 0) {
-          if (allowedCountries.includes(prospect.country)) {
-            score += 50; // Country match bonus
-          } else {
-            return null; // Skip if country filter doesn't match
-          }
+      if (campaign.targetCountry && prospect.country) {
+        if (prospect.country === campaign.targetCountry) {
+          score += 50; // Country match bonus
+        } else {
+          return null; // Skip if country filter doesn't match
         }
       }
 
       // Bonus: Min tier match
-      if (campaign.minTier && prospect.tier > campaign.minTier) {
+      if (campaign.targetTier && prospect.tier > campaign.targetTier) {
         return null; // Skip if prospect tier is too low
       }
 

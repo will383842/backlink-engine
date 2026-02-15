@@ -24,6 +24,12 @@ export default function QuickAdd() {
   const [url, setUrl] = useState("");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [phoneCountryCode, setPhoneCountryCode] = useState("+33");
+  const [category, setCategory] = useState<string>("blogger");
+  const [language, setLanguage] = useState<string>("fr");
+  const [country, setCountry] = useState<string>("FR");
+  const [tier, setTier] = useState<number>(1);
   const [contactFormUrl, setContactFormUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [dedup, setDedup] = useState<DedupResult | null>(null);
@@ -63,6 +69,12 @@ export default function QuickAdd() {
         url: url.trim(),
         email: email.trim() || null,
         contactName: name.trim() || null,
+        phone: phone.trim() || null,
+        phoneCountryCode: phone.trim() ? phoneCountryCode : null,
+        category,
+        language,
+        country,
+        tier,
         contactFormUrl: contactFormUrl.trim() || null,
         notes: notes.trim() || null,
       });
@@ -74,6 +86,12 @@ export default function QuickAdd() {
       setUrl("");
       setEmail("");
       setName("");
+      setPhone("");
+      setPhoneCountryCode("+33");
+      setCategory("blogger");
+      setLanguage("fr");
+      setCountry("FR");
+      setTier(1);
       setContactFormUrl("");
       setNotes("");
       setDedup(null);
@@ -173,6 +191,112 @@ export default function QuickAdd() {
             className="input-field"
             placeholder="John Doe"
           />
+        </div>
+
+        {/* Phone */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-surface-700">
+            Téléphone
+          </label>
+          <div className="grid grid-cols-[120px_1fr] gap-2">
+            <select
+              value={phoneCountryCode}
+              onChange={(e) => setPhoneCountryCode(e.target.value)}
+              className="input-field"
+            >
+              <option value="+33">🇫🇷 +33</option>
+              <option value="+1">🇺🇸 +1</option>
+              <option value="+44">🇬🇧 +44</option>
+              <option value="+49">🇩🇪 +49</option>
+              <option value="+34">🇪🇸 +34</option>
+              <option value="+39">🇮🇹 +39</option>
+              <option value="+351">🇵🇹 +351</option>
+              <option value="+32">🇧🇪 +32</option>
+              <option value="+41">🇨🇭 +41</option>
+            </select>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="input-field"
+              placeholder="6 12 34 56 78"
+            />
+          </div>
+        </div>
+
+        {/* Category */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-surface-700">
+            Catégorie
+          </label>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="input-field"
+          >
+            <option value="blogger">🖊️ Blogger (Blog voyage/expat)</option>
+            <option value="media">📰 Media (Presse, média en ligne)</option>
+            <option value="influencer">⭐ Influencer (Instagram/TikTok/YouTube)</option>
+            <option value="association">🤝 Association (Association d'expatriés)</option>
+            <option value="corporate">💼 Corporate (Entreprise B2B)</option>
+            <option value="partner">🤝 Partner (Partenaire stratégique)</option>
+            <option value="agency">🏢 Agency (Agence)</option>
+            <option value="ecommerce">🛒 E-commerce</option>
+            <option value="other">🔹 Autre</option>
+          </select>
+        </div>
+
+        {/* Language & Country */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700">
+              Langue
+            </label>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="input-field"
+            >
+              <option value="fr">🇫🇷 Français</option>
+              <option value="en">🇬🇧 English</option>
+              <option value="es">🇪🇸 Español</option>
+              <option value="de">🇩🇪 Deutsch</option>
+              <option value="pt">🇵🇹 Português</option>
+              <option value="ru">🇷🇺 Русский</option>
+              <option value="ar">🇸🇦 العربية</option>
+              <option value="zh">🇨🇳 中文</option>
+              <option value="hi">🇮🇳 हिन्दी</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700">
+              Pays (ISO)
+            </label>
+            <input
+              type="text"
+              value={country}
+              onChange={(e) => setCountry(e.target.value.toUpperCase())}
+              className="input-field"
+              placeholder="FR"
+              maxLength={2}
+            />
+          </div>
+        </div>
+
+        {/* Tier */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-surface-700">
+            Tier (Priorité)
+          </label>
+          <select
+            value={tier}
+            onChange={(e) => setTier(Number(e.target.value))}
+            className="input-field"
+          >
+            <option value={1}>⭐⭐⭐ Tier 1 (Haute priorité - DR 50+)</option>
+            <option value={2}>⭐⭐ Tier 2 (Moyenne priorité - DR 30-50)</option>
+            <option value={3}>⭐ Tier 3 (Basse priorité - DR &lt;30)</option>
+          </select>
         </div>
 
         {/* Contact form URL */}

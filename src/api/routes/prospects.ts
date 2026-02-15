@@ -2,6 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser, parseIdParam } from "../middleware/auth.js";
 import { ingestProspect, ingestBulk } from "../../services/ingestion/ingestService.js";
+import { renderTemplateForProspect, getSenderInfo } from "../../services/messaging/templateRenderer.js";
+import { notifyProspectWon } from "../../services/notifications/telegramService.js";
 
 // Helper: Normalize URL (add https:// if missing)
 function normalizeUrl(url: string): string {
@@ -37,7 +39,9 @@ interface ProspectParams {
 interface CreateProspectBody {
   url: string;
   email?: string;
-  name?: string;
+  name?: string; // DEPRECATED: Use firstName + lastName instead
+  firstName?: string;
+  lastName?: string;
   contactFormUrl?: string;
   phone?: string;
   phoneCountryCode?: string;
@@ -232,7 +236,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       },
     },
     async (request, reply) => {
-      const { url, email, name, contactFormUrl, phone, phoneCountryCode, notes, language, country, category } = request.body;
+      const { url, email, name, firstName, lastName, contactFormUrl, phone, phoneCountryCode, notes, language, country, category } = request.body;
 
       // Normalize URL before processing
       const normalizedUrl = normalizeUrl(url);
@@ -249,6 +253,8 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         url: normalizedUrl,
         email,
         name,
+        firstName,
+        lastName,
         contactFormUrl,
         phone,
         phoneCountryCode,
@@ -266,10 +272,20 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           include: { contacts: true, sourceUrls: true },
         });
 
+        const domain = existing?.domain || "unknown";
+        const contactCount = existing?.contacts.length || 0;
+        const addedDate = existing?.createdAt
+          ? new Date(existing.createdAt).toLocaleDateString('fr-FR', {
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric'
+            })
+          : "inconnue";
+
         return reply.status(409).send({
           statusCode: 409,
-          error: "Conflict",
-          message: `Prospect already exists for this domain`,
+          error: "Duplicate",
+          message: `Ce domaine existe déjà : ${domain} (ajouté le ${addedDate}, ${contactCount} contact${contactCount > 1 ? 's' : ''})`,
           data: existing,
         });
       }
@@ -864,8 +880,8 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
     },
   );
 
-  // ───── PUT /:id/mark-won ─── Mark prospect as won ───────
-  app.put<{ Params: ProspectParams; Body: { backlink?: { pageUrl: string; anchorText?: string } } }>(
+  // ───── POST /:id/mark-won ─── Mark prospect as won ───────
+  app.post<{ Params: ProspectParams; Body: { backlink?: { pageUrl: string; anchorText?: string } } }>(
     "/:id/mark-won",
     {
       schema: {
@@ -907,6 +923,11 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         data: {
           status: "WON",
         },
+      });
+
+      // Send Telegram notification
+      await notifyProspectWon(id).catch((err) => {
+        request.log.error({ err, prospectId: id }, "Failed to send Telegram notification for prospect won");
       });
 
       // Optionally create backlink record
@@ -1089,6 +1110,90 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       });
 
       return reply.send({ data: events });
+    },
+  );
+
+  // ───────────────────────────────────────────────────────────
+  // GET /:id/generate-message - Generate pre-filled message for contact form
+  // ───────────────────────────────────────────────────────────
+  app.get<{ Params: ProspectParams }>(
+    "/:id/generate-message",
+    {
+      onRequest: [authenticateUser],
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseIdParam(request.params.id);
+
+      // Fetch prospect with contact form info
+      const prospect = await prisma.prospect.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          domain: true,
+          language: true,
+          contactFormUrl: true,
+          contactFormFields: true,
+          hasCaptcha: true,
+        },
+      });
+
+      if (!prospect) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "Prospect not found",
+        });
+      }
+
+      if (!prospect.contactFormUrl) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "No contact form detected for this prospect",
+        });
+      }
+
+      if (!prospect.language) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Prospect has no language set. Run enrichment first.",
+        });
+      }
+
+      // Get sender info
+      const senderInfo = await getSenderInfo();
+
+      // Render template
+      const rendered = await renderTemplateForProspect(id, senderInfo);
+
+      if (!rendered) {
+        return reply.status(500).send({
+          statusCode: 500,
+          error: "Internal Server Error",
+          message: "Failed to render message template",
+        });
+      }
+
+      return reply.send({
+        success: true,
+        data: {
+          subject: rendered.subject,
+          body: rendered.body,
+          contactFormUrl: prospect.contactFormUrl,
+          formFields: prospect.contactFormFields,
+          hasCaptcha: prospect.hasCaptcha,
+          language: prospect.language,
+          senderInfo,
+        },
+      });
     },
   );
 }

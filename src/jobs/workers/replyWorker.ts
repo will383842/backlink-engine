@@ -4,6 +4,7 @@ import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
 import { categorizeReply } from "../../services/outreach/replyCategorizer.js";
+import { notifyProspectReplied } from "../../services/notifications/telegramService.js";
 
 const log = createChildLogger("reply-worker");
 
@@ -120,6 +121,11 @@ async function processReply(reply: ImapReply): Promise<void> {
   await prisma.prospect.update({
     where: { id: contact.prospectId },
     data: { status: "REPLIED" },
+  });
+
+  // Send Telegram notification
+  await notifyProspectReplied(contact.prospectId).catch((err) => {
+    log.error({ err, prospectId: contact.prospectId }, "Failed to send Telegram notification for prospect replied");
   });
 
   // Categorize the reply using LLM

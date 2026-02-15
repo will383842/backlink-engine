@@ -136,10 +136,10 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
       const campaign = await prisma.campaign.create({
         data: {
           name: body.name,
-          language: body.language,
+          language: body.language as any,
           targetTier: body.targetTier ?? null,
           targetCountry: body.targetCountry ?? null,
-          targetCategory: body.targetCategory ?? null,
+          targetCategory: body.targetCategory as any,
           mailwizzListUid: body.mailwizzListUid ?? null,
           sequenceConfig: (body.sequenceConfig ?? {}) as unknown as import("@prisma/client").Prisma.InputJsonValue,
           stopOnReply: body.stopOnReply ?? true,
@@ -320,7 +320,7 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
       await prisma.prospect.update({
         where: { id: prospectId },
         data: {
-          status: "OUTREACH",
+          status: "CONTACTED_EMAIL",
           firstContactedAt: new Date(),
         },
       });
@@ -377,7 +377,7 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
       ] = await Promise.all([
         prisma.enrollment.count({ where: { campaignId: id } }),
         prisma.enrollment.count({ where: { campaignId: id, status: "active" } }),
-        prisma.enrollment.count({ where: { campaignId: id, status: "paused" } }),
+        prisma.enrollment.count({ where: { campaignId: id, status: "stopped" } }),
         prisma.enrollment.count({ where: { campaignId: id, status: "completed" } }),
         prisma.enrollment.count({ where: { campaignId: id, status: "stopped" } }),
         prisma.event.count({

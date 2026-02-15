@@ -16,7 +16,7 @@ const log = logger;  // Alias for convenience
 // ---------------------------------------------------------------------------
 import prospectsRoutes from "./api/routes/prospects.js";
 import campaignsRoutes from "./api/routes/campaigns.js";
-import contactsRoutes from "./api/routes/contacts.js";
+import { contactsRoutes } from "./api/routes/contacts.js";
 import backlinksRoutes from "./api/routes/backlinks.js";
 import assetsRoutes from "./api/routes/assets.js";
 import templatesRoutes from "./api/routes/templates.js";

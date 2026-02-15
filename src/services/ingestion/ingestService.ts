@@ -5,8 +5,7 @@
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { normalizeUrl, extractDomain } from "../../utils/urlNormalizer.js";
-// import { detectLanguage } from "../enrichment/languageDetector.js";
-// import { detectCountry } from "../enrichment/countryDetector.js";
+import { validateEmail } from "../email/emailValidator.js";
 import { enrichmentQueue } from "../../jobs/queue.js";
 
 const log = createChildLogger("ingest");
@@ -18,7 +17,9 @@ const log = createChildLogger("ingest");
 export interface IngestInput {
   url: string;
   email?: string;
-  name?: string;
+  name?: string; // DEPRECATED: Use firstName + lastName instead
+  firstName?: string;
+  lastName?: string;
   phone?: string;
   phoneCountryCode?: string;
   language?: string;
@@ -43,6 +44,35 @@ export interface BulkIngestResult {
   duplicates: number;
   errors: number;
   details: IngestResult[];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Split full name into firstName and lastName
+ * Examples:
+ * - "John Doe" → { firstName: "John", lastName: "Doe" }
+ * - "John" → { firstName: "John", lastName: null }
+ * - "Jean-Pierre Dupont" → { firstName: "Jean-Pierre", lastName: "Dupont" }
+ */
+function splitName(fullName: string): { firstName: string | null; lastName: string | null } {
+  if (!fullName || fullName.trim() === "") {
+    return { firstName: null, lastName: null };
+  }
+
+  const parts = fullName.trim().split(/\s+/);
+
+  if (parts.length === 1) {
+    return { firstName: parts[0] ?? null, lastName: null };
+  }
+
+  // First part is firstName, rest is lastName
+  const firstName = parts[0] ?? null;
+  const lastName = parts.slice(1).join(" ") || null;
+
+  return { firstName, lastName };
 }
 
 // ---------------------------------------------------------------------------
@@ -104,8 +134,8 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
         data: {
           domain,
           source: data.source,
-          category: data.category || "blogger",
-          language: language !== "unknown" ? language : null,
+          category: (data.category || "blogger") as any,
+          language: (language !== "unknown" ? language : null) as any,
           country: country || null,
           contactFormUrl: data.contactFormUrl,
           phone: data.phone || null,
@@ -128,15 +158,50 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
       // Create contact if email provided
       if (data.email) {
         const emailNormalized = data.email.trim().toLowerCase();
+
+        // Validate email
+        const validation = await validateEmail(emailNormalized);
+        log.debug({ email: emailNormalized, status: validation.status }, "Email validated");
+
+        // Determine firstName/lastName
+        let firstName = data.firstName ?? null;
+        let lastName = data.lastName ?? null;
+
+        // If firstName/lastName not provided, try to split name
+        if (!firstName && !lastName && data.name) {
+          const split = splitName(data.name);
+          firstName = split.firstName;
+          lastName = split.lastName;
+        }
+
         await tx.contact.create({
           data: {
             prospectId: prospect.id,
             email: data.email,
             emailNormalized,
-            name: data.name ?? null,
+            firstName,
+            lastName,
+            name: data.name ?? null, // Keep for backward compatibility
+            emailStatus: validation.status,
             discoveredVia: data.source,
           },
         });
+
+        // Log email validation event if not verified
+        if (validation.status !== "verified") {
+          await tx.event.create({
+            data: {
+              prospectId: prospect.id,
+              eventType: "EMAIL_VALIDATION_WARNING",
+              eventSource: data.source,
+              data: {
+                email: emailNormalized,
+                status: validation.status,
+                reason: validation.reason,
+              } as unknown as import("@prisma/client").Prisma.InputJsonValue,
+            },
+          });
+        }
       }
 
       // Create ingestion event

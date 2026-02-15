@@ -14,12 +14,11 @@ declare module "@fastify/jwt" {
 }
 
 // ─────────────────────────────────────────────────────────────
-// JWT-based user authentication (Authorization: Bearer <token>)
+// Session-based user authentication (simple cookie-based auth)
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Fastify preHandler that validates a JWT from the Authorization
- * header and populates `request.user`.
+ * Fastify preHandler that validates a user session and populates `request.user`.
  *
  * Usage:
  *   fastify.addHook("preHandler", authenticateUser);
@@ -30,28 +29,45 @@ export const authenticateUser: preHandlerHookHandler = async (
   request: FastifyRequest,
   reply: FastifyReply,
 ) => {
-  try {
-    await request.jwtVerify();
-  } catch (err) {
-    return reply.status(401).send({
-      statusCode: 401,
-      error: "Unauthorized",
-      message: "Invalid or missing authentication token",
-    });
+  // Check for session first (preferred method)
+  const sessionUser = (request.session as any).user;
+
+  if (sessionUser) {
+    // Session exists - attach user to request
+    request.user = sessionUser;
+    return;
   }
 
-  // FIX: Check JWT blacklist
-  const token = request.headers.authorization?.split(" ")[1];
-  if (token) {
-    const isBlacklisted = await redis.exists(`jwt:blacklist:${token}`);
-    if (isBlacklisted) {
-      return reply.status(401).send({
-        statusCode: 401,
-        error: "Unauthorized",
-        message: "Token has been revoked",
-      });
+  // Fallback to JWT for backward compatibility
+  const authHeader = request.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    try {
+      await request.jwtVerify();
+
+      // Check JWT blacklist
+      const token = authHeader.split(" ")[1];
+      if (token) {
+        const isBlacklisted = await redis.exists(`jwt:blacklist:${token}`);
+        if (isBlacklisted) {
+          return reply.status(401).send({
+            statusCode: 401,
+            error: "Unauthorized",
+            message: "Token has been revoked",
+          });
+        }
+      }
+      return; // JWT is valid
+    } catch (err) {
+      // JWT verification failed, continue to 401
     }
   }
+
+  // No valid session or JWT
+  return reply.status(401).send({
+    statusCode: 401,
+    error: "Unauthorized",
+    message: "Authentication required",
+  });
 };
 
 // ─────────────────────────────────────────────────────────────

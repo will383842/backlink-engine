@@ -147,7 +147,7 @@ export default async function ingestRoutes(app: FastifyInstance): Promise<void> 
             data: {
               domain,
               source: "scraper",
-              language: item.language ?? null,
+              language: (item.language ?? null) as any,
               country: item.country ?? null,
               mozDa: item.mozDa ?? null,
               spamScore: item.spamScore ?? 0,

@@ -219,7 +219,7 @@ async function applyAutomaticActions(
   // Update prospect status
   await prisma.prospect.update({
     where: { id: prospectId },
-    data: { status: action.prospectStatus },
+    data: { status: action.prospectStatus as any },
   });
 
   // Handle enrollment based on action type
@@ -239,7 +239,7 @@ async function applyAutomaticActions(
       await prisma.enrollment.update({
         where: { id: enrollmentId },
         data: {
-          status: "paused",
+          status: "stopped",
           stoppedReason: `awaiting_response_${category.toLowerCase()}`,
         },
       });

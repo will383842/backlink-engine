@@ -176,7 +176,6 @@ export function detectCountryFromDomain(domain: string): string {
     // Portuguese variations
     portugal: "PT",
     portuguese: "PT",
-    portugal: "PT",
     brasil: "BR",
     brazil: "BR",
 

@@ -159,7 +159,7 @@ export default async function backlinksRoutes(app: FastifyInstance): Promise<voi
           pageUrl: body.pageUrl,
           targetUrl: body.targetUrl,
           anchorText: body.anchorText ?? null,
-          linkType: body.linkType ?? "dofollow",
+          linkType: (body.linkType ?? "dofollow") as any,
           isLive: body.isLive ?? true,
           hasWidget: body.hasWidget ?? false,
           hasBadge: body.hasBadge ?? false,

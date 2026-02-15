@@ -6,6 +6,7 @@ import {
   updateAutoEnrollmentConfig,
   getThrottleStats,
 } from "../../services/autoEnrollment/config.js";
+import { sendTestNotification } from "../../services/notifications/telegramService.js";
 
 // ─────────────────────────────────────────────────────────────
 // Global settings management
@@ -74,8 +75,8 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       // Upsert the setting
       const setting = await prisma.appSetting.upsert({
         where: { key },
-        create: { key, value },
-        update: { value },
+        create: { key, value: value as any },
+        update: { value: value as any },
       });
 
       return reply.send({ data: { key: setting.key, value: setting.value } });
@@ -160,8 +161,8 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       // Save to DB
       await prisma.appSetting.upsert({
         where: { key: "mailwizz" },
-        create: { key: "mailwizz", value: currentConfig },
-        update: { value: currentConfig },
+        create: { key: "mailwizz", value: currentConfig as any },
+        update: { value: currentConfig as any },
       });
 
       // Mask API key in response
@@ -241,6 +242,221 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       const updated = await getAutoEnrollmentConfig();
 
       return reply.send({ data: updated });
+    },
+  );
+
+  // ───── GET /outreach ─── Get outreach configuration ─────────
+  app.get("/outreach", async (request, reply) => {
+    const setting = await prisma.appSetting.findUnique({
+      where: { key: "outreach_config" },
+    });
+
+    const defaultConfig = {
+      yourName: "",
+      yourCompany: "SOS Expat",
+      yourWebsite: "https://sos-expat.com",
+      contactEmail: "",
+      contactPhone: "",
+    };
+
+    if (!setting) {
+      return reply.send({ data: defaultConfig });
+    }
+
+    return reply.send({ data: setting.value });
+  });
+
+  // ───── PUT /outreach ─── Update outreach configuration ──────
+  app.put<{
+    Body: {
+      yourName?: string;
+      yourCompany?: string;
+      yourWebsite?: string;
+      contactEmail?: string;
+      contactPhone?: string;
+    };
+  }>(
+    "/outreach",
+    {
+      schema: {
+        body: {
+          type: "object",
+          properties: {
+            yourName: { type: "string" },
+            yourCompany: { type: "string" },
+            yourWebsite: { type: "string" },
+            contactEmail: { type: "string" },
+            contactPhone: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const config = request.body;
+
+      // Save to DB
+      const setting = await prisma.appSetting.upsert({
+        where: { key: "outreach_config" },
+        create: { key: "outreach_config", value: config as any },
+        update: { value: config as any },
+      });
+
+      return reply.send({ data: setting.value });
+    },
+  );
+
+  // ───── GET /telegram ─── Get Telegram notifications config ─
+  app.get("/telegram", async (request, reply) => {
+    const setting = await prisma.appSetting.findUnique({
+      where: { key: "telegram_notifications" },
+    });
+
+    const defaultConfig = {
+      enabled: false,
+      botToken: "",
+      chatId: "",
+      events: {
+        prospectReplied: true,
+        prospectWon: true,
+        backlinkLost: true,
+        backlinkVerified: false,
+      },
+    };
+
+    if (!setting) {
+      return reply.send({ data: defaultConfig });
+    }
+
+    // Mask bot token in response
+    const config = setting.value as Record<string, unknown>;
+    if (config.botToken) {
+      config.botToken = "***";
+    }
+
+    return reply.send({ data: config });
+  });
+
+  // ───── PUT /telegram ─── Update Telegram notifications config
+  app.put<{
+    Body: {
+      enabled?: boolean;
+      botToken?: string;
+      chatId?: string;
+      events?: {
+        prospectReplied?: boolean;
+        prospectWon?: boolean;
+        backlinkLost?: boolean;
+        backlinkVerified?: boolean;
+      };
+    };
+  }>(
+    "/telegram",
+    {
+      schema: {
+        body: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            botToken: { type: "string" },
+            chatId: { type: "string" },
+            events: {
+              type: "object",
+              properties: {
+                prospectReplied: { type: "boolean" },
+                prospectWon: { type: "boolean" },
+                backlinkLost: { type: "boolean" },
+                backlinkVerified: { type: "boolean" },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const updates = request.body;
+
+      // Get current config
+      const setting = await prisma.appSetting.findUnique({
+        where: { key: "telegram_notifications" },
+      });
+
+      const currentConfig = setting
+        ? (setting.value as Record<string, unknown>)
+        : {
+            enabled: false,
+            botToken: "",
+            chatId: "",
+            events: {
+              prospectReplied: true,
+              prospectWon: true,
+              backlinkLost: true,
+              backlinkVerified: false,
+            },
+          };
+
+      // Merge updates (don't update botToken if "***" placeholder)
+      if (updates.enabled !== undefined) currentConfig.enabled = updates.enabled;
+      if (updates.chatId !== undefined) currentConfig.chatId = updates.chatId;
+      if (updates.botToken !== undefined && updates.botToken !== "***") {
+        currentConfig.botToken = updates.botToken;
+      }
+      if (updates.events !== undefined) {
+        currentConfig.events = { ...(currentConfig.events as any), ...updates.events };
+      }
+
+      // Save to DB
+      await prisma.appSetting.upsert({
+        where: { key: "telegram_notifications" },
+        create: { key: "telegram_notifications", value: currentConfig as any },
+        update: { value: currentConfig as any },
+      });
+
+      // Mask bot token in response
+      const responseConfig = { ...currentConfig };
+      if (responseConfig.botToken) {
+        responseConfig.botToken = "***";
+      }
+
+      return reply.send({ data: responseConfig });
+    },
+  );
+
+  // ───── POST /telegram/test ─── Send test Telegram notification
+  app.post<{
+    Body: {
+      botToken: string;
+      chatId: string;
+    };
+  }>(
+    "/telegram/test",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["botToken", "chatId"],
+          properties: {
+            botToken: { type: "string" },
+            chatId: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { botToken, chatId } = request.body;
+
+      const success = await sendTestNotification(botToken, chatId);
+
+      if (success) {
+        return reply.send({
+          success: true,
+          message: "Message de test envoyé avec succès",
+        });
+      } else {
+        return reply.status(400).send({
+          success: false,
+          message: "Échec de l'envoi du message de test. Vérifiez le Bot Token et le Chat ID.",
+        });
+      }
     },
   );
 }

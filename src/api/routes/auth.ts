@@ -25,7 +25,7 @@ interface RegisterBody {
 
 export default async function authRoutes(app: FastifyInstance): Promise<void> {
 
-  // ───── POST /login ─── Authenticate and return JWT ───────
+  // ───── POST /login ─── Authenticate with session cookie ───────
   app.post<{ Body: LoginBody }>(
     "/login",
     {
@@ -45,7 +45,7 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
           200: {
             type: "object",
             properties: {
-              token: { type: "string" },
+              success: { type: "boolean" },
               user: {
                 type: "object",
                 properties: {
@@ -84,16 +84,16 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const payload = {
+      // Create session (replaces JWT token)
+      (request.session as any).user = {
         id: user.id,
         email: user.email,
+        name: user.name,
         role: user.role,
       };
 
-      const token = app.jwt.sign(payload);
-
       return reply.send({
-        token,
+        success: true,
         user: {
           id: user.id,
           email: user.email,
@@ -104,35 +104,20 @@ export default async function authRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // ───── POST /logout ─── Logout (JWT blacklist) ──────────
+  // ───── POST /logout ─── Logout (destroy session) ──────────
   app.post(
     "/logout",
     {
       preHandler: [authenticateUser],
     },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      // FIX: Implement JWT blacklist with Redis
-      const token = request.headers.authorization?.split(" ")[1];
+      // Destroy session
+      await request.session.destroy();
 
-      if (token) {
-        try {
-          // Decode token to get expiration time
-          const decoded = app.jwt.decode(token) as { exp: number } | null;
-
-          if (decoded?.exp) {
-            const ttl = decoded.exp - Math.floor(Date.now() / 1000);
-
-            // Only blacklist if token hasn't expired yet
-            if (ttl > 0) {
-              await redis.setex(`jwt:blacklist:${token}`, ttl, "1");
-            }
-          }
-        } catch (err) {
-          // Token decode failed, skip blacklisting
-        }
-      }
-
-      return reply.send({ message: "Logged out successfully" });
+      return reply.send({
+        success: true,
+        message: "Logged out successfully"
+      });
     },
   );
 

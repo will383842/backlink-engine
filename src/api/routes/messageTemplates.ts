@@ -209,7 +209,7 @@ export async function messageTemplatesRoutes(app: FastifyInstance) {
     }
 
     try {
-      const template = await prisma.messageTemplate.findUnique({
+      const template = await prisma.messageTemplate.findFirst({
         where: { language: language as any },
       });
 

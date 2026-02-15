@@ -3,6 +3,7 @@ import { redis } from "../../config/redis.js";
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
+import { notifyBacklinkLost, notifyBacklinkVerified } from "../../services/notifications/telegramService.js";
 
 const log = createChildLogger("verification-worker");
 
@@ -78,6 +79,12 @@ const backlinkVerifier = {
               lastVerifiedAt: new Date(),
             },
           });
+
+          // Send Telegram notification
+          await notifyBacklinkVerified(backlink.id).catch((err) => {
+            log.error({ err, backlinkId: backlink.id }, "Failed to send Telegram notification for backlink verified");
+          });
+
           verified++;
         } else {
           // Link no longer found on the page
@@ -108,6 +115,11 @@ const backlinkVerifier = {
                 targetUrl: backlink.targetUrl,
               },
             },
+          });
+
+          // Send Telegram notification
+          await notifyBacklinkLost(backlink.id).catch((err) => {
+            log.error({ err, backlinkId: backlink.id }, "Failed to send Telegram notification for backlink lost");
           });
 
           lost++;

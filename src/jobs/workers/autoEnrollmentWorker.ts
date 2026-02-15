@@ -119,7 +119,8 @@ export async function processAutoEnrollment(
             prospectId: prospect.id,
             contactId: contact.id,
             eventType: "ENROLLED",
-            eventData: {
+            eventSource: "auto_enrollment",
+            data: {
               campaignId: campaign.id,
               campaignName: campaign.name,
               autoEnrolled: true,

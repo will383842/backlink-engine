@@ -128,7 +128,7 @@ export default async function templatesRoutes(app: FastifyInstance): Promise<voi
       const template = await prisma.outreachTemplate.create({
         data: {
           name: body.name,
-          language: body.language,
+          language: body.language as any,
           purpose: body.purpose,
           subject: body.subject,
           body: body.body,

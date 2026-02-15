@@ -46,7 +46,7 @@ export async function detectLanguageFromUrl(url: string): Promise<string | null>
     }
 
     const html = await response.text();
-    const $ = cheerio.load(html);
+    const $ = load(html);
 
     // Strategy 1: Check HTML lang attribute
     const htmlLang = $("html").attr("lang");
@@ -166,7 +166,6 @@ export function detectLanguageFromDomain(domain: string): string {
     org: "en",
     net: "en",
     io: "en",
-    co: "en",
     info: "en",
     biz: "en",
     app: "en",

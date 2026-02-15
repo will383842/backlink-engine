@@ -20,6 +20,21 @@ interface MailWizzWebhookBody {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SOS Expat webhook event types
+// ─────────────────────────────────────────────────────────────
+
+interface SosExpatUserRegisteredBody {
+  email: string;
+  userId?: string;
+  userType?: string; // "client" | "blogger" | "provider" | "influencer" | "chatter" | etc.
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  registeredAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+// ─────────────────────────────────────────────────────────────
 // Plugin
 // ─────────────────────────────────────────────────────────────
 
@@ -130,7 +145,7 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
               // Update contact email status
               await prisma.contact.update({
                 where: { id: enrollment.contactId },
-                data: { emailStatus: "bounced" },
+                data: { emailStatus: "invalid" as any },
               });
             }
             break;
@@ -271,6 +286,200 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
         request.log.error({ err, event, subscriber_uid }, "Error processing MailWizz webhook");
         // Return 200 to prevent MailWizz from retrying (we log the error)
         return reply.status(200).send({ status: "error", event });
+      }
+    },
+  );
+
+  // ───── POST /sos-expat/user-registered ─── SOS Expat user registration webhook ──────
+  // Called when ANYONE registers on SOS Expat (client, blogger, provider, influencer, chatter, etc.).
+  // Stops all active prospecting campaigns for this email - we don't prospect our own ecosystem!
+  app.post<{ Body: SosExpatUserRegisteredBody }>(
+    "/sos-expat/user-registered",
+    {
+      preHandler: [authenticateWebhook],
+      config: {
+        rateLimit: { max: 100, timeWindow: "1 minute" },
+      },
+      schema: {
+        body: {
+          type: "object",
+          required: ["email"],
+          properties: {
+            email: { type: "string", format: "email" },
+            userId: { type: "string" },
+            userType: { type: "string", enum: ["client", "blogger", "provider", "influencer", "chatter", "group_admin", "other"] },
+            firstName: { type: "string" },
+            lastName: { type: "string" },
+            phone: { type: "string" },
+            registeredAt: { type: "string" },
+            metadata: { type: "object" },
+          },
+        },
+      },
+    },
+    async (request: FastifyRequest<{ Body: SosExpatUserRegisteredBody }>, reply: FastifyReply) => {
+      const { email, userId, userType, firstName, lastName, phone, registeredAt, metadata } = request.body;
+      const emailNormalized = email.toLowerCase().trim();
+
+      request.log.info(
+        { email: emailNormalized, userId, userType },
+        "SOS Expat user registration webhook received",
+      );
+
+      try {
+        // Find contact by email
+        const contact = await prisma.contact.findUnique({
+          where: { emailNormalized },
+          include: {
+            prospect: { select: { id: true, domain: true, status: true } },
+          },
+        });
+
+        if (!contact) {
+          request.log.info(
+            { email: emailNormalized, userType },
+            "No contact found for registered SOS Expat user (prospect never contacted)",
+          );
+
+          // Still add to suppression list to prevent future prospecting
+          await prisma.suppressionEntry.upsert({
+            where: { emailNormalized },
+            create: {
+              emailNormalized,
+              reason: "sos_expat_user",
+              source: "sos_expat_webhook",
+            },
+            update: {
+              reason: "sos_expat_user",
+              source: "sos_expat_webhook",
+            },
+          });
+
+          return reply.status(200).send({
+            status: "ok",
+            message: "Email added to suppression list",
+            actionsPerformed: {
+              suppressionAdded: true,
+              enrollmentsStopped: 0,
+              prospectUpdated: false,
+            },
+          });
+        }
+
+        // Stop all active enrollments for this contact
+        const activeEnrollments = await prisma.enrollment.findMany({
+          where: {
+            contactId: contact.id,
+            status: "active",
+          },
+        });
+
+        if (activeEnrollments.length > 0) {
+          await prisma.enrollment.updateMany({
+            where: {
+              contactId: contact.id,
+              status: "active",
+            },
+            data: {
+              status: "stopped",
+              stoppedReason: "sos_expat_user_registered",
+              completedAt: new Date(),
+            },
+          });
+
+          request.log.info(
+            { contactId: contact.id, count: activeEnrollments.length, userType },
+            "Stopped active enrollments for SOS Expat user",
+          );
+        }
+
+        // Update contact - mark as opted out and store client info
+        await prisma.contact.update({
+          where: { id: contact.id },
+          data: {
+            optedOut: true,
+            optedOutAt: new Date(),
+            firstName: firstName || contact.firstName,
+            lastName: lastName || contact.lastName,
+          },
+        });
+
+        // Update prospect status to DO_NOT_CONTACT (part of SOS Expat ecosystem)
+        await prisma.prospect.update({
+          where: { id: contact.prospectId },
+          data: {
+            status: "DO_NOT_CONTACT",
+          },
+        });
+
+        // Add to suppression list
+        await prisma.suppressionEntry.upsert({
+          where: { emailNormalized },
+          create: {
+            emailNormalized,
+            reason: "sos_expat_user",
+            source: "sos_expat_webhook",
+          },
+          update: {
+            reason: "sos_expat_user",
+            source: "sos_expat_webhook",
+          },
+        });
+
+        // Create event log
+        await prisma.event.create({
+          data: {
+            prospectId: contact.prospectId,
+            contactId: contact.id,
+            eventType: "sos_expat_user_registered",
+            eventSource: "sos_expat_webhook",
+            data: {
+              userId,
+              userType,
+              email: emailNormalized,
+              firstName,
+              lastName,
+              phone,
+              registeredAt,
+              enrollmentsStopped: activeEnrollments.length,
+              ...metadata,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        });
+
+        request.log.info(
+          {
+            prospectId: contact.prospectId,
+            contactId: contact.id,
+            userType,
+            enrollmentsStopped: activeEnrollments.length,
+          },
+          "SOS Expat user registration processed successfully",
+        );
+
+        return reply.status(200).send({
+          status: "ok",
+          message: `SOS Expat user registration processed successfully (${userType || 'unknown type'})`,
+          actionsPerformed: {
+            suppressionAdded: true,
+            enrollmentsStopped: activeEnrollments.length,
+            prospectUpdated: true,
+            prospectStatus: "DO_NOT_CONTACT",
+            userType,
+          },
+        });
+      } catch (err) {
+        request.log.error(
+          { err, email: emailNormalized },
+          "Error processing SOS Expat client registration webhook",
+        );
+
+        // Return 500 so SOS Expat can retry
+        return reply.status(500).send({
+          status: "error",
+          message: "Failed to process client registration",
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
       }
     },
   );
