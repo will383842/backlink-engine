@@ -988,4 +988,106 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       return reply.send({ message: "Prospect ready for re-contact", prospectId: id });
     },
   );
+
+  // ───── POST /:id/log-manual-contact ─── Log manual contact (form submission) ────
+  app.post<{ Params: ProspectParams; Body: { message: string; method?: string; nextFollowupDays?: number } }>(
+    "/:id/log-manual-contact",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+        body: {
+          type: "object",
+          required: ["message"],
+          properties: {
+            message: { type: "string", description: "Content of the message sent via contact form" },
+            method: { type: "string", description: "Contact method (contact_form, linkedin, etc.)", default: "contact_form" },
+            nextFollowupDays: { type: "integer", description: "Days until next followup", default: 7 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseIdParam(request.params.id);
+      const { message, method = "contact_form", nextFollowupDays = 7 } = request.body;
+
+      const existing = await prisma.prospect.findUnique({ where: { id } });
+      if (!existing) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: `Prospect ${id} not found`,
+        });
+      }
+
+      // Update prospect status to CONTACTED_MANUAL
+      const nextFollowupAt = new Date();
+      nextFollowupAt.setDate(nextFollowupAt.getDate() + nextFollowupDays);
+
+      await prisma.prospect.update({
+        where: { id },
+        data: {
+          status: "CONTACTED_MANUAL",
+          lastContactedAt: new Date(),
+          nextFollowupAt,
+        },
+      });
+
+      // Log event with message content
+      await prisma.event.create({
+        data: {
+          prospectId: id,
+          eventType: "MANUAL_CONTACT_SENT",
+          eventSource: "manual",
+          userId: request.user.id,
+          data: {
+            method,
+            message,
+            contactedAt: new Date().toISOString(),
+            nextFollowupAt: nextFollowupAt.toISOString(),
+          },
+        },
+      });
+
+      return reply.send({
+        message: "Manual contact logged successfully",
+        prospectId: id,
+        nextFollowupAt,
+      });
+    },
+  );
+
+  // ───── GET /:id/contact-history ─── Get all manual contacts for a prospect ────
+  app.get<{ Params: ProspectParams }>(
+    "/:id/contact-history",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseIdParam(request.params.id);
+
+      // Get all manual contact events
+      const events = await prisma.event.findMany({
+        where: {
+          prospectId: id,
+          eventType: { in: ["MANUAL_CONTACT_SENT", "recontact_initiated", "CONTACTED_EMAIL"] },
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      return reply.send({ data: events });
+    },
+  );
 }
