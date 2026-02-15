@@ -1,5 +1,5 @@
 import { franc } from "franc";
-import cheerio from "cheerio";
+import { load } from "cheerio";
 
 // ─────────────────────────────────────────────────────────────
 // Language detection service (using franc + HTML lang attribute)
