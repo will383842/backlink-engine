@@ -1,13 +1,195 @@
 // ---------------------------------------------------------------------------
-// SerpAPI Client - Search engine results for prospect discovery
+// Google Search Client - Prospect discovery via direct scraping + SerpAPI fallback
+// ---------------------------------------------------------------------------
+//
+// Primary: Direct Google scraping (free, unlimited)
+// Fallback: SerpAPI (paid, if SERPAPI_KEY is set)
+//
+// Anti-ban: Conservative rate limiting (10s/domain, 6/min global, 5-15s
+// delay between queries, 403/429 → 1h block). Uses proxyFetch for
+// optional proxy rotation. Chrome User-Agent. No mention of sos-expat.com.
 // ---------------------------------------------------------------------------
 
+import * as cheerio from "cheerio";
 import { createChildLogger } from "../../utils/logger.js";
 import { extractDomain } from "../../utils/urlNormalizer.js";
-import { waitForRateLimit } from "./rateLimiter.js";
+import { waitForRateLimit, blockDomain } from "./rateLimiter.js";
+import { proxyFetch } from "../../config/proxy.js";
 import type { CrawlHit } from "./blogCrawler.js";
 
-const log = createChildLogger("serpapi-client");
+const log = createChildLogger("search-client");
+
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+// ---------------------------------------------------------------------------
+// Direct Google Scraping (free, primary method)
+// ---------------------------------------------------------------------------
+
+/**
+ * Scrape Google search results directly.
+ * Returns parsed organic results (links, titles, snippets).
+ */
+async function scrapeGoogleDirect(
+  query: string,
+  lang: string = "en",
+  num: number = 20,
+): Promise<CrawlHit[]> {
+  // Rate limit: be very conservative with Google
+  const allowed = await waitForRateLimit("google");
+  if (!allowed) {
+    log.debug({ query }, "Google rate limited or blocked, skipping.");
+    return [];
+  }
+
+  // Extra delay between Google queries (5-15 seconds)
+  const extraDelay = 5000 + Math.random() * 10000;
+  await new Promise((r) => setTimeout(r, extraDelay));
+
+  const params = new URLSearchParams({
+    q: query,
+    num: String(num),
+    hl: lang,
+  });
+
+  try {
+    const response = await proxyFetch(
+      `https://www.google.com/search?${params.toString()}`,
+      {
+        headers: {
+          "User-Agent": USER_AGENT,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": `${lang},en;q=0.9`,
+          "Accept-Encoding": "gzip, deflate",
+          "DNT": "1",
+          "Connection": "keep-alive",
+          "Upgrade-Insecure-Requests": "1",
+        },
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+
+    if (response.status === 429 || response.status === 403) {
+      await blockDomain("google");
+      log.warn({ query, status: response.status }, "Google blocked us. Pausing for 1 hour.");
+      return [];
+    }
+
+    if (!response.ok) {
+      log.warn({ query, status: response.status }, "Google search failed.");
+      return [];
+    }
+
+    const html = await response.text();
+
+    // Detect CAPTCHA page
+    if (html.includes("captcha") || html.includes("unusual traffic") || html.includes("sorry/index")) {
+      await blockDomain("google");
+      log.warn({ query }, "Google CAPTCHA detected. Pausing for 1 hour.");
+      return [];
+    }
+
+    return parseGoogleResults(html);
+  } catch (err) {
+    log.error({ err, query }, "Google scrape failed.");
+    return [];
+  }
+}
+
+/**
+ * Parse Google search results HTML to extract organic results.
+ */
+function parseGoogleResults(html: string): CrawlHit[] {
+  const $ = cheerio.load(html);
+  const hits: CrawlHit[] = [];
+  const seenDomains = new Set<string>();
+
+  // Google organic results are in <div class="g"> containers
+  // Multiple selector strategies for robustness
+  const selectors = [
+    "div.g",           // Standard organic results
+    "div.tF2Cxc",      // Alternative container
+    "div[data-hveid]",  // Data attribute based
+  ];
+
+  for (const selector of selectors) {
+    $(selector).each((_i, el) => {
+      const $el = $(el);
+
+      // Extract link
+      const linkEl = $el.find("a[href]").first();
+      const href = linkEl.attr("href") ?? "";
+
+      // Skip Google internal links, ads, and non-HTTP
+      if (
+        !href.startsWith("http") ||
+        href.includes("google.com") ||
+        href.includes("youtube.com") ||
+        href.includes("webcache.googleusercontent") ||
+        href.includes("translate.google")
+      ) {
+        return;
+      }
+
+      const domain = extractDomain(href);
+      if (!domain || seenDomains.has(domain)) return;
+
+      // Extract title
+      const title = $el.find("h3").first().text().trim() || null;
+
+      // Extract snippet (multiple possible selectors)
+      const snippet =
+        $el.find(".VwiC3b").first().text().trim() ||
+        $el.find("span.aCOpRe").first().text().trim() ||
+        $el.find("[data-sncf]").first().text().trim() ||
+        $el.find(".IsZvec").first().text().trim() ||
+        null;
+
+      seenDomains.add(domain);
+      hits.push({
+        url: href,
+        domain,
+        title,
+        metaDescription: snippet,
+      });
+    });
+
+    // If we found results with this selector, stop trying others
+    if (hits.length > 0) break;
+  }
+
+  // Fallback: extract all external links if selectors didn't work
+  if (hits.length === 0) {
+    $("a[href^='http']").each((_i, el) => {
+      const href = $(el).attr("href") ?? "";
+      if (
+        href.includes("google.com") ||
+        href.includes("youtube.com") ||
+        href.includes("webcache") ||
+        href.includes("translate.google")
+      ) {
+        return;
+      }
+
+      const domain = extractDomain(href);
+      if (!domain || seenDomains.has(domain)) return;
+
+      seenDomains.add(domain);
+      hits.push({
+        url: href,
+        domain,
+        title: $(el).text().trim() || null,
+        metaDescription: null,
+      });
+    });
+  }
+
+  return hits;
+}
+
+// ---------------------------------------------------------------------------
+// SerpAPI (paid fallback)
+// ---------------------------------------------------------------------------
 
 interface SerpApiResult {
   organic_results?: Array<{
@@ -18,73 +200,100 @@ interface SerpApiResult {
   }>;
 }
 
+async function searchViaSerpApi(
+  query: string,
+  apiKey: string,
+  maxResults: number,
+): Promise<CrawlHit[]> {
+  await waitForRateLimit("serpapi");
+
+  const params = new URLSearchParams({
+    q: query,
+    api_key: apiKey,
+    engine: "google",
+    num: String(Math.min(maxResults, 100)),
+  });
+
+  const response = await fetch(
+    `https://serpapi.com/search.json?${params.toString()}`,
+    { signal: AbortSignal.timeout(30_000) },
+  );
+
+  if (!response.ok) {
+    log.warn({ query, status: response.status }, "SerpAPI request failed.");
+    return [];
+  }
+
+  const data = (await response.json()) as SerpApiResult;
+  if (!data.organic_results) return [];
+
+  return data.organic_results.map((r) => ({
+    url: r.link,
+    domain: extractDomain(r.link) ?? "",
+    title: r.title || null,
+    metaDescription: r.snippet || null,
+  })).filter((h) => h.domain);
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /**
- * Search SerpAPI for prospects matching given queries.
+ * Search for prospects matching given queries.
+ *
+ * Primary: Direct Google scraping (free, no API key needed)
+ * Fallback: SerpAPI if SERPAPI_KEY is configured
  *
  * @param queries - Array of search queries
- * @param maxResultsPerQuery - Max results per query (default: 50)
+ * @param maxResultsPerQuery - Max results per query (default: 20)
  */
 export async function searchForProspects(
   queries: string[],
-  maxResultsPerQuery: number = 50,
+  maxResultsPerQuery: number = 20,
 ): Promise<CrawlHit[]> {
-  const apiKey = process.env["SERPAPI_KEY"];
-  if (!apiKey) {
-    log.warn("SERPAPI_KEY not set, skipping search.");
-    return [];
-  }
+  const serpApiKey = process.env["SERPAPI_KEY"];
+  const useSerpApi = !!serpApiKey;
 
   const allHits: CrawlHit[] = [];
   const seenDomains = new Set<string>();
 
+  log.info(
+    { totalQueries: queries.length, method: useSerpApi ? "serpapi" : "google-direct" },
+    "Starting prospect search.",
+  );
+
   for (const query of queries) {
     try {
-      await waitForRateLimit("serpapi");
+      let queryHits: CrawlHit[];
 
-      const params = new URLSearchParams({
-        q: query,
-        api_key: apiKey,
-        engine: "google",
-        num: String(Math.min(maxResultsPerQuery, 100)),
-      });
-
-      const response = await fetch(
-        `https://serpapi.com/search.json?${params.toString()}`,
-        { signal: AbortSignal.timeout(30_000) },
-      );
-
-      if (!response.ok) {
-        log.warn({ query, status: response.status }, "SerpAPI request failed.");
-        continue;
+      if (useSerpApi) {
+        // Paid: SerpAPI
+        queryHits = await searchViaSerpApi(query, serpApiKey, maxResultsPerQuery);
+      } else {
+        // Free: Direct Google scraping
+        queryHits = await scrapeGoogleDirect(query, "en", maxResultsPerQuery);
       }
 
-      const data = (await response.json()) as SerpApiResult;
-
-      if (!data.organic_results) {
-        log.debug({ query }, "No organic results.");
-        continue;
+      // Deduplicate
+      for (const hit of queryHits) {
+        if (!seenDomains.has(hit.domain)) {
+          seenDomains.add(hit.domain);
+          allHits.push(hit);
+        }
       }
 
-      for (const result of data.organic_results) {
-        const domain = extractDomain(result.link);
-        if (!domain || seenDomains.has(domain)) continue;
-
-        seenDomains.add(domain);
-        allHits.push({
-          url: result.link,
-          domain,
-          title: result.title || null,
-          metaDescription: result.snippet || null,
-        });
-      }
-
-      log.debug({ query, results: data.organic_results.length }, "SerpAPI query complete.");
+      log.debug({ query, results: queryHits.length }, "Query complete.");
     } catch (err) {
-      log.error({ err, query }, "SerpAPI query failed.");
+      log.error({ err, query }, "Query failed.");
     }
   }
 
-  log.info({ totalQueries: queries.length, totalHits: allHits.length }, "SerpAPI search complete.");
+  log.info(
+    { totalQueries: queries.length, totalHits: allHits.length, method: useSerpApi ? "serpapi" : "google-direct" },
+    "Prospect search complete.",
+  );
+
   return allHits;
 }
 
