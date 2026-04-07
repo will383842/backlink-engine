@@ -14,9 +14,44 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          password: ${{ secrets.SSH_PASSWORD }}
           script: |
+            set -e
+
+            # Install Docker if not present
+            if ! command -v docker &> /dev/null; then
+              echo "Installing Docker..."
+              curl -fsSL https://get.docker.com | sh
+              systemctl enable docker
+              systemctl start docker
+            fi
+
+            # Install Docker Compose plugin if not present
+            if ! docker compose version &> /dev/null; then
+              echo "Installing Docker Compose..."
+              apt-get update && apt-get install -y docker-compose-plugin
+            fi
+
+            # Clone or pull the project
+            if [ ! -d /opt/backlink-engine ]; then
+              echo "Cloning project..."
+              git clone https://github.com/will383842/backlink-engine.git /opt/backlink-engine
+            fi
+
             cd /opt/backlink-engine
-            git pull origin main
-            docker compose down
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Ensure .env exists
+            if [ ! -f .env ]; then
+              cp .env .env.backup 2>/dev/null || true
+              echo "⚠️ No .env file found, using defaults from repo"
+            fi
+
+            # Build and deploy
+            docker compose down --remove-orphans 2>/dev/null || true
             docker compose up -d --build
-            echo "✅ Deploy complete!"
+
+            # Wait for health check
+            sleep 10
+            curl -sf http://localhost:3000/api/health && echo "✅ Deploy complete!" || echo "⚠️ Health check failed"
