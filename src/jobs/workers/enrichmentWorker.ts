@@ -8,7 +8,7 @@ import { detectLanguageFromUrl, detectLanguageFromDomain } from "../../services/
 import { detectCountryFromDomain } from "../../services/enrichment/countryDetector.js";
 import { getTimezoneForCountry } from "../../data/countries.js";
 import { detectAndAssignTags } from "../../services/tags/tagDetector.js";
-import { scrapeAndValidateEmails, extractNameFromEmailContext } from "../../services/scraping/emailScraper.js";
+import { scrapeAndValidateEmails, scrapeEmailsDeep, extractNameFromEmailContext } from "../../services/scraping/emailScraper.js";
 import { detectContactForm, findContactFormUrl } from "../../services/scraping/contactFormDetector.js";
 import { canAutoEnroll, isProspectEligible } from "../../services/autoEnrollment/config.js";
 import { findBestCampaign, isAlreadyEnrolled } from "../../services/autoEnrollment/campaignSelector.js";
@@ -262,15 +262,29 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     "Language, country, and timezone detected"
   );
 
-  // 3.5. Auto-scrape emails from source URL (if no contact exists yet)
+  // 3.5. DEEP scrape emails — homepage + contact/about/legal pages
   const existingContacts = await prisma.contact.count({ where: { prospectId } });
 
-  if (existingContacts === 0 && sourceUrl) {
+  if (existingContacts === 0) {
     try {
-      log.info({ prospectId, url: sourceUrl.url }, "Scraping emails from source URL");
+      // Use domain homepage for deep scrape (more pages = more emails)
+      const scrapeUrl = `https://${domain}`;
+      log.info({ prospectId, url: scrapeUrl }, "Deep scraping emails (multi-page)");
 
-      // FIXED: Now returns firstName/lastName directly (no double fetch!)
-      const scrapedEmails = await scrapeAndValidateEmails(sourceUrl.url);
+      // Step 1: Deep scrape (homepage + contact + about + legal + impressum...)
+      const deepEmails = await scrapeEmailsDeep(scrapeUrl);
+
+      // Step 2: Validate each email
+      const scrapedEmails = await Promise.all(
+        deepEmails.map(async (item) => ({
+          ...item,
+          validation: await (await import("../../services/email/emailValidator.js")).validateEmail(item.email),
+          firstName: undefined as string | undefined,
+          lastName: undefined as string | undefined,
+        })),
+      ).then((results) =>
+        results.filter((r) => r.validation.status !== "invalid" && r.validation.status !== "disposable"),
+      );
 
       if (scrapedEmails.length > 0) {
         log.info({ prospectId, count: scrapedEmails.length }, `Found ${scrapedEmails.length} valid emails`);
