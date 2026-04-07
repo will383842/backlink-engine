@@ -186,6 +186,76 @@ export class MailWizzClient {
     log.debug({ listUid, subscriberUid }, "Subscriber updated");
   }
 
+  /**
+   * Send a transactional email to a subscriber.
+   * Uses MailWizz transactional emails API.
+   *
+   * @param toEmail - Recipient email
+   * @param toName - Recipient name
+   * @param subject - Email subject
+   * @param body - Email body (plain text or HTML)
+   * @param fromEmail - Sender email (optional, uses default)
+   * @param fromName - Sender name (optional, uses default)
+   * @param replyTo - Reply-to email (optional)
+   */
+  async sendTransactionalEmail(opts: {
+    toEmail: string;
+    toName?: string;
+    subject: string;
+    body: string;
+    fromEmail?: string;
+    fromName?: string;
+    replyTo?: string;
+  }): Promise<{ messageId?: string }> {
+    const endpoint = "/transactional-emails";
+
+    const formData: Record<string, string> = {
+      to_name: opts.toName ?? "",
+      to_email: opts.toEmail,
+      subject: opts.subject,
+      body: opts.body,
+    };
+
+    if (opts.fromEmail) formData["from_email"] = opts.fromEmail;
+    if (opts.fromName) formData["from_name"] = opts.fromName;
+    if (opts.replyTo) formData["reply_to"] = opts.replyTo;
+
+    // Convert plain text body to basic HTML if it doesn't contain HTML tags
+    if (!opts.body.includes("<")) {
+      formData["body"] = opts.body
+        .split("\n")
+        .map((line) => (line.trim() === "" ? "<br>" : `<p>${line}</p>`))
+        .join("\n");
+      formData["plain_text"] = opts.body;
+    }
+
+    const body = this.encodeFormData(formData);
+
+    log.info({ toEmail: opts.toEmail, subject: opts.subject.slice(0, 50) }, "Sending transactional email");
+
+    const response = await this.request<MailWizzApiResponse>("POST", endpoint, body);
+
+    const messageId = (response.data as Record<string, unknown>)?.message_id as string | undefined;
+
+    log.info({ toEmail: opts.toEmail, messageId }, "Transactional email sent");
+
+    return { messageId };
+  }
+
+  /**
+   * Health check - verify MailWizz API is reachable and credentials are valid.
+   * Returns true if API responds, false otherwise.
+   */
+  async healthCheck(): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await this.request<MailWizzApiResponse>("GET", "/lists");
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: message };
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Private helpers
   // -----------------------------------------------------------------------

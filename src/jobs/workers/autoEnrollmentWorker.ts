@@ -14,7 +14,7 @@ import { Job, Worker } from "bullmq";
 import { prisma } from "../../config/database.js";
 import { logger } from "../../utils/logger.js";
 import { findBestCampaign } from "../../services/autoEnrollment/campaignSelector.js";
-import { outreachQueue } from "../queue.js";
+import { autoEnrollmentQueue } from "../queue.js";
 import { createRedisConnection } from "../../config/redis.js";
 
 const log = logger.child({ worker: "auto-enrollment" });
@@ -180,14 +180,9 @@ export async function processAutoEnrollment(
  */
 export function startAutoEnrollmentWorker(): void {
   const worker = new Worker(
-    outreachQueue.name,
+    autoEnrollmentQueue.name,
     async (job: Job) => {
-      // Only process auto-enrollment jobs
-      if (job.data.type === "auto-enrollment") {
-        return await processAutoEnrollment(job as Job<AutoEnrollmentJobData>);
-      }
-      // Let other workers handle other job types
-      return null;
+      return await processAutoEnrollment(job as Job<AutoEnrollmentJobData>);
     },
     {
       connection: createRedisConnection(),

@@ -106,7 +106,17 @@ export default function Settings() {
   });
 
   useEffect(() => {
-    if (data) setSettings(data);
+    if (data) {
+      // Assurer que mailwizz existe toujours pour éviter les crashes
+      setSettings({
+        ...defaultSettings,
+        ...data,
+        mailwizz: {
+          ...defaultSettings.mailwizz,
+          ...data.mailwizz,
+        },
+      });
+    }
   }, [data]);
 
   useEffect(() => {
@@ -183,11 +193,14 @@ export default function Settings() {
   const [listUidsText, setListUidsText] = useState("");
 
   useEffect(() => {
-    const text = Object.entries(settings.mailwizz.listUids)
-      .map(([k, v]) => `${k}=${v}`)
-      .join("\n");
-    setListUidsText(text);
-  }, [settings.mailwizz.listUids]);
+    // Protection contre settings.mailwizz undefined
+    if (settings.mailwizz?.listUids) {
+      const text = Object.entries(settings.mailwizz.listUids)
+        .map(([k, v]) => `${k}=${v}`)
+        .join("\n");
+      setListUidsText(text);
+    }
+  }, [settings.mailwizz?.listUids]);
 
   function parseListUids(text: string): Record<string, string> {
     const result: Record<string, string> = {};
@@ -601,7 +614,7 @@ export default function Settings() {
             </label>
             <input
               type="url"
-              value={settings.mailwizz.apiUrl}
+              value={settings.mailwizz?.apiUrl || ""}
               onChange={(e) =>
                 setSettings({
                   ...settings,
@@ -618,7 +631,7 @@ export default function Settings() {
             </label>
             <input
               type="password"
-              value={settings.mailwizz.apiKey}
+              value={settings.mailwizz?.apiKey || ""}
               onChange={(e) =>
                 setSettings({
                   ...settings,

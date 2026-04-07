@@ -47,3 +47,57 @@ export interface LanguageDetectionResult {
   /** ISO 639-1 two-letter language code */
   language: string;
 }
+
+// ---------------------------------------------------------------------------
+// Thematic classification result
+// ---------------------------------------------------------------------------
+
+export interface ThematicResult {
+  /** Relevance to expat niche, 0-10 */
+  relevance: number;
+  /** Matching themes from the classification prompt */
+  themes: string[];
+  /** Brief explanation */
+  reasoning: string;
+}
+
+// ---------------------------------------------------------------------------
+// Opportunity detection result
+// ---------------------------------------------------------------------------
+
+export interface OpportunityResult {
+  /** Best opportunity type for this prospect */
+  opportunityType: string;
+  /** Confidence score 0-1 */
+  confidence: number;
+  /** Brief explanation */
+  reasoning: string;
+  /** Actionable details */
+  notes: string;
+}
+
+// ---------------------------------------------------------------------------
+// Outreach email generation
+// ---------------------------------------------------------------------------
+
+export type AbVariant = "A" | "B";
+
+export interface GenerateEmailInput {
+  domain: string;
+  language: string;
+  country?: string;
+  themes?: string[];
+  opportunityType?: string;
+  contactName?: string;
+  stepNumber: number;
+  previousSubject?: string;
+  yourWebsite: string;
+  yourCompany: string;
+  /** A/B test variant. "A" = benefit-focused, "B" = curiosity-focused, undefined = no A/B test */
+  variant?: AbVariant;
+}
+
+export interface GeneratedEmail {
+  subject: string;
+  body: string;
+}

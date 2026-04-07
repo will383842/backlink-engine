@@ -5,6 +5,7 @@
 import { load } from "cheerio";
 import { createChildLogger } from "../../utils/logger.js";
 import { validateEmail } from "../email/emailValidator.js";
+import { proxyFetch } from "../../config/proxy.js";
 
 const log = createChildLogger("email-scraper");
 
@@ -51,7 +52,7 @@ export async function scrapeEmailsFromUrl(url: string): Promise<ScrapedEmail[]> 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-    const response = await fetch(url, {
+    const response = await proxyFetch(url, {
       signal: controller.signal,
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -145,7 +146,7 @@ export async function scrapeAndValidateEmails(url: string): Promise<{
   // Fetch HTML once for name extraction
   let html: string | undefined;
   try {
-    const response = await fetch(url);
+    const response = await proxyFetch(url);
     if (response.ok) {
       html = await response.text();
     }

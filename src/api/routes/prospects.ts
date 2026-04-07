@@ -28,6 +28,7 @@ interface ListProspectsQuery {
   score?: string;
   source?: string;
   search?: string; // search by domain
+  tagId?: string; // filter by tag ID
   page?: string;
   limit?: string;
 }
@@ -123,6 +124,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
             score: { type: "string" },
             source: { type: "string" },
             search: { type: "string" },
+            tagId: { type: "string" },
             page: { type: "string", default: "1" },
             limit: { type: "string", default: "50" },
           },
@@ -130,7 +132,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       },
     },
     async (request, reply) => {
-      const { status, country, language, category, tier, score, source, search, page, limit } =
+      const { status, country, language, category, tier, score, source, search, tagId, page, limit } =
         request.query;
 
       const take = Math.min(parseInt(limit ?? "50", 10) || 50, 200);
@@ -145,6 +147,13 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       if (score) where["score"] = { gte: parseInt(score, 10) };
       if (source) where["source"] = source;
       if (search) where["domain"] = { contains: search, mode: "insensitive" };
+      if (tagId) {
+        where["tags"] = {
+          some: {
+            tagId: parseInt(tagId, 10),
+          },
+        };
+      }
 
       const [prospects, total] = await Promise.all([
         prisma.prospect.findMany({
@@ -154,6 +163,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           take,
           include: {
             contacts: { select: { id: true, email: true, name: true, emailStatus: true } },
+            tags: { include: { tag: true } },
             _count: { select: { backlinks: true, events: true, enrollments: true } },
           },
         }),
@@ -197,6 +207,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           enrollments: {
             include: { campaign: { select: { id: true, name: true } } },
           },
+          tags: { include: { tag: true } },
         },
       });
 
@@ -699,7 +710,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           signal: controller.signal,
           headers: {
             "User-Agent":
-              "Mozilla/5.0 (compatible; BacklinkEngine/1.0; +https://example.com/bot)",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
           },
         });
         clearTimeout(timeoutId);
@@ -776,7 +787,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           signal: controller.signal,
           headers: {
             "User-Agent":
-              "Mozilla/5.0 (compatible; BacklinkEngine/1.0; +https://example.com/bot)",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
           },
         });
         clearTimeout(timeoutId);
@@ -936,7 +947,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           data: {
             prospectId: id,
             pageUrl: backlink.pageUrl,
-            targetUrl: "https://example.com", // TODO: get from config
+            targetUrl: process.env.DEFAULT_TARGET_URL ?? "https://life-expat.com",
             anchorText: backlink.anchorText ?? null,
             linkType: "dofollow",
             isVerified: false,
@@ -1110,6 +1121,85 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       });
 
       return reply.send({ data: events });
+    },
+  );
+
+  // ───── POST /:id/notes ─── Add a CRM note ────────────────
+  app.post<{ Params: ProspectParams; Body: { text: string } }>(
+    "/:id/notes",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+        body: {
+          type: "object",
+          required: ["text"],
+          properties: {
+            text: { type: "string", minLength: 1 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseIdParam(request.params.id);
+      const { text } = request.body;
+
+      const existing = await prisma.prospect.findUnique({ where: { id } });
+      if (!existing) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: `Prospect ${id} not found`,
+        });
+      }
+
+      const event = await prisma.event.create({
+        data: {
+          prospectId: id,
+          eventType: "note_added",
+          eventSource: "api",
+          userId: request.user.id,
+          data: { text, author: String((request.user as Record<string, unknown>).name || request.user.email) } as object,
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      return reply.status(201).send({ data: event });
+    },
+  );
+
+  // ───── GET /:id/notes ─── Get all CRM notes for a prospect ────
+  app.get<{ Params: ProspectParams }>(
+    "/:id/notes",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseIdParam(request.params.id);
+
+      const notes = await prisma.event.findMany({
+        where: {
+          prospectId: id,
+          eventType: "note_added",
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      return reply.send({ data: notes });
     },
   );
 

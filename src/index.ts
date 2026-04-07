@@ -30,6 +30,9 @@ import ingestRoutes from "./api/routes/ingest.js";
 import webhooksRoutes from "./api/routes/webhooks.js";
 import authRoutes from "./api/routes/auth.js";
 import tagsRoutes from "./api/routes/tags.js";
+import crawlingRoutes from "./api/routes/crawling.js";
+import targetPagesRoutes from "./api/routes/targetPages.js";
+import sentEmailsRoutes from "./api/routes/sentEmails.js";
 import { registerJwt } from "./api/middleware/auth.js";
 import { resetLlmClient } from "./llm/index.js";
 
@@ -44,6 +47,8 @@ import { startOutreachWorker } from "./jobs/workers/outreachWorker.js";
 import { startReplyWorker } from "./jobs/workers/replyWorker.js";
 import { startVerificationWorker } from "./jobs/workers/verificationWorker.js";
 import { startReportingWorker } from "./jobs/workers/reportingWorker.js";
+import { startSequenceWorker } from "./jobs/workers/sequenceWorker.js";
+import { startCrawlingWorker } from "./jobs/workers/crawlingWorker.js";
 
 // ---------------------------------------------------------------------------
 // Fastify instance
@@ -167,13 +172,16 @@ await app.register(contactsRoutes, { prefix: "/api/contacts" });
 await app.register(backlinksRoutes, { prefix: "/api/backlinks" });
 await app.register(assetsRoutes, { prefix: "/api/assets" });
 await app.register(templatesRoutes, { prefix: "/api/templates" });
-await app.register(messageTemplatesRoutes);
+await app.register(messageTemplatesRoutes, { prefix: "/api/message-templates" });
 await app.register(tagsRoutes, { prefix: "/api/tags" });
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 await app.register(suppressionRoutes, { prefix: "/api/suppression" });
 await app.register(settingsRoutes, { prefix: "/api/settings" });
 await app.register(repliesRoutes, { prefix: "/api/replies" });
 await app.register(reportsRoutes, { prefix: "/api/reports" });
+await app.register(crawlingRoutes, { prefix: "/api/crawl-sources" });
+await app.register(targetPagesRoutes, { prefix: "/api/target-pages" });
+await app.register(sentEmailsRoutes, { prefix: "/api/sent-emails" });
 
 // Health check
 app.get("/api/health", async () => {
@@ -247,6 +255,43 @@ try {
   }
   logger.info("LLM client initialised.");
 
+  // Verify Email-Engine connectivity (primary email sender)
+  try {
+    const { getEmailEngineClient } = await import("./services/outreach/emailEngineClient.js");
+    const emailEngine = getEmailEngineClient();
+    if (emailEngine.isConfigured()) {
+      const health = await emailEngine.healthCheck();
+      if (health.ok) {
+        logger.info("✅ Email-Engine API connected — emails will be sent via PowerMTA.");
+      } else {
+        logger.warn({ error: health.error }, "⚠️  Email-Engine API not reachable — will fallback to MailWizz.");
+      }
+    } else {
+      logger.info("Email-Engine not configured (EMAIL_ENGINE_API_URL not set) — using MailWizz only.");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Could not verify Email-Engine connectivity.");
+  }
+
+  // Verify MailWizz connectivity (fallback)
+  try {
+    const mwConfig = await import("./config/mailwizz.js");
+    if (mwConfig.mailwizzConfig.apiUrl && mwConfig.mailwizzConfig.apiKey) {
+      const { MailWizzClient } = await import("./services/outreach/mailwizzClient.js");
+      const mw = new MailWizzClient(mwConfig.mailwizzConfig.apiUrl, mwConfig.mailwizzConfig.apiKey);
+      const health = await mw.healthCheck();
+      if (health.ok) {
+        logger.info("MailWizz API connected and healthy.");
+      } else {
+        logger.warn({ error: health.error }, "⚠️  MailWizz API not reachable — emails will NOT be sent until this is fixed.");
+      }
+    } else {
+      logger.warn("⚠️  MailWizz not configured (MAILWIZZ_API_URL / MAILWIZZ_API_KEY missing). Email sending disabled.");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Could not verify MailWizz connectivity.");
+  }
+
   // Initialise BullMQ queues (must happen before cron jobs or workers)
   setupQueues();
   logger.info("BullMQ queues initialised.");
@@ -262,6 +307,8 @@ try {
   startReplyWorker();
   startVerificationWorker();
   startReportingWorker();
+  startSequenceWorker();
+  startCrawlingWorker();
   logger.info("All BullMQ workers started.");
 
   await app.listen({ port: PORT, host: HOST });

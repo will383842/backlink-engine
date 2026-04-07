@@ -111,7 +111,7 @@ export default function Reports() {
               <YAxis tick={{ fontSize: 12, fill: "#64748b" }} />
               <Tooltip />
               <Bar dataKey="count" name={t("reports.prospectsLabel")} radius={[6, 6, 0, 0]}>
-                {data.pipelineFunnel.map((_, index) => (
+                {(data.pipelineFunnel || []).map((_, index) => (
                   <Cell
                     key={`cell-${index}`}
                     fill={COLORS[index % COLORS.length]}
@@ -174,7 +174,7 @@ export default function Reports() {
                   dataKey="count"
                   nameKey="source"
                 >
-                  {data.prospectsBySource.map((_, index) => (
+                  {(data.prospectsBySource || []).map((_, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={COLORS[index % COLORS.length]}

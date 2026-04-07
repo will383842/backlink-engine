@@ -4,6 +4,7 @@
 
 import * as cheerio from "cheerio";
 import { createChildLogger } from "../../utils/logger.js";
+import { proxyFetch } from "../../config/proxy.js";
 
 const log = createChildLogger("site-preview");
 
@@ -155,11 +156,11 @@ async function fetchPageHtml(url: string): Promise<string | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    const response = await fetch(url, {
+    const response = await proxyFetch(url, {
       signal: controller.signal,
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; BacklinkEngine/1.0; +https://sosexpat.com)",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         Accept: "text/html,application/xhtml+xml",
       },
       redirect: "follow",

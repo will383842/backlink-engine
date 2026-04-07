@@ -1,6 +1,6 @@
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
-import { Language } from "@prisma/client";
+// Language is now a free string (ISO 639-1), no longer a Prisma enum
 
 const log = createChildLogger("template-selector");
 
@@ -41,7 +41,7 @@ export async function selectTemplate(
     // Find templates that have ANY of these tags
     const templatesWithTags = await prisma.outreachTemplate.findMany({
       where: {
-        language: language as Language,
+        language: language,
         purpose,
         isActive: true,
         tags: {
@@ -100,7 +100,7 @@ export async function selectTemplate(
 
   // 2. Try exact language match (no tag filtering)
   const exact = await prisma.outreachTemplate.findFirst({
-    where: { language: language as Language, purpose, isActive: true },
+    where: { language: language, purpose, isActive: true },
     orderBy: [{ replyRate: "desc" }, { createdAt: "desc" }],
   });
 
@@ -112,7 +112,7 @@ export async function selectTemplate(
   // 3. Fallback to English
   if (language !== "en") {
     const fallback = await prisma.outreachTemplate.findFirst({
-      where: { language: "en" as Language, purpose, isActive: true },
+      where: { language: "en", purpose, isActive: true },
       orderBy: [{ replyRate: "desc" }, { createdAt: "desc" }],
     });
 

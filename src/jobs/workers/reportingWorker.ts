@@ -3,6 +3,12 @@ import { redis } from "../../config/redis.js";
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
+import {
+  generateWeeklyReport,
+  storeWeeklyReport,
+  formatWeeklyReportTelegram,
+} from "../../services/reporting/weeklyReport.js";
+import { sendWeeklyReportNotification } from "../../services/notifications/telegramService.js";
 
 const log = createChildLogger("reporting-worker");
 
@@ -16,7 +22,13 @@ interface DailyStatsJobData {
   date?: string;
 }
 
-type ReportingJobData = DailyStatsJobData;
+interface WeeklyStatsJobData {
+  type: "weekly-stats";
+  /** Optional ISO date string (any day in the target week). Defaults to today. */
+  date?: string;
+}
+
+type ReportingJobData = DailyStatsJobData | WeeklyStatsJobData;
 
 // ---------------------------------------------------------------------------
 // Daily stats shape
@@ -168,11 +180,23 @@ async function storeDailyStats(stats: DailyStats): Promise<void> {
 async function processReportingJob(job: Job<ReportingJobData>): Promise<void> {
   const { type, date } = job.data;
 
-  if (type !== "daily-stats") {
-    log.warn({ type, jobId: job.id }, "Unknown reporting job type, skipping.");
+  if (type === "daily-stats") {
+    await processDailyStats(job, date);
     return;
   }
 
+  if (type === "weekly-stats") {
+    await processWeeklyStats(job, date);
+    return;
+  }
+
+  log.warn({ type, jobId: job.id }, "Unknown reporting job type, skipping.");
+}
+
+async function processDailyStats(
+  job: Job<ReportingJobData>,
+  date?: string
+): Promise<void> {
   const targetDate = date ? new Date(date) : new Date();
   log.info(
     { jobId: job.id, date: targetDate.toISOString().slice(0, 10) },
@@ -199,6 +223,46 @@ async function processReportingJob(job: Job<ReportingJobData>): Promise<void> {
       lost: stats.backlinksLost,
     },
     "Daily stats report complete."
+  );
+}
+
+async function processWeeklyStats(
+  job: Job<ReportingJobData>,
+  date?: string
+): Promise<void> {
+  const targetDate = date ? new Date(date) : new Date();
+  log.info(
+    { jobId: job.id, date: targetDate.toISOString().slice(0, 10) },
+    "Generating weekly report."
+  );
+
+  await job.updateProgress(10);
+
+  const report = await generateWeeklyReport(targetDate);
+
+  await job.updateProgress(50);
+
+  // Store in Redis
+  await storeWeeklyReport(report);
+
+  await job.updateProgress(80);
+
+  // Send via Telegram
+  const telegramMessage = formatWeeklyReportTelegram(report);
+  const sent = await sendWeeklyReportNotification(telegramMessage);
+
+  await job.updateProgress(100);
+
+  log.info(
+    {
+      periodStart: report.periodStart,
+      periodEnd: report.periodEnd,
+      prospects: report.newProspectsDiscovered,
+      emails: report.emailsSentTotal,
+      backlinksWon: report.backlinksWon,
+      telegramSent: sent,
+    },
+    "Weekly report complete."
   );
 }
 

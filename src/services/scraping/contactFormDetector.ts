@@ -4,6 +4,7 @@
 
 import { load } from "cheerio";
 import { createChildLogger } from "../../utils/logger.js";
+import { proxyFetch } from "../../config/proxy.js";
 
 const log = createChildLogger("contact-form-detector");
 
@@ -89,7 +90,7 @@ export async function detectContactForm(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-    const response = await fetch(url, {
+    const response = await proxyFetch(url, {
       signal: controller.signal,
       headers: {
         "User-Agent":
@@ -197,7 +198,7 @@ export async function detectContactForm(
  */
 export async function findContactFormUrl(homepageUrl: string): Promise<string | null> {
   try {
-    const response = await fetch(homepageUrl, {
+    const response = await proxyFetch(homepageUrl, {
       headers: { "User-Agent": "Mozilla/5.0" },
     });
 

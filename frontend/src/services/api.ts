@@ -23,6 +23,10 @@ import type {
   ContactFilters,
   BacklinkFilters,
   ReplyFilters,
+  SentEmail,
+  SentEmailFilters,
+  SentEmailStats,
+  AbTestStats,
   PaginatedResponse,
 } from "@/types";
 
@@ -360,6 +364,47 @@ export async function fetchSitePreview(domain: string): Promise<SitePreview> {
     params: { domain },
   });
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Sent Emails
+// ---------------------------------------------------------------------------
+
+export async function getSentEmails(
+  filters: SentEmailFilters = {},
+): Promise<PaginatedResponse<SentEmail>> {
+  const { data } = await api.get("/sent-emails", { params: toParams(filters as Record<string, unknown>) });
+  const total = data.pagination?.total ?? data.total ?? 0;
+  const limit = data.pagination?.limit ?? data.pageSize ?? 50;
+  return {
+    data: data.data,
+    total,
+    page: data.pagination?.page ?? data.page ?? 1,
+    pageSize: limit,
+    totalPages: data.pagination?.totalPages ?? (Math.ceil(total / limit) || 1),
+  };
+}
+
+export async function getSentEmail(id: number): Promise<SentEmail> {
+  const { data } = await api.get(`/sent-emails/${id}`);
+  return data.data ?? data;
+}
+
+export async function getSentEmailStats(): Promise<SentEmailStats> {
+  const { data } = await api.get("/sent-emails/stats");
+  return data.data ?? data;
+}
+
+export async function getAbTestStats(): Promise<AbTestStats[]> {
+  const { data } = await api.get("/sent-emails/ab-stats");
+  return data.data ?? data;
+}
+
+export async function getSentEmailsForProspect(
+  prospectId: number,
+): Promise<SentEmail[]> {
+  const { data } = await api.get(`/sent-emails/prospect/${prospectId}`);
+  return data.data ?? data;
 }
 
 export default api;

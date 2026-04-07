@@ -1,16 +1,29 @@
 // ---------------------------------------------------------------------------
-// IMAP Monitor - Watch inbox for reply emails and match to enrollments
+// IMAP Monitor - Watch inbox for reply emails using ImapFlow
 // ---------------------------------------------------------------------------
 
+import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
+import { redis } from "../../config/redis.js";
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { categorizeReply } from "./replyCategorizer.js";
+import { notifyProspectReplied } from "../notifications/telegramService.js";
 
 const log = createChildLogger("imap-monitor");
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface ParsedReply {
+  from: string;
+  subject: string;
+  body: string;
+  messageId: string;
+  inReplyTo?: string;
+  receivedAt: Date;
+}
 
 interface ImapConfig {
   host: string;
@@ -20,36 +33,33 @@ interface ImapConfig {
   tls: boolean;
 }
 
-interface ParsedEmail {
-  from: string;
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
-  date: Date;
-  messageId?: string;
-  inReplyTo?: string;
-}
-
 // ---------------------------------------------------------------------------
-// Configuration from env
+// Constants
 // ---------------------------------------------------------------------------
 
-function getImapConfig(): ImapConfig {
+const REDIS_LAST_UID_KEY = "imap:lastProcessedUid";
+const BATCH_SIZE = 50;
+const CONNECTION_TIMEOUT_MS = 30_000;
+const MAX_CONSECUTIVE_FAILURES = 5;
+
+let consecutiveFailures = 0;
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+function getImapConfig(): ImapConfig | null {
   const host = process.env["IMAP_HOST"];
-  const port = process.env["IMAP_PORT"];
   const user = process.env["IMAP_USER"];
   const password = process.env["IMAP_PASSWORD"];
 
   if (!host || !user || !password) {
-    throw new Error(
-      "IMAP configuration incomplete. Set IMAP_HOST, IMAP_USER, IMAP_PASSWORD env vars.",
-    );
+    return null;
   }
 
   return {
     host,
-    port: port ? parseInt(port, 10) : 993,
+    port: parseInt(process.env["IMAP_PORT"] ?? "993", 10),
     user,
     password,
     tls: process.env["IMAP_TLS"] !== "false",
@@ -57,263 +67,337 @@ function getImapConfig(): ImapConfig {
 }
 
 // ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
-
-let monitorInterval: ReturnType<typeof setInterval> | null = null;
-
-/** How often to check for new emails (ms) */
-const CHECK_INTERVAL_MS = 60_000; // 1 minute
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Start the IMAP monitor loop.
- * Checks for new replies at a regular interval.
+ * Check IMAP inbox for new reply emails.
+ * Returns an array of parsed replies matched or unmatched.
+ *
+ * Uses UID tracking via Redis to avoid re-processing emails.
  */
-export function startImapMonitor(): void {
-  if (monitorInterval) {
-    log.warn("IMAP monitor already running");
-    return;
+export async function checkForReplies(): Promise<ParsedReply[]> {
+  const config = getImapConfig();
+  if (!config) {
+    log.debug("IMAP not configured, skipping reply check.");
+    return [];
   }
 
-  log.info("Starting IMAP monitor");
+  log.info("Starting IMAP reply check.");
 
-  // Run immediately on start
-  checkForReplies().catch((err) => {
-    log.error({ err }, "Initial IMAP check failed");
+  const client = new ImapFlow({
+    host: config.host,
+    port: config.port,
+    secure: config.tls,
+    auth: { user: config.user, pass: config.password },
+    logger: false,
+    socketTimeout: CONNECTION_TIMEOUT_MS,
   });
 
-  // Schedule periodic checks
-  monitorInterval = setInterval(() => {
-    checkForReplies().catch((err) => {
-      log.error({ err }, "IMAP check failed");
-    });
-  }, CHECK_INTERVAL_MS);
-
-  log.info({ intervalMs: CHECK_INTERVAL_MS }, "IMAP monitor started");
-}
-
-/**
- * Stop the IMAP monitor loop.
- */
-export function stopImapMonitor(): void {
-  if (monitorInterval) {
-    clearInterval(monitorInterval);
-    monitorInterval = null;
-    log.info("IMAP monitor stopped");
-  }
-}
-
-/**
- * Check for new reply emails and process them.
- *
- * Flow:
- * 1. Connect to IMAP server
- * 2. Scan inbox for unprocessed emails (since last check)
- * 3. For each email, try to match to an enrollment by sender email or subject
- * 4. If matched, extract reply text and run through replyCategorizer
- * 5. Mark email as processed
- *
- * NOTE: IMAP is currently a stub. Reply tracking is disabled until:
- *   1. IMAP credentials are configured (IMAP_HOST, IMAP_USER, IMAP_PASSWORD)
- *   2. imapflow library is installed: npm install imapflow
- *   3. Implementation is completed (see TODO comments below)
- *
- * ALTERNATIVE: Use MailWizz webhooks for reply tracking (recommended)
- */
-export async function checkForReplies(): Promise<void> {
-  // Check if IMAP is configured
-  const host = process.env["IMAP_HOST"];
-  const user = process.env["IMAP_USER"];
-  const password = process.env["IMAP_PASSWORD"];
-
-  if (!host || !user || !password) {
-    log.debug("IMAP not configured, skipping reply check");
-    return;
-  }
-
-  log.info("Checking for new replies");
-
-  // TODO: Replace with actual IMAP library (e.g. imapflow or imap-simple)
-  // The skeleton below shows the intended flow.
-  //
-  // Example using imapflow:
-  //
-  // import { ImapFlow } from "imapflow";
-  // const config = getImapConfig();
-  // const client = new ImapFlow({
-  //   host: config.host,
-  //   port: config.port,
-  //   secure: config.tls,
-  //   auth: { user: config.user, pass: config.password },
-  // });
+  const replies: ParsedReply[] = [];
 
   try {
-    const config = getImapConfig();
-    log.debug({ host: config.host }, "IMAP config loaded");
+    await client.connect();
+    consecutiveFailures = 0;
 
-    // Step 1: Connect to IMAP
-    // TODO: await client.connect();
+    // Open INBOX
+    const mailbox = await client.mailboxOpen("INBOX");
+    log.debug({ messages: mailbox.exists }, "INBOX opened.");
 
-    // Step 2: Open inbox
-    // TODO: await client.mailboxOpen("INBOX");
+    // Get last processed UID
+    const lastUidStr = await redis.get(REDIS_LAST_UID_KEY);
+    const lastUid = lastUidStr ? parseInt(lastUidStr, 10) : 0;
 
-    // Step 3: Search for unseen/recent messages
-    // TODO: const messages = await client.search({ seen: false });
+    // Search for messages with UID > lastProcessedUid
+    const searchRange = lastUid > 0 ? `${lastUid + 1}:*` : "1:*";
 
-    // Step 4: Fetch and process each message
-    const messages: ParsedEmail[] = []; // TODO: Replace with actual fetch
-
-    for (const email of messages) {
-      await processReplyEmail(email);
+    let uids: number[];
+    try {
+      const searchResult = await client.search({ uid: searchRange }, { uid: true });
+      uids = (searchResult as number[]).filter((uid) => uid > lastUid);
+    } catch {
+      // Fallback: search for UNSEEN messages
+      log.debug("UID range search failed, falling back to UNSEEN search.");
+      const searchResult = await client.search({ seen: false }, { uid: true });
+      uids = (searchResult as number[]).filter((uid) => uid > lastUid);
     }
 
-    // Step 5: Disconnect
-    // TODO: await client.logout();
+    if (uids.length === 0) {
+      log.debug("No new messages found.");
+      await client.logout();
+      return [];
+    }
 
-    log.info({ processed: messages.length }, "IMAP check complete");
+    log.info({ count: uids.length }, "Found new messages to process.");
+
+    // Process in batches
+    const batch = uids.slice(0, BATCH_SIZE);
+    let highestUid = lastUid;
+
+    for (const uid of batch) {
+      try {
+        const message = await client.fetchOne(String(uid), {
+          source: true,
+          uid: true,
+        });
+
+        const fetchedMsg = message as unknown as { source?: Buffer };
+        if (!fetchedMsg?.source) {
+          log.debug({ uid }, "Empty message source, skipping.");
+          if (uid > highestUid) highestUid = uid;
+          continue;
+        }
+
+        const parsed = await simpleParser(fetchedMsg.source);
+
+        const senderAddress = extractSenderEmail(parsed.from?.text ?? "");
+        if (!senderAddress) {
+          log.debug({ uid }, "Could not extract sender email, skipping.");
+          if (uid > highestUid) highestUid = uid;
+          continue;
+        }
+
+        const reply: ParsedReply = {
+          from: senderAddress,
+          subject: parsed.subject ?? "",
+          body: parsed.text ?? "",
+          messageId: parsed.messageId ?? "",
+          inReplyTo: parsed.inReplyTo as string | undefined,
+          receivedAt: parsed.date ?? new Date(),
+        };
+
+        replies.push(reply);
+        if (uid > highestUid) highestUid = uid;
+      } catch (err) {
+        log.warn({ err, uid }, "Failed to parse message, skipping.");
+        if (uid > highestUid) highestUid = uid;
+      }
+    }
+
+    // Update last processed UID
+    if (highestUid > lastUid) {
+      await redis.set(REDIS_LAST_UID_KEY, String(highestUid));
+    }
+
+    await client.logout();
+    log.info({ processed: replies.length, highestUid }, "IMAP check complete.");
   } catch (err) {
-    log.warn({ err }, "IMAP check failed (stub implementation)");
-    // Don't throw - IMAP is optional until fully implemented
+    consecutiveFailures++;
+    log.error(
+      { err, consecutiveFailures },
+      "IMAP connection/fetch failed.",
+    );
+
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      // Send Telegram alert
+      try {
+        const { notifyBacklinkLost } = await import("../notifications/telegramService.js");
+        // Reuse notification channel for critical alerts
+        log.error("IMAP monitor has failed 5 consecutive times — manual intervention needed.");
+      } catch {
+        // Notification failure is not critical
+      }
+    }
+
+    // Ensure client is closed
+    try {
+      await client.logout();
+    } catch {
+      // Already disconnected
+    }
   }
+
+  return replies;
 }
 
 // ---------------------------------------------------------------------------
-// Internal processing
+// Reply processing (called from replyWorker)
 // ---------------------------------------------------------------------------
 
 /**
- * Process a single reply email: match to enrollment and categorize.
+ * Process a single parsed reply: match to enrollment, categorize, take action.
  */
-async function processReplyEmail(email: ParsedEmail): Promise<void> {
-  const senderEmail = extractEmailAddress(email.from);
-
-  if (!senderEmail) {
-    log.debug({ from: email.from }, "Could not extract sender email, skipping");
-    return;
+export async function processReply(reply: ParsedReply): Promise<void> {
+  // Deduplicate by messageId to prevent processing the same reply twice
+  if (reply.messageId) {
+    const dedupKey = `reply:processed:${reply.messageId}`;
+    try {
+      const isNew = await redis.set(dedupKey, "1", "EX", 604800, "NX"); // 7-day TTL
+      if (!isNew) {
+        log.debug({ messageId: reply.messageId }, "Reply already processed, skipping.");
+        return;
+      }
+    } catch {
+      // Redis down — proceed anyway (UID tracking is primary dedup)
+    }
   }
 
-  log.debug({ from: senderEmail, subject: email.subject }, "Processing reply email");
+  const normalizedEmail = reply.from.toLowerCase().trim();
 
-  // Try to find matching enrollment by sender email
-  const enrollment = await findEnrollmentByEmail(senderEmail);
+  // Find the contact by email
+  const contact = await prisma.contact.findUnique({
+    where: { emailNormalized: normalizedEmail },
+    include: {
+      prospect: true,
+      enrollments: {
+        where: { status: "active" },
+        orderBy: { enrolledAt: "desc" },
+        take: 1,
+        include: { campaign: true },
+      },
+    },
+  });
 
-  if (!enrollment) {
-    // Try matching by subject line (look for campaign reference pattern)
-    const campaignRefMatch = email.subject.match(/BL-\d+-\d+-\d+/);
+  if (!contact) {
+    // Try matching by campaign reference in subject
+    const campaignRefMatch = reply.subject.match(/BL-\d+-\d+-\d+/);
     if (campaignRefMatch) {
       const refEnrollment = await prisma.enrollment.findFirst({
         where: { campaignRef: campaignRefMatch[0] },
-        select: {
-          id: true,
-          prospectId: true,
-          contactId: true,
-        },
+        include: { campaign: true },
       });
 
       if (refEnrollment) {
         await processMatchedReply(
           refEnrollment.prospectId,
+          refEnrollment.contactId,
           refEnrollment.id,
-          email.text,
+          refEnrollment.campaign,
+          reply,
         );
         return;
       }
     }
 
-    log.debug(
-      { from: senderEmail },
-      "No matching enrollment found for reply email",
-    );
+    log.debug({ from: reply.from }, "No matching contact found for reply.");
     return;
   }
 
-  await processMatchedReply(enrollment.prospectId, enrollment.id, email.text);
+  const enrollment = contact.enrollments[0];
+
+  // Create reply event
+  await prisma.event.create({
+    data: {
+      prospectId: contact.prospectId,
+      contactId: contact.id,
+      enrollmentId: enrollment?.id ?? null,
+      eventType: "reply_received",
+      eventSource: "imap_monitor",
+      data: {
+        from: reply.from,
+        subject: reply.subject,
+        messageId: reply.messageId,
+        inReplyTo: reply.inReplyTo,
+        bodyPreview: reply.body.slice(0, 500),
+        receivedAt: reply.receivedAt.toISOString(),
+      },
+    },
+  });
+
+  // Update prospect status
+  await prisma.prospect.update({
+    where: { id: contact.prospectId },
+    data: { status: "REPLIED" },
+  });
+
+  // Send Telegram notification
+  await notifyProspectReplied(contact.prospectId).catch((err) => {
+    log.error({ err, prospectId: contact.prospectId }, "Telegram notification failed.");
+  });
+
+  // Categorize and stop enrollment if configured
+  if (enrollment) {
+    try {
+      await categorizeReply(contact.prospectId, enrollment.id, reply.body);
+    } catch (err) {
+      log.error({ err, enrollmentId: enrollment.id }, "Reply categorization failed.");
+    }
+
+    if (enrollment.campaign.stopOnReply) {
+      await prisma.enrollment.update({
+        where: { id: enrollment.id },
+        data: {
+          status: "stopped",
+          stoppedReason: "reply_received",
+          completedAt: new Date(),
+          nextSendAt: null,
+        },
+      });
+    }
+  }
+
+  log.info(
+    { prospectId: contact.prospectId, from: reply.from },
+    "Reply processed.",
+  );
 }
 
-/**
- * Process a matched reply: categorize and take action.
- */
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
 async function processMatchedReply(
   prospectId: number,
+  contactId: number,
   enrollmentId: number,
-  replyText: string,
+  campaign: { stopOnReply: boolean },
+  reply: ParsedReply,
 ): Promise<void> {
-  // Update prospect status to REPLIED
+  await prisma.event.create({
+    data: {
+      prospectId,
+      contactId,
+      enrollmentId,
+      eventType: "reply_received",
+      eventSource: "imap_monitor",
+      data: {
+        from: reply.from,
+        subject: reply.subject,
+        messageId: reply.messageId,
+        bodyPreview: reply.body.slice(0, 500),
+        receivedAt: reply.receivedAt.toISOString(),
+      },
+    },
+  });
+
   await prisma.prospect.update({
     where: { id: prospectId },
     data: { status: "REPLIED" },
   });
 
-  // Log the reply event
-  await prisma.event.create({
-    data: {
-      prospectId,
-      enrollmentId,
-      eventType: "REPLY_RECEIVED",
-      eventSource: "imap_monitor",
+  await notifyProspectReplied(prospectId).catch((err) => {
+    log.error({ err, prospectId }, "Telegram notification failed.");
+  });
+
+  try {
+    await categorizeReply(prospectId, enrollmentId, reply.body);
+  } catch (err) {
+    log.error({ err, enrollmentId }, "Reply categorization failed.");
+  }
+
+  if (campaign.stopOnReply) {
+    await prisma.enrollment.update({
+      where: { id: enrollmentId },
       data: {
-        replyPreview: replyText.slice(0, 500),
+        status: "stopped",
+        stoppedReason: "reply_received",
+        completedAt: new Date(),
+        nextSendAt: null,
       },
-    },
-  });
+    });
+  }
 
-  // Categorize the reply
-  await categorizeReply(prospectId, enrollmentId, replyText);
-
-  log.info({ prospectId, enrollmentId }, "Reply processed and categorized");
+  log.info({ prospectId, enrollmentId }, "Matched reply processed.");
 }
 
-/**
- * Find an active enrollment by the contact's email address.
- */
-async function findEnrollmentByEmail(
-  email: string,
-): Promise<{ id: number; prospectId: number; contactId: number } | null> {
-  const emailNormalized = email.toLowerCase().trim();
-
-  // Find the contact
-  const contact = await prisma.contact.findUnique({
-    where: { emailNormalized },
-    select: { id: true },
-  });
-
-  if (!contact) return null;
-
-  // Find active enrollment for this contact
-  return prisma.enrollment.findFirst({
-    where: {
-      contactId: contact.id,
-      status: "active",
-    },
-    orderBy: { enrolledAt: "desc" },
-    select: {
-      id: true,
-      prospectId: true,
-      contactId: true,
-    },
-  });
-}
-
-/**
- * Extract a clean email address from a "From" header
- * (e.g. "John Doe <john@example.com>" -> "john@example.com")
- */
-function extractEmailAddress(from: string): string | null {
-  // Try to extract from angle brackets
+function extractSenderEmail(from: string): string | null {
+  // Try angle brackets: "John Doe <john@example.com>"
   const match = from.match(/<([^>]+)>/);
-  if (match?.[1]) {
-    return match[1].toLowerCase().trim();
-  }
+  if (match?.[1]) return match[1].toLowerCase().trim();
 
-  // If no brackets, check if the whole string is an email
+  // Try plain email
   const emailMatch = from.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
-  if (emailMatch?.[0]) {
-    return emailMatch[0].toLowerCase().trim();
-  }
+  if (emailMatch?.[0]) return emailMatch[0].toLowerCase().trim();
 
   return null;
 }

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser, parseIdParam } from "../middleware/auth.js";
+import { enrollProspect } from "../../services/outreach/enrollmentManager.js";
 
 // ─────────────────────────────────────────────────────────────
 // Request types
@@ -295,47 +296,12 @@ export default async function campaignsRoutes(app: FastifyInstance): Promise<voi
         });
       }
 
-      // TODO: call outreachService.enrollProspect() which handles:
-      //   - MailWizz subscriber creation
-      //   - sequence scheduling
-      //   - first email send scheduling
+      // Enroll via enrollmentManager (handles MailWizz, sequence scheduling, first email)
+      await enrollProspect(prospectId, campaignId);
 
-      const enrollment = await prisma.enrollment.create({
-        data: {
-          contactId,
-          campaignId,
-          prospectId,
-          status: "active",
-          currentStep: 0,
-        },
-      });
-
-      // Update campaign stats
-      await prisma.campaign.update({
-        where: { id: campaignId },
-        data: { totalEnrolled: { increment: 1 } },
-      });
-
-      // Update prospect status if it was NEW
-      await prisma.prospect.update({
-        where: { id: prospectId },
-        data: {
-          status: "CONTACTED_EMAIL",
-          firstContactedAt: new Date(),
-        },
-      });
-
-      // Log event
-      await prisma.event.create({
-        data: {
-          prospectId,
-          contactId,
-          enrollmentId: enrollment.id,
-          eventType: "enrolled_in_campaign",
-          eventSource: "api",
-          userId: request.user.id,
-          data: { campaignId, campaignName: campaign.name },
-        },
+      // Fetch the created enrollment to return
+      const enrollment = await prisma.enrollment.findUnique({
+        where: { contactId_campaignId: { contactId, campaignId } },
       });
 
       return reply.status(201).send({ data: enrollment });

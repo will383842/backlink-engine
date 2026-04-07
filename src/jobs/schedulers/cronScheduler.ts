@@ -1,9 +1,12 @@
 import {
   enrichmentQueue,
   outreachQueue,
+  autoEnrollmentQueue,
   replyQueue,
   verificationQueue,
   reportingQueue,
+  sequenceQueue,
+  crawlingQueue,
 } from "../queue.js";
 import { createChildLogger } from "../../utils/logger.js";
 
@@ -20,6 +23,7 @@ const log = createChildLogger("cron-scheduler");
  *  - Verification check-backlinks: every Sunday at 02:00
  *  - Verification check-link-loss: every Sunday at 03:00
  *  - Reporting daily-stats:        every day at 23:59
+ *  - Reporting weekly-stats:       every Sunday at 20:00 (+ Telegram notification)
  *
  * All cron expressions use UTC.
  * Call this function AFTER setupQueues() has been invoked.
@@ -49,7 +53,7 @@ export async function setupCronJobs(): Promise<void> {
   // -----------------------------------------------------------------------
   // 2. Auto-enrollment: enroll ready prospects every 10 minutes
   // -----------------------------------------------------------------------
-  await outreachQueue.upsertJobScheduler(
+  await autoEnrollmentQueue.upsertJobScheduler(
     "auto-enrollment",
     {
       pattern: "*/10 * * * *", // every 10 minutes
@@ -162,6 +166,63 @@ export async function setupCronJobs(): Promise<void> {
     }
   );
   log.info("Scheduled: reporting daily-stats (daily 23:59 UTC).");
+
+  // -----------------------------------------------------------------------
+  // 8. Sequence: advance follow-up emails every 10 minutes
+  // -----------------------------------------------------------------------
+  await sequenceQueue.upsertJobScheduler(
+    "sequence-advance",
+    {
+      pattern: "*/10 * * * *", // every 10 minutes
+    },
+    {
+      name: "advance-sequence",
+      data: { type: "advance-sequence" },
+      opts: {
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 200 },
+      },
+    }
+  );
+  log.info("Scheduled: sequence advance (every 10 min).");
+
+  // -----------------------------------------------------------------------
+  // 9. Crawling: crawl all active sources daily at 02:00 UTC
+  // -----------------------------------------------------------------------
+  await crawlingQueue.upsertJobScheduler(
+    "crawling-daily",
+    {
+      pattern: "0 2 * * *", // daily at 02:00 UTC
+    },
+    {
+      name: "crawl-all-sources",
+      data: { type: "crawl-all" },
+      opts: {
+        removeOnComplete: { count: 30 },
+        removeOnFail: { count: 60 },
+      },
+    }
+  );
+  log.info("Scheduled: crawling daily (02:00 UTC).");
+
+  // -----------------------------------------------------------------------
+  // 10. Weekly report: every Sunday at 20:00 UTC
+  // -----------------------------------------------------------------------
+  await reportingQueue.upsertJobScheduler(
+    "reporting-weekly",
+    {
+      pattern: "0 20 * * 0", // Sunday 20:00 UTC
+    },
+    {
+      name: "weekly-report",
+      data: { type: "weekly-stats" },
+      opts: {
+        removeOnComplete: { count: 10 },
+        removeOnFail: { count: 20 },
+      },
+    }
+  );
+  log.info("Scheduled: weekly report (Sunday 20:00 UTC).");
 
   log.info("All cron jobs scheduled successfully.");
 }

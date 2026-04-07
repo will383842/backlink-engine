@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateApiKey } from "../middleware/auth.js";
+import { enrichmentQueue } from "../../jobs/queue.js";
 
 // ─────────────────────────────────────────────────────────────
 // Request types
@@ -106,13 +107,6 @@ export default async function ingestRoutes(app: FastifyInstance): Promise<void> 
 
       for (const item of prospects) {
         try {
-          // TODO: replace with ingestService.ingestSingle(item) which handles
-          //   - URL normalization & domain extraction
-          //   - suppression list check
-          //   - dedup against existing prospects
-          //   - safety check (Google Safe Browsing)
-          //   - enrichment pipeline trigger (Moz DA, spam score, language detection)
-
           const domain = new URL(item.url).hostname.replace(/^www\./, "");
 
           // Dedup check
@@ -181,6 +175,13 @@ export default async function ingestRoutes(app: FastifyInstance): Promise<void> 
               },
             },
           });
+
+          // Trigger enrichment pipeline (DA, spam, language, thematic, opportunity)
+          await enrichmentQueue.add(
+            "auto-score",
+            { type: "auto-score" as const, prospectId: prospect.id },
+            { jobId: `ingest-enrich-${prospect.id}` },
+          );
 
           result.created++;
           result.details.push({

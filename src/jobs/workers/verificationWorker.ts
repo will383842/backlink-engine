@@ -4,6 +4,7 @@ import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
 import { notifyBacklinkLost, notifyBacklinkVerified } from "../../services/notifications/telegramService.js";
+import { proxyFetch } from "../../config/proxy.js";
 
 const log = createChildLogger("verification-worker");
 
@@ -35,28 +36,55 @@ const backlinkVerifier = {
    * to our target URL is still present in the HTML.
    */
   async verifyAllBacklinks(): Promise<VerificationResult> {
-    const backlinks = await prisma.backlink.findMany({
-      where: { isLive: true },
-      include: { prospect: { select: { id: true, domain: true } } },
-    });
-
-    log.info({ count: backlinks.length }, "Verifying backlinks.");
-
+    const BATCH_SIZE = 100;
     let verified = 0;
     let lost = 0;
     let errors = 0;
+    let total = 0;
+    let cursor = 0;
 
-    for (const backlink of backlinks) {
+    // Paginated processing to avoid loading all backlinks at once
+    while (true) {
+      const backlinks = await prisma.backlink.findMany({
+        where: { isLive: true },
+        include: { prospect: { select: { id: true, domain: true } } },
+        take: BATCH_SIZE,
+        skip: cursor,
+        orderBy: { id: "asc" },
+      });
+
+      if (backlinks.length === 0) break;
+      total += backlinks.length;
+
+      if (cursor === 0) {
+        log.info({ estimatedTotal: total }, "Starting backlink verification.");
+      }
+
+    for (let i = 0; i < backlinks.length; i++) {
+      const backlink = backlinks[i]!;
+      // Anti-ban: random delay between requests (1-3 seconds)
+      if (i > 0) {
+        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 2000));
+      }
       try {
-        const res = await fetch(backlink.pageUrl, {
+        const res = await proxyFetch(backlink.pageUrl, {
           headers: {
             "User-Agent":
-              "Mozilla/5.0 (compatible; BacklinkEngine/1.0; +https://sosexpat.com)",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
           },
           signal: AbortSignal.timeout(15_000),
         });
 
         if (!res.ok) {
+          if (res.status === 429 || res.status === 403) {
+            log.warn(
+              { backlinkId: backlink.id, status: res.status, pageUrl: backlink.pageUrl },
+              "Blocked by site, pausing verification for this domain."
+            );
+            // Skip remaining backlinks from this domain to avoid further bans
+            errors++;
+            continue;
+          }
           log.warn(
             { backlinkId: backlink.id, status: res.status, pageUrl: backlink.pageUrl },
             "Page returned non-200 status."
@@ -134,7 +162,11 @@ const backlinkVerifier = {
       }
     }
 
-    return { total: backlinks.length, verified, lost, errors };
+      cursor += backlinks.length;
+      if (backlinks.length < BATCH_SIZE) break;
+    }
+
+    return { total, verified, lost, errors };
   },
 };
 
@@ -153,46 +185,60 @@ const linkLossDetector = {
    * live backlinks, and transition them to LINK_LOST.
    */
   async detectLinkLoss(): Promise<LinkLossResult> {
-    // Find prospects with LINK_VERIFIED status
-    const prospects = await prisma.prospect.findMany({
-      where: { status: "LINK_VERIFIED" },
-      include: {
-        backlinks: {
-          where: { isLive: true },
-          select: { id: true },
-        },
-      },
-    });
-
-    log.info(
-      { count: prospects.length },
-      "Checking LINK_VERIFIED prospects for link loss."
-    );
-
+    const BATCH_SIZE = 500;
+    let prospectsChecked = 0;
     let lossCount = 0;
+    let cursor = 0;
 
-    for (const prospect of prospects) {
-      if (prospect.backlinks.length === 0) {
-        // No live backlinks remain -- mark as lost
-        await prisma.prospect.update({
-          where: { id: prospect.id },
-          data: { status: "LINK_LOST" },
-        });
-
-        await prisma.event.create({
-          data: {
-            prospectId: prospect.id,
-            eventType: "all_links_lost",
-            eventSource: "verification_worker",
-            data: { previousStatus: "LINK_VERIFIED" },
+    while (true) {
+      const prospects = await prisma.prospect.findMany({
+        where: { status: "LINK_VERIFIED" },
+        include: {
+          backlinks: {
+            where: { isLive: true },
+            select: { id: true },
           },
-        });
+        },
+        take: BATCH_SIZE,
+        skip: cursor,
+        orderBy: { id: "asc" },
+      });
 
-        lossCount++;
+      if (prospects.length === 0) break;
+      prospectsChecked += prospects.length;
+
+      if (cursor === 0) {
+        log.info(
+          { batchSize: prospects.length },
+          "Checking LINK_VERIFIED prospects for link loss."
+        );
       }
+
+      for (const prospect of prospects) {
+        if (prospect.backlinks.length === 0) {
+          await prisma.prospect.update({
+            where: { id: prospect.id },
+            data: { status: "LINK_LOST" },
+          });
+
+          await prisma.event.create({
+            data: {
+              prospectId: prospect.id,
+              eventType: "all_links_lost",
+              eventSource: "verification_worker",
+              data: { previousStatus: "LINK_VERIFIED" },
+            },
+          });
+
+          lossCount++;
+        }
+      }
+
+      cursor += prospects.length;
+      if (prospects.length < BATCH_SIZE) break;
     }
 
-    return { prospectsChecked: prospects.length, lossDetected: lossCount };
+    return { prospectsChecked, lossDetected: lossCount };
   },
 };
 

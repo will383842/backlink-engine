@@ -1,23 +1,27 @@
 import { franc } from "franc";
 import { load } from "cheerio";
+import { proxyFetch } from "../../config/proxy.js";
 
 // ─────────────────────────────────────────────────────────────
 // Language detection service (using franc + HTML lang attribute)
 // ─────────────────────────────────────────────────────────────
 
-const SUPPORTED_LANGUAGES = ["fr", "en", "de", "es", "pt", "ru", "ar", "zh", "hi"];
+// All languages are supported — no restriction. Detection returns any ISO 639-1 code.
+// Fallback: "en" when detection fails.
 
 // ISO 639-3 to ISO 639-1 mapping (franc uses ISO 639-3)
 const ISO_639_3_TO_1: Record<string, string> = {
-  fra: "fr",
-  eng: "en",
-  deu: "de",
-  spa: "es",
-  por: "pt",
-  rus: "ru",
-  arb: "ar",
-  cmn: "zh",
-  hin: "hi",
+  fra: "fr", eng: "en", deu: "de", spa: "es", por: "pt",
+  rus: "ru", arb: "ar", cmn: "zh", hin: "hi", nld: "nl",
+  ita: "it", pol: "pl", tur: "tr", jpn: "ja", kor: "ko",
+  swe: "sv", dan: "da", nob: "no", nno: "no", fin: "fi",
+  ces: "cs", ron: "ro", tha: "th", vie: "vi", ind: "id",
+  msa: "ms", ukr: "uk", ell: "el", heb: "he", swa: "sw",
+  hun: "hu", bul: "bg", hrv: "hr", slk: "sk", slv: "sl",
+  lit: "lt", lav: "lv", est: "et", srp: "sr", cat: "ca",
+  tgl: "tl", afr: "af", kat: "ka", hye: "hy", ben: "bn",
+  tam: "ta", tel: "te", mal: "ml", kan: "kn", urd: "ur",
+  fas: "fa", mya: "my", khm: "km", lao: "lo", amh: "am",
 };
 
 /**
@@ -33,10 +37,10 @@ export async function detectLanguageFromUrl(url: string): Promise<string | null>
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-    const response = await fetch(url, {
+    const response = await proxyFetch(url, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; BacklinkEngine/1.0; +https://example.com/bot)",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       },
     });
     clearTimeout(timeoutId);
@@ -52,7 +56,7 @@ export async function detectLanguageFromUrl(url: string): Promise<string | null>
     const htmlLang = $("html").attr("lang");
     if (htmlLang) {
       const langCode = htmlLang.toLowerCase().split("-")[0]; // "en-US" → "en"
-      if (langCode && SUPPORTED_LANGUAGES.includes(langCode)) {
+      if (langCode && langCode.length >= 2 && langCode.length <= 3) {
         return langCode;
       }
     }
@@ -70,10 +74,11 @@ export async function detectLanguageFromUrl(url: string): Promise<string | null>
     // franc returns ISO 639-3, convert to ISO 639-1
     const langCode = ISO_639_3_TO_1[detected];
 
-    if (langCode && SUPPORTED_LANGUAGES.includes(langCode)) {
+    if (langCode) {
       return langCode;
     }
 
+    // franc returned an unknown code — fallback to null (will default to "en")
     return null;
   } catch (err) {
     return null;
@@ -102,26 +107,26 @@ export function detectLanguageFromDomain(domain: string): string {
     ch: "de", // Switzerland (German/French/Italian - default German)
     at: "de", // Austria (German)
     pl: "pl",
-    se: "en", // Sweden (we support Swedish but fallback to English if not in enum)
-    no: "en", // Norway
-    fi: "en", // Finland
-    dk: "en", // Denmark
+    se: "sv", // Sweden
+    no: "no", // Norway
+    fi: "fi", // Finland
+    dk: "da", // Denmark
     ie: "en", // Ireland
-    gr: "en", // Greece
-    cz: "en", // Czech Republic
-    ro: "en", // Romania
-    hu: "en", // Hungary
-    bg: "en", // Bulgaria
-    sk: "en", // Slovakia
-    hr: "en", // Croatia
-    si: "en", // Slovenia
-    lt: "en", // Lithuania
-    lv: "en", // Latvia
-    ee: "en", // Estonia
+    gr: "el", // Greece
+    cz: "cs", // Czech Republic
+    ro: "ro", // Romania
+    hu: "hu", // Hungary
+    bg: "bg", // Bulgaria
+    sk: "sk", // Slovakia
+    hr: "hr", // Croatia
+    si: "sl", // Slovenia
+    lt: "lt", // Lithuania
+    lv: "lv", // Latvia
+    ee: "et", // Estonia
 
     // Russian & Eastern Europe
     ru: "ru",
-    ua: "ru", // Ukraine
+    ua: "uk", // Ukraine
     by: "ru", // Belarus
 
     // Americas
@@ -139,27 +144,27 @@ export function detectLanguageFromDomain(domain: string): string {
     cn: "zh",
     hk: "zh",
     tw: "zh",
-    jp: "en", // Japan (we don't support Japanese in enum)
-    kr: "en", // Korea
+    jp: "ja", // Japan
+    kr: "ko", // Korea
     in: "hi", // India
     au: "en",
     nz: "en",
     sg: "en",
-    th: "en", // Thailand
-    my: "en", // Malaysia
-    ph: "en", // Philippines
-    id: "en", // Indonesia
-    vn: "en", // Vietnam
+    th: "th", // Thailand
+    my: "ms", // Malaysia
+    ph: "tl", // Philippines (Tagalog)
+    id: "id", // Indonesia
+    vn: "vi", // Vietnam
 
     // Middle East & Africa
     ae: "ar",
     sa: "ar",
-    il: "en", // Israel
-    tr: "en", // Turkey
+    il: "he", // Israel
+    tr: "tr", // Turkey
     eg: "ar",
     za: "en",
     ng: "en",
-    ke: "en",
+    ke: "sw", // Kenya (Swahili)
 
     // Generic TLDs - default to English
     com: "en",

@@ -24,6 +24,10 @@ import {
   updateProspect,
   enrollProspect,
   bulkImport,
+  getSentEmails,
+  getSentEmail,
+  getSentEmailStats,
+  getAbTestStats,
 } from "@/services/api";
 
 import type {
@@ -31,6 +35,10 @@ import type {
   Campaign,
   Backlink,
   Event,
+  SentEmail,
+  SentEmailFilters,
+  SentEmailStats,
+  AbTestStats,
   DashboardToday,
   DashboardStats,
   PipelineCounts,
@@ -55,6 +63,10 @@ export const queryKeys = {
   dashboardPipeline: () => ["dashboard", "pipeline"] as const,
   replies: (filters?: ReplyFilters) => ["replies", filters] as const,
   timeline: (prospectId: number) => ["timeline", prospectId] as const,
+  sentEmails: (filters?: SentEmailFilters) => ["sentEmails", filters] as const,
+  sentEmail: (id: number) => ["sentEmail", id] as const,
+  sentEmailStats: () => ["sentEmailStats"] as const,
+  abTestStats: () => ["abTestStats"] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -156,6 +168,43 @@ export function useTimeline(
     queryKey: queryKeys.timeline(prospectId),
     queryFn: () => getTimeline(prospectId),
     enabled: prospectId > 0,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sent Email queries
+// ---------------------------------------------------------------------------
+
+export function useSentEmails(
+  filters: SentEmailFilters = {},
+): UseQueryResult<PaginatedResponse<SentEmail>> {
+  return useQuery({
+    queryKey: queryKeys.sentEmails(filters),
+    queryFn: () => getSentEmails(filters),
+  });
+}
+
+export function useSentEmail(id: number): UseQueryResult<SentEmail> {
+  return useQuery({
+    queryKey: queryKeys.sentEmail(id),
+    queryFn: () => getSentEmail(id),
+    enabled: id > 0,
+  });
+}
+
+export function useSentEmailStats(): UseQueryResult<SentEmailStats> {
+  return useQuery({
+    queryKey: queryKeys.sentEmailStats(),
+    queryFn: getSentEmailStats,
+    staleTime: 60_000,
+  });
+}
+
+export function useAbTestStats(): UseQueryResult<AbTestStats[]> {
+  return useQuery({
+    queryKey: queryKeys.abTestStats(),
+    queryFn: getAbTestStats,
+    staleTime: 60_000,
   });
 }
 

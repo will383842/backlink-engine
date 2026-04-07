@@ -1,6 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser } from "../middleware/auth.js";
+import {
+  generateWeeklyReport,
+  getStoredWeeklyReport,
+  formatWeeklyReportTelegram,
+} from "../../services/reporting/weeklyReport.js";
 
 export default async function reportsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticateUser);
@@ -97,6 +102,49 @@ export default async function reportsRoutes(app: FastifyInstance): Promise<void>
         sourceBreakdown,
         countryBreakdown,
         campaignStats,
+      },
+    });
+  });
+
+  // ───── GET /weekly ─── Weekly report ──────────────────────────
+  app.get<{
+    Querystring: { date?: string; generate?: string };
+  }>("/weekly", async (request, reply) => {
+    const { date, generate } = request.query;
+
+    // If ?generate=true, generate a fresh report instead of reading from cache
+    if (generate === "true") {
+      const referenceDate = date ? new Date(date) : undefined;
+      const report = await generateWeeklyReport(referenceDate);
+      return reply.send({
+        data: {
+          report,
+          formatted: formatWeeklyReportTelegram(report),
+        },
+      });
+    }
+
+    // Otherwise, return the stored report from Redis
+    const stored = await getStoredWeeklyReport(date);
+
+    if (!stored) {
+      // No stored report found - generate one on the fly
+      const referenceDate = date ? new Date(date) : undefined;
+      const report = await generateWeeklyReport(referenceDate);
+      return reply.send({
+        data: {
+          report,
+          formatted: formatWeeklyReportTelegram(report),
+          source: "generated",
+        },
+      });
+    }
+
+    return reply.send({
+      data: {
+        report: stored,
+        formatted: formatWeeklyReportTelegram(stored),
+        source: "cached",
       },
     });
   });

@@ -37,6 +37,36 @@ export type ReplyCategory =
 
 export type LinkType = "dofollow" | "nofollow" | "ugc" | "sponsored";
 
+export type TagCategory = "industry" | "priority" | "status" | "geo" | "quality" | "other";
+
+export type ProspectCategory =
+  | "blogger"
+  | "media"
+  | "influencer"
+  | "association"
+  | "partner"
+  | "agency"
+  | "corporate";
+
+export interface Tag {
+  id: number;
+  name: string;
+  label: string;
+  description?: string;
+  color: string;
+  category: TagCategory;
+  isAutoTag: boolean;
+  createdAt: string;
+}
+
+export interface ProspectTag {
+  prospectId: number;
+  tagId: number;
+  tag: Tag;
+  assignedBy: string;
+  createdAt: string;
+}
+
 export type TemplatePurpose =
   | "INITIAL_OUTREACH"
   | "FOLLOW_UP"
@@ -52,6 +82,7 @@ export interface Prospect {
   id: number;
   domain: string;
   source: "manual" | "csv_import" | "scraper";
+  category: ProspectCategory;
   language: string | null;
   country: string | null;
   tier: number;
@@ -75,6 +106,7 @@ export interface Prospect {
   enrollments?: Enrollment[];
   events?: Event[];
   backlinks?: Backlink[];
+  tags?: ProspectTag[];
   _count?: {
     backlinks: number;
     events: number;
@@ -400,6 +432,85 @@ export interface Reply {
   suggestedAction: string | null;
   isHandled: boolean;
   receivedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+// Sent Emails
+// ---------------------------------------------------------------------------
+
+export interface SentEmail {
+  id: number;
+  enrollmentId: number;
+  prospectId: number;
+  contactId: number;
+  campaignId: number;
+  stepNumber: number;
+  subject: string;
+  body: string;
+  language: string;
+  generatedBy: string;
+  status: string;
+  sentAt: string;
+  deliveredAt: string | null;
+  firstOpenedAt: string | null;
+  openCount: number;
+  firstClickedAt: string | null;
+  clickCount: number;
+  bouncedAt: string | null;
+  bounceType: string | null;
+  complainedAt: string | null;
+  abVariant: string | null;
+  prospect?: { id: number; domain: string };
+  contact?: { id: number; email: string; firstName: string | null; lastName: string | null };
+  campaign?: { id: number; name: string; language?: string };
+  enrollment?: { id: number; status: string; currentStep: number };
+}
+
+export interface SentEmailFilters {
+  page?: number;
+  limit?: number;
+  prospectId?: number;
+  campaignId?: number;
+  status?: string;
+  stepNumber?: number;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface SentEmailStats {
+  totalSent: number;
+  totalDelivered: number;
+  totalOpened: number;
+  totalClicked: number;
+  totalBounced: number;
+  totalComplained: number;
+  totalFailed: number;
+  openRate: string;
+  clickRate: string;
+  bounceRate: string;
+  byStep: Array<{ step: number; count: number; label: string }>;
+  byCampaign: Array<{ campaignId: number; _count: { id: number }; _avg: { openCount: number | null } }>;
+}
+
+export interface AbTestVariant {
+  variant: string;
+  sent: number;
+  openRate: string;
+  clickRate: string;
+  replyRate: string;
+  opened: number;
+  clicked: number;
+  replied: number;
+}
+
+export interface AbTestStats {
+  campaignId: number;
+  campaignName: string;
+  language: string;
+  variantA: AbTestVariant;
+  variantB: AbTestVariant;
+  winner: string | null;
+  winnerLabel: string;
 }
 
 // ---------------------------------------------------------------------------

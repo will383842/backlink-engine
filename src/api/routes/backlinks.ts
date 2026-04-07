@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser, parseIdParam } from "../middleware/auth.js";
+import { verificationQueue } from "../../jobs/queue.js";
 
 // ─────────────────────────────────────────────────────────────
 // Request types
@@ -167,8 +168,8 @@ export default async function backlinksRoutes(app: FastifyInstance): Promise<voi
         },
       });
 
-      // Update prospect status to WON if it was in OUTREACH or NEGOTIATION
-      if (["OUTREACH", "NEGOTIATION", "NEW"].includes(prospect.status)) {
+      // Update prospect status to WON if eligible
+      if (["CONTACTED_EMAIL", "CONTACTED_MANUAL", "FOLLOWUP_DUE", "REPLIED", "NEGOTIATING", "NEW", "READY_TO_CONTACT"].includes(prospect.status)) {
         await prisma.prospect.update({
           where: { id: body.prospectId },
           data: { status: "WON" },
@@ -283,26 +284,28 @@ export default async function backlinksRoutes(app: FastifyInstance): Promise<voi
       },
     },
     async (request, reply) => {
-      // TODO: call verificationService.verifyAllLiveBacklinks() which:
-      //   - fetches all isLive=true backlinks
-      //   - enqueues BullMQ jobs for each (to avoid timeout)
-      //   - each job: HTTP HEAD/GET on pageUrl, check for targetUrl in HTML
-      //   - updates isVerified, lastVerifiedAt, isLive accordingly
-
       const liveCount = await prisma.backlink.count({ where: { isLive: true } });
 
-      request.log.info(
-        { liveCount },
-        "Manual backlink verification triggered",
+      if (liveCount === 0) {
+        return reply.status(200).send({
+          message: "No live backlinks to verify",
+          data: { totalToVerify: 0 },
+        });
+      }
+
+      request.log.info({ liveCount }, "Manual backlink verification triggered");
+
+      const job = await verificationQueue.add(
+        "check-backlinks",
+        { type: "check-backlinks" as const },
+        { jobId: `manual-verify-${Date.now()}` },
       );
 
-      // Placeholder: in production, this enqueues BullMQ jobs
-      // and returns immediately with a job batch ID
       return reply.status(202).send({
-        message: "Verification jobs enqueued",
+        message: "Verification job enqueued",
         data: {
+          jobId: job.id,
           totalToVerify: liveCount,
-          // TODO: return batchId from BullMQ for progress tracking
           estimatedDurationSeconds: liveCount * 2,
         },
       });

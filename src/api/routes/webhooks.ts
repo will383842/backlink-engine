@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../config/database.js";
+import { redis } from "../../config/redis.js";
 import { authenticateWebhook } from "../middleware/auth.js";
 
 // ─────────────────────────────────────────────────────────────
@@ -75,8 +76,17 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
         "MailWizz webhook received",
       );
 
-      // TODO: call webhookHandler service which handles full logic
-      // For now, inline the basic event processing:
+      // Idempotency: deduplicate webhook events via Redis
+      const idempotencyKey = `webhook:mw:${event}:${subscriber_uid ?? ""}:${campaign_uid ?? ""}:${body.timestamp ?? ""}`;
+      try {
+        const isNew = await redis.set(idempotencyKey, "1", "EX", 86400, "NX");
+        if (!isNew) {
+          request.log.debug({ idempotencyKey }, "Duplicate webhook event, skipping.");
+          return reply.status(200).send({ status: "ok", event, deduplicated: true });
+        }
+      } catch {
+        // Redis down — proceed anyway (fail open)
+      }
 
       try {
         switch (event) {
@@ -94,6 +104,21 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
                   data: body as unknown as Prisma.InputJsonValue,
                 },
               });
+              // Update SentEmail tracking (latest email for this enrollment)
+              const latestSent = await prisma.sentEmail.findFirst({
+                where: { enrollmentId: enrollment.id },
+                orderBy: { stepNumber: "desc" },
+              });
+              if (latestSent) {
+                await prisma.sentEmail.update({
+                  where: { id: latestSent.id },
+                  data: {
+                    status: "opened",
+                    firstOpenedAt: latestSent.firstOpenedAt ?? new Date(),
+                    openCount: { increment: 1 },
+                  },
+                });
+              }
             }
             break;
           }
@@ -112,6 +137,21 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
                   data: body as unknown as Prisma.InputJsonValue,
                 },
               });
+              // Update SentEmail tracking
+              const latestSent = await prisma.sentEmail.findFirst({
+                where: { enrollmentId: enrollment.id },
+                orderBy: { stepNumber: "desc" },
+              });
+              if (latestSent) {
+                await prisma.sentEmail.update({
+                  where: { id: latestSent.id },
+                  data: {
+                    status: "clicked",
+                    firstClickedAt: latestSent.firstClickedAt ?? new Date(),
+                    clickCount: { increment: 1 },
+                  },
+                });
+              }
             }
             break;
           }
@@ -120,6 +160,22 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
           case "bounce": {
             const enrollment = await findEnrollmentByMailwizz(subscriber_uid, list_uid);
             if (enrollment) {
+              // Update SentEmail tracking
+              const latestSent = await prisma.sentEmail.findFirst({
+                where: { enrollmentId: enrollment.id },
+                orderBy: { stepNumber: "desc" },
+              });
+              if (latestSent) {
+                await prisma.sentEmail.update({
+                  where: { id: latestSent.id },
+                  data: {
+                    status: "bounced",
+                    bouncedAt: new Date(),
+                    bounceType: (body.reason ?? "hard").includes("soft") ? "soft" : "hard",
+                  },
+                });
+              }
+
               await prisma.event.create({
                 data: {
                   prospectId: enrollment.prospectId,
@@ -481,6 +537,156 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
           error: err instanceof Error ? err.message : "Unknown error",
         });
       }
+    },
+  );
+  // ───── POST /email-engine ─── Email Engine delivery feedback ──────
+  // Receives bounce/delivery/open/click events from the email-engine.
+  app.post<{
+    Body: {
+      event: string;
+      email: string;
+      campaign_id?: number;
+      bounce_type?: string;
+      bounce_message?: string;
+      timestamp?: string;
+    };
+  }>(
+    "/email-engine",
+    {
+      preHandler: [authenticateWebhook],
+      config: { rateLimit: { max: 200, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const { event, email, bounce_type } = request.body;
+      const emailNormalized = email?.toLowerCase().trim();
+
+      request.log.info({ event, email: emailNormalized }, "Email-engine webhook received");
+
+      if (!emailNormalized) {
+        return reply.status(200).send({ status: "ok", skipped: true });
+      }
+
+      // Find contact and latest sent email
+      const contact = await prisma.contact.findUnique({
+        where: { emailNormalized },
+        include: { enrollments: { where: { status: "active" }, take: 1 } },
+      });
+
+      if (!contact) {
+        return reply.status(200).send({ status: "ok", contact_found: false });
+      }
+
+      const enrollment = contact.enrollments[0];
+      const latestSent = enrollment
+        ? await prisma.sentEmail.findFirst({
+            where: { enrollmentId: enrollment.id },
+            orderBy: { stepNumber: "desc" },
+          })
+        : null;
+
+      try {
+        switch (event) {
+          case "delivered":
+            if (latestSent) {
+              await prisma.sentEmail.update({
+                where: { id: latestSent.id },
+                data: { status: "delivered", deliveredAt: new Date() },
+              });
+            }
+            break;
+
+          case "opened":
+            if (latestSent) {
+              await prisma.sentEmail.update({
+                where: { id: latestSent.id },
+                data: {
+                  status: "opened",
+                  firstOpenedAt: latestSent.firstOpenedAt ?? new Date(),
+                  openCount: { increment: 1 },
+                },
+              });
+            }
+            break;
+
+          case "clicked":
+            if (latestSent) {
+              await prisma.sentEmail.update({
+                where: { id: latestSent.id },
+                data: {
+                  status: "clicked",
+                  firstClickedAt: latestSent.firstClickedAt ?? new Date(),
+                  clickCount: { increment: 1 },
+                },
+              });
+            }
+            break;
+
+          case "bounced":
+            if (latestSent) {
+              await prisma.sentEmail.update({
+                where: { id: latestSent.id },
+                data: {
+                  status: "bounced",
+                  bouncedAt: new Date(),
+                  bounceType: bounce_type ?? "hard",
+                },
+              });
+            }
+            // Stop enrollment + mark contact invalid
+            if (enrollment) {
+              await prisma.enrollment.update({
+                where: { id: enrollment.id },
+                data: { status: "stopped", stoppedReason: "bounce" },
+              });
+            }
+            await prisma.contact.update({
+              where: { id: contact.id },
+              data: { emailStatus: "invalid" as never },
+            });
+            break;
+
+          case "complained":
+            if (latestSent) {
+              await prisma.sentEmail.update({
+                where: { id: latestSent.id },
+                data: { status: "complained", complainedAt: new Date() },
+              });
+            }
+            // Stop everything + suppress
+            if (enrollment) {
+              await prisma.enrollment.update({
+                where: { id: enrollment.id },
+                data: { status: "stopped", stoppedReason: "complaint" },
+              });
+            }
+            await prisma.contact.update({
+              where: { id: contact.id },
+              data: { optedOut: true, optedOutAt: new Date() },
+            });
+            await prisma.suppressionEntry.upsert({
+              where: { emailNormalized },
+              create: { emailNormalized, reason: "complaint", source: "email_engine_webhook" },
+              update: {},
+            });
+            break;
+        }
+
+        // Log event
+        await prisma.event.create({
+          data: {
+            prospectId: contact.prospectId,
+            contactId: contact.id,
+            enrollmentId: enrollment?.id ?? null,
+            eventType: `email_engine_${event}`,
+            eventSource: "email_engine_webhook",
+            data: request.body as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } catch (err) {
+        request.log.error({ err, event, email: emailNormalized }, "Error processing email-engine webhook");
+      }
+
+      return reply.status(200).send({ status: "ok", event });
     },
   );
 }

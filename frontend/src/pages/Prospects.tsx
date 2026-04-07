@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import api from "@/lib/api";
-import type { Prospect, ProspectStatus, PaginatedResponse } from "@/types";
+import type { Prospect, ProspectStatus, PaginatedResponse, Tag } from "@/types";
 import { useTranslation } from "@/i18n";
 
 const STATUS_OPTIONS: ProspectStatus[] = [
@@ -52,6 +52,7 @@ interface Filters {
   scoreMin: string;
   scoreMax: string;
   search: string;
+  tagId: string;
 }
 
 export default function Prospects() {
@@ -67,6 +68,7 @@ export default function Prospects() {
     scoreMin: "",
     scoreMax: "",
     search: "",
+    tagId: "",
   });
 
   // Debounced search value (400ms)
@@ -90,6 +92,17 @@ export default function Prospects() {
     []
   );
 
+  // Fetch all tags for filter dropdown
+  const { data: tagsData } = useQuery({
+    queryKey: ["tags"],
+    queryFn: async () => {
+      const res = await api.get("/tags");
+      return res.data;
+    },
+  });
+
+  const tags = (tagsData?.tags ?? []) as Tag[];
+
   const { data, isLoading } = useQuery<PaginatedResponse<Prospect>>({
     queryKey: ["prospects", page, { ...filters, search: debouncedSearch }],
     queryFn: async () => {
@@ -102,6 +115,7 @@ export default function Prospects() {
       if (filters.scoreMin) params.scoreMin = filters.scoreMin;
       if (filters.scoreMax) params.scoreMax = filters.scoreMax;
       if (debouncedSearch) params.search = debouncedSearch;
+      if (filters.tagId) params.tagId = filters.tagId;
       const res = await api.get("/prospects", { params });
       return res.data;
     },
@@ -183,6 +197,20 @@ export default function Prospects() {
             <option value="scraper">{t("prospects.scraper")}</option>
           </select>
 
+          {/* Tag filter */}
+          <select
+            value={filters.tagId}
+            onChange={(e) => updateFilter("tagId", e.target.value)}
+            className="input-field"
+          >
+            <option value="">🏷️ Tous les tags</option>
+            {tags.map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.label}
+              </option>
+            ))}
+          </select>
+
           {/* Score range */}
           <input
             type="number"
@@ -234,6 +262,9 @@ export default function Prospects() {
                   {t("prospects.source")}
                 </th>
                 <th className="px-4 py-3 font-medium text-surface-600">
+                  🏷️ Tags
+                </th>
+                <th className="px-4 py-3 font-medium text-surface-600">
                   {t("prospects.contacted")}
                 </th>
               </tr>
@@ -241,14 +272,14 @@ export default function Prospects() {
             <tbody className="divide-y divide-surface-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center">
+                  <td colSpan={10} className="px-4 py-12 text-center">
                     <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
                   </td>
                 </tr>
               ) : !data?.data.length ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-4 py-12 text-center text-surface-500"
                   >
                     {t("prospects.noProspectsFound")}
@@ -279,6 +310,29 @@ export default function Prospects() {
                       {p.tier ? `T${p.tier}` : "-"}
                     </td>
                     <td className="px-4 py-3 text-xs">{p.source}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {p.tags && p.tags.length > 0 ? (
+                          p.tags.slice(0, 3).map((pt) => (
+                            <span
+                              key={pt.tagId}
+                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
+                              style={{ backgroundColor: pt.tag.color }}
+                              title={pt.tag.description || pt.tag.label}
+                            >
+                              {pt.tag.label}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-surface-400">-</span>
+                        )}
+                        {p.tags && p.tags.length > 3 && (
+                          <span className="text-xs text-surface-500">
+                            +{p.tags.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-xs text-surface-500">
                       {p.lastContactedAt
                         ? format(new Date(p.lastContactedAt), "dd MMM yyyy")

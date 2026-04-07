@@ -5,6 +5,8 @@
 import { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
+import { selectMessageTemplate } from "../../services/outreach/messageTemplateSelector.js";
+import { authenticateUser } from "../middleware/auth.js";
 
 const log = createChildLogger("message-templates-api");
 
@@ -24,11 +26,14 @@ interface UpdateTemplateBody {
 // ─────────────────────────────────────────────────────────────
 
 export async function messageTemplatesRoutes(app: FastifyInstance) {
+  // Require authentication for all message template routes
+  app.addHook("preHandler", authenticateUser);
+
   /**
-   * GET /api/message-templates
+   * GET /
    * Get all message templates (9 languages)
    */
-  app.get("/api/message-templates", async (request, reply) => {
+  app.get("/", async (request, reply) => {
     try {
       const templates = await prisma.messageTemplate.findMany({
         orderBy: { language: "asc" },
@@ -48,12 +53,12 @@ export async function messageTemplatesRoutes(app: FastifyInstance) {
   });
 
   /**
-   * GET /api/message-templates/:language
+   * GET /:language
    * Get templates for a specific language (all categories + general)
    * Query param: ?category=blogger (optional) to get specific category template
    */
   app.get<{ Params: { language: string }; Querystring: { category?: string } }>(
-    "/api/message-templates/:language",
+    "/:language",
     async (request, reply) => {
       const { language } = request.params;
       const { category } = request.query;
@@ -106,7 +111,7 @@ export async function messageTemplatesRoutes(app: FastifyInstance) {
   );
 
   /**
-   * PUT /api/message-templates/:language
+   * PUT /:language
    * Create or update template for a specific language + category
    * Query param: ?category=blogger (optional) to update category-specific template
    */
@@ -115,7 +120,7 @@ export async function messageTemplatesRoutes(app: FastifyInstance) {
     Querystring: { category?: string };
     Body: UpdateTemplateBody;
   }>(
-    "/api/message-templates/:language",
+    "/:language",
     async (request, reply) => {
       const { language } = request.params;
       const { category: queryCategory } = request.query;
@@ -185,7 +190,7 @@ export async function messageTemplatesRoutes(app: FastifyInstance) {
   );
 
   /**
-   * POST /api/message-templates/render
+   * POST /render
    * Render a template with variables
    */
   app.post<{
@@ -198,7 +203,7 @@ export async function messageTemplatesRoutes(app: FastifyInstance) {
         yourWebsite: string;
       };
     };
-  }>("/api/message-templates/render", async (request, reply) => {
+  }>("/render", async (request, reply) => {
     const { language, variables } = request.body;
 
     if (!language || !variables) {
@@ -242,6 +247,52 @@ export async function messageTemplatesRoutes(app: FastifyInstance) {
       return reply.status(500).send({
         success: false,
         error: "Failed to render template",
+      });
+    }
+  });
+
+  /**
+   * POST /select
+   * Intelligent template selection based on language, category, and tags
+   */
+  app.post<{
+    Body: {
+      language: string;
+      prospectCategory?: string;
+      prospectTags?: number[];
+    };
+  }>("/select", async (request, reply) => {
+    const { language, prospectCategory, prospectTags } = request.body;
+
+    if (!language) {
+      return reply.status(400).send({
+        success: false,
+        error: "Language is required",
+      });
+    }
+
+    try {
+      const template = await selectMessageTemplate(language, {
+        prospectCategory,
+        prospectTags,
+      });
+
+      if (!template) {
+        return reply.status(404).send({
+          success: false,
+          error: "No template found for the given criteria",
+        });
+      }
+
+      return reply.send({
+        success: true,
+        template,
+      });
+    } catch (err) {
+      log.error({ err, language, prospectCategory }, "Failed to select template");
+      return reply.status(500).send({
+        success: false,
+        error: "Failed to select template",
       });
     }
   });

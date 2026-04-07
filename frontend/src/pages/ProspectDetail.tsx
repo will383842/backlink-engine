@@ -14,13 +14,27 @@ import {
   Pencil,
   Check,
   X,
+  ChevronDown,
+  ChevronUp,
+  Inbox,
+  Target,
+  Tags,
 } from "lucide-react";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
-import type { Prospect, Backlink } from "@/types";
+import type { Prospect, Backlink, Tag } from "@/types";
 import EnrollPreview from "./EnrollPreview";
+import ProspectNotes from "@/components/ProspectNotes";
 import { useTranslation } from "@/i18n";
+
+// Extend Prospect with v2 fields that may not yet be in the shared types
+interface ProspectWithV2 extends Prospect {
+  opportunityType?: string | null;
+  opportunityNotes?: string | null;
+  thematicRelevance?: number | null;
+  thematicCategories?: string[] | null;
+}
 
 interface ProspectTimelineEvent {
   id: number;
@@ -28,6 +42,56 @@ interface ProspectTimelineEvent {
   data: Record<string, unknown> | null;
   createdAt: string;
 }
+
+interface SentEmailRecord {
+  id: number;
+  stepNumber: number;
+  subject: string;
+  body: string;
+  status: string;
+  sentAt: string;
+  language: string;
+  generatedBy: string;
+  openCount: number;
+  clickCount: number;
+  abVariant: string | null;
+}
+
+const EMAIL_STATUS_COLORS: Record<string, string> = {
+  sent: "bg-blue-100 text-blue-700",
+  delivered: "bg-cyan-100 text-cyan-700",
+  opened: "bg-emerald-100 text-emerald-700",
+  clicked: "bg-purple-100 text-purple-700",
+  bounced: "bg-red-100 text-red-700",
+  complained: "bg-red-100 text-red-700",
+  failed: "bg-red-100 text-red-700",
+};
+
+const OPPORTUNITY_TYPE_COLORS: Record<string, string> = {
+  guest_post: "bg-violet-100 text-violet-700",
+  resource_link: "bg-cyan-100 text-cyan-700",
+  mention: "bg-amber-100 text-amber-700",
+  partnership: "bg-emerald-100 text-emerald-700",
+  affiliate: "bg-pink-100 text-pink-700",
+  interview: "bg-indigo-100 text-indigo-700",
+  guest_content: "bg-violet-100 text-violet-700",
+  broken_link: "bg-orange-100 text-orange-700",
+  skyscraper: "bg-blue-100 text-blue-700",
+  infographic: "bg-teal-100 text-teal-700",
+};
+
+const THEME_COLORS = [
+  "bg-blue-100 text-blue-700",
+  "bg-emerald-100 text-emerald-700",
+  "bg-amber-100 text-amber-700",
+  "bg-purple-100 text-purple-700",
+  "bg-pink-100 text-pink-700",
+  "bg-cyan-100 text-cyan-700",
+  "bg-indigo-100 text-indigo-700",
+  "bg-teal-100 text-teal-700",
+  "bg-orange-100 text-orange-700",
+  "bg-rose-100 text-rose-700",
+];
 
 const STATUS_COLORS: Record<string, string> = {
   NEW: "bg-surface-100 text-surface-700",
@@ -165,8 +229,11 @@ export default function ProspectDetail() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
   const [enrollModalOpen, setEnrollModalOpen] = useState(false);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+  const [expandedEmailId, setExpandedEmailId] = useState<number | null>(null);
 
-  const { data: prospect, isLoading } = useQuery<Prospect>({
+  const { data: prospect, isLoading } = useQuery<ProspectWithV2>({
     queryKey: ["prospect", numericId],
     queryFn: async () => {
       const res = await api.get(`/prospects/${numericId}`);
@@ -193,6 +260,26 @@ export default function ProspectDetail() {
     enabled: numericId > 0,
   });
 
+  const { data: sentEmails } = useQuery<SentEmailRecord[]>({
+    queryKey: ["prospect-sent-emails", numericId],
+    queryFn: async () => {
+      const res = await api.get(`/sent-emails/prospect/${numericId}`);
+      return res.data.data ?? res.data;
+    },
+    enabled: numericId > 0,
+  });
+
+  // Fetch all tags for tag selector
+  const { data: tagsData } = useQuery({
+    queryKey: ["tags"],
+    queryFn: async () => {
+      const res = await api.get("/tags");
+      return res.data;
+    },
+  });
+
+  const allTags = (tagsData?.tags ?? []) as Tag[];
+
   const updateMutation = useMutation({
     mutationFn: async (updates: Partial<Prospect>) => {
       const res = await api.put(`/prospects/${numericId}`, updates);
@@ -201,6 +288,20 @@ export default function ProspectDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
       toast.success(t("prospectDetail.prospectUpdated"));
+    },
+  });
+
+  const updateTagsMutation = useMutation({
+    mutationFn: async (tagIds: number[]) => {
+      await api.post(`/tags/prospects/${numericId}`, { tagIds });
+    },
+    onSuccess: () => {
+      toast.success("✅ Tags mis à jour !");
+      queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
+      setShowTagModal(false);
+    },
+    onError: () => {
+      toast.error("❌ Erreur lors de la mise à jour des tags");
     },
   });
 
@@ -264,11 +365,35 @@ export default function ProspectDetail() {
                 {prospect.status}
               </span>
             </div>
-            <div className="mt-1 flex items-center gap-4 text-sm text-surface-500">
+            <div className="mt-1 flex flex-wrap items-center gap-4 text-sm text-surface-500">
               <span>{t("prospects.score")}: {prospect.score}</span>
               <span>{t("prospects.da")}: {prospect.mozDa ?? t("common.na")}</span>
               <span>{t("prospects.tier")}: {prospect.tier ? `T${prospect.tier}` : t("common.na")}</span>
+              {prospect.opportunityType && (
+                <span className={`badge ${OPPORTUNITY_TYPE_COLORS[prospect.opportunityType] ?? "bg-surface-100 text-surface-700"}`}>
+                  <Target size={12} className="mr-1 inline" />
+                  {prospect.opportunityType.replace(/_/g, " ")}
+                </span>
+              )}
             </div>
+            {/* Thematic categories */}
+            {prospect.thematicCategories &&
+              Array.isArray(prospect.thematicCategories) &&
+              (prospect.thematicCategories as string[]).length > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <Tags size={14} className="text-surface-400" />
+                  {(prospect.thematicCategories as string[]).map(
+                    (theme: string, idx: number) => (
+                      <span
+                        key={theme}
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${THEME_COLORS[idx % THEME_COLORS.length]}`}
+                      >
+                        {theme}
+                      </span>
+                    ),
+                  )}
+                </div>
+              )}
           </div>
         </div>
 
@@ -311,12 +436,16 @@ export default function ProspectDetail() {
                   value={firstContact?.email ?? null}
                   placeholder={t("common.notSet")}
                   onSave={(val) => {
-                    // Contacts are separate, but update via prospect endpoint
-                    updateMutation.mutate({ contactFormUrl: prospect.contactFormUrl } as Partial<Prospect>);
-                    // If API supports email update on prospect:
-                    if (val !== null) {
-                      api.put(`/prospects/${numericId}`, { email: val });
-                      queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
+                    if (firstContact?.id && val !== null) {
+                      api.put(`/contacts/${firstContact.id}`, { email: val })
+                        .then(() => {
+                          queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
+                          toast.success(t("prospectDetail.emailUpdated"));
+                        })
+                        .catch((err) => {
+                          toast.error(t("common.error"));
+                          console.error(err);
+                        });
                     }
                   }}
                 />
@@ -329,10 +458,17 @@ export default function ProspectDetail() {
                   value={firstContact?.name ?? null}
                   placeholder={t("common.notSet")}
                   onSave={(val) => {
-                    api.put(`/prospects/${numericId}`, { name: val }).then(() => {
-                      queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
-                      toast.success(t("prospectDetail.contactNameUpdated"));
-                    });
+                    if (firstContact?.id && val !== null) {
+                      api.put(`/contacts/${firstContact.id}`, { name: val })
+                        .then(() => {
+                          queryClient.invalidateQueries({ queryKey: ["prospect", numericId] });
+                          toast.success(t("prospectDetail.contactNameUpdated"));
+                        })
+                        .catch((err) => {
+                          toast.error(t("common.error"));
+                          console.error(err);
+                        });
+                    }
                   }}
                 />
               </dd>
@@ -393,6 +529,42 @@ export default function ProspectDetail() {
         </div>
       </div>
 
+      {/* Tags Section */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-surface-900">🏷️ Tags</h3>
+          <button
+            onClick={() => {
+              setSelectedTagIds(prospect?.tags?.map(t => t.tagId) || []);
+              setShowTagModal(true);
+            }}
+            className="btn-secondary text-sm"
+          >
+            <Pencil size={14} className="mr-1.5" />
+            {t("common.edit")}
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {prospect?.tags && prospect.tags.length > 0 ? (
+            prospect.tags.map((pt) => (
+              <span
+                key={pt.tagId}
+                className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium text-white"
+                style={{ backgroundColor: pt.tag.color }}
+                title={pt.tag.description || pt.tag.label}
+              >
+                {pt.tag.label}
+              </span>
+            ))
+          ) : (
+            <p className="text-sm text-surface-500 italic">
+              Aucun tag assigné
+            </p>
+          )}
+        </div>
+      </div>
+
       {/* Timeline */}
       <div className="card">
         <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-surface-500">
@@ -425,6 +597,85 @@ export default function ProspectDetail() {
           </div>
         )}
       </div>
+
+      {/* Sent Emails */}
+      <div className="card">
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-surface-500">
+          <Inbox size={16} /> Sent Emails
+        </h3>
+        {!sentEmails?.length ? (
+          <p className="text-sm text-surface-400">No emails sent to this prospect yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {sentEmails.map((email) => {
+              const isExpanded = expandedEmailId === email.id;
+              return (
+                <div
+                  key={email.id}
+                  className="rounded-lg border border-surface-200"
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedEmailId(isExpanded ? null : email.id)
+                    }
+                    className="flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-surface-50"
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <span className="shrink-0 rounded bg-surface-100 px-2 py-0.5 text-xs font-medium text-surface-600">
+                        Step {email.stepNumber}
+                      </span>
+                      <span className="truncate text-sm font-medium text-surface-900">
+                        {email.subject}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span
+                        className={`badge text-xs ${EMAIL_STATUS_COLORS[email.status] ?? "bg-surface-100 text-surface-700"}`}
+                      >
+                        {email.status}
+                      </span>
+                      {email.openCount > 0 && (
+                        <span className="text-xs text-emerald-600">
+                          {email.openCount} open{email.openCount > 1 ? "s" : ""}
+                        </span>
+                      )}
+                      <time className="text-xs text-surface-400">
+                        {format(new Date(email.sentAt), "dd MMM yyyy HH:mm")}
+                      </time>
+                      {isExpanded ? (
+                        <ChevronUp size={14} className="text-surface-400" />
+                      ) : (
+                        <ChevronDown size={14} className="text-surface-400" />
+                      )}
+                    </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t border-surface-200 bg-surface-50 p-4">
+                      <div className="mb-2 flex items-center gap-3 text-xs text-surface-500">
+                        <span>Language: {email.language}</span>
+                        <span>Generated by: {email.generatedBy}</span>
+                        {email.abVariant && (
+                          <span className="badge bg-indigo-100 text-indigo-700">
+                            Variant {email.abVariant}
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="prose prose-sm max-w-none text-surface-700"
+                        dangerouslySetInnerHTML={{ __html: email.body }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* CRM Notes */}
+      <ProspectNotes prospectId={numericId} />
 
       {/* Backlinks */}
       <div className="card">
@@ -486,6 +737,89 @@ export default function ProspectDetail() {
           prospectDomain={prospect.domain}
           onClose={() => setEnrollModalOpen(false)}
         />
+      )}
+
+      {/* Tag Editor Modal */}
+      {showTagModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-surface-900">
+                ✏️ Modifier les tags
+              </h3>
+              <button
+                onClick={() => setShowTagModal(false)}
+                className="text-surface-400 hover:text-surface-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-2 overflow-y-auto flex-1 mb-4">
+              {allTags.length === 0 ? (
+                <p className="text-sm text-surface-500 text-center py-8">
+                  Aucun tag disponible. Créez d'abord des tags sur la page <a href="/tags" className="text-brand-600 hover:underline">/tags</a>
+                </p>
+              ) : (
+                allTags.map((tag) => (
+                  <label
+                    key={tag.id}
+                    className="flex items-center gap-3 p-3 hover:bg-surface-50 rounded cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedTagIds.includes(tag.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTagIds([...selectedTagIds, tag.id]);
+                        } else {
+                          setSelectedTagIds(
+                            selectedTagIds.filter((id) => id !== tag.id)
+                          );
+                        }
+                      }}
+                      className="rounded border-surface-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    <span
+                      className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium text-white"
+                      style={{ backgroundColor: tag.color }}
+                    >
+                      {tag.label}
+                    </span>
+                    {tag.description && (
+                      <span className="text-sm text-surface-500 ml-auto">
+                        {tag.description}
+                      </span>
+                    )}
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-between items-center pt-4 border-t border-surface-200">
+              <p className="text-sm text-surface-600">
+                {selectedTagIds.length} tag(s) sélectionné(s)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowTagModal(false)}
+                  className="btn-secondary"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => updateTagsMutation.mutate(selectedTagIds)}
+                  disabled={updateTagsMutation.isPending}
+                  className="btn-primary"
+                >
+                  {updateTagsMutation.isPending
+                    ? "💾 Sauvegarde..."
+                    : "💾 Sauvegarder"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

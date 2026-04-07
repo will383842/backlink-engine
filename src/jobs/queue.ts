@@ -11,9 +11,12 @@ const log = createChildLogger("queue");
 export const QUEUE_NAMES = {
   ENRICHMENT: "enrichment",
   OUTREACH: "outreach",
+  AUTO_ENROLLMENT: "auto-enrollment",
   REPLY: "reply",
   VERIFICATION: "verification",
   REPORTING: "reporting",
+  SEQUENCE: "sequence",
+  CRAWLING: "crawling",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -22,9 +25,12 @@ export const QUEUE_NAMES = {
 
 export let enrichmentQueue: Queue;
 export let outreachQueue: Queue;
+export let autoEnrollmentQueue: Queue;
 export let replyQueue: Queue;
 export let verificationQueue: Queue;
 export let reportingQueue: Queue;
+export let sequenceQueue: Queue;
+export let crawlingQueue: Queue;
 
 // ---------------------------------------------------------------------------
 // Common default job options
@@ -68,6 +74,13 @@ export function setupQueues(): void {
     },
   });
 
+  autoEnrollmentQueue = new Queue(QUEUE_NAMES.AUTO_ENROLLMENT, {
+    connection,
+    defaultJobOptions: {
+      ...DEFAULT_JOB_OPTIONS,
+    },
+  });
+
   replyQueue = new Queue(QUEUE_NAMES.REPLY, {
     connection,
     defaultJobOptions: {
@@ -91,6 +104,21 @@ export function setupQueues(): void {
     },
   });
 
+  sequenceQueue = new Queue(QUEUE_NAMES.SEQUENCE, {
+    connection,
+    defaultJobOptions: {
+      ...DEFAULT_JOB_OPTIONS,
+    },
+  });
+
+  crawlingQueue = new Queue(QUEUE_NAMES.CRAWLING, {
+    connection,
+    defaultJobOptions: {
+      ...DEFAULT_JOB_OPTIONS,
+      attempts: 2,
+    },
+  });
+
   log.info("All BullMQ queues initialised.");
 }
 
@@ -103,9 +131,12 @@ export async function closeQueues(): Promise<void> {
   await Promise.all([
     enrichmentQueue?.close(),
     outreachQueue?.close(),
+    autoEnrollmentQueue?.close(),
     replyQueue?.close(),
     verificationQueue?.close(),
     reportingQueue?.close(),
+    sequenceQueue?.close(),
+    crawlingQueue?.close(),
   ]);
   log.info("All BullMQ queues closed.");
 }

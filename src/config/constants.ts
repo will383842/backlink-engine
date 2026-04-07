@@ -49,22 +49,23 @@ export const TIERS = [1, 2, 3, 4] as const;
 export type Tier = (typeof TIERS)[number];
 
 // ---------------------------------------------------------------------------
-// Supported languages
+// Languages with SERP query templates (optimized search queries)
+// All other languages are supported via AI email generation with English fallback.
 // ---------------------------------------------------------------------------
 
-export const SUPPORTED_LANGUAGES = [
-  "fr",
-  "en",
-  "de",
-  "es",
-  "pt",
-  "ru",
-  "ar",
-  "zh",
-  "hi",
+export const LANGUAGES_WITH_SERP_TEMPLATES = [
+  "fr", "en", "de", "es", "pt", "ru", "ar", "zh", "hi",
+  "nl", "it", "pl", "tr", "ja", "ko", "sv", "da", "no",
+  "fi", "cs", "ro", "th", "vi", "id", "ms", "uk", "el",
+  "he", "sw", "hu", "bg", "hr", "sk", "sl", "lt", "lv",
+  "et", "sr", "ca", "tl",
 ] as const;
 
-export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+/** Any ISO 639-1 language code (free string, not restricted) */
+export type SupportedLanguage = string;
+
+/** The default fallback language when detection fails */
+export const DEFAULT_LANGUAGE = "en";
 
 // ---------------------------------------------------------------------------
 // Score & DA thresholds

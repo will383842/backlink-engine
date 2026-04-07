@@ -13,6 +13,8 @@ import { detectContactForm, findContactFormUrl } from "../../services/scraping/c
 import { canAutoEnroll, isProspectEligible } from "../../services/autoEnrollment/config.js";
 import { findBestCampaign, isAlreadyEnrolled } from "../../services/autoEnrollment/campaignSelector.js";
 import { enrollProspect } from "../../services/outreach/enrollmentManager.js";
+import { getLlmClient } from "../../llm/index.js";
+import type { OpportunityType } from "@prisma/client";
 
 const log = createChildLogger("enrichment-worker");
 
@@ -199,13 +201,25 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     return;
   }
 
+  // Skip if already enriched or being enriched by another worker
+  if (prospect.status !== "NEW" && prospect.status !== "ENRICHING") {
+    log.debug({ prospectId, status: prospect.status }, "Prospect not in NEW status, skipping.");
+    return;
+  }
+
   const domain = prospect.domain;
 
-  // 2. Update status to ENRICHING
-  await prisma.prospect.update({
-    where: { id: prospectId },
+  // 2. Update status to ENRICHING (atomic check to prevent concurrent processing)
+  const updated = await prisma.prospect.updateMany({
+    where: { id: prospectId, status: { in: ["NEW", "ENRICHING"] } },
     data: { status: "ENRICHING" },
   });
+  if (updated.count === 0) {
+    log.debug({ prospectId }, "Prospect already being processed, skipping.");
+    return;
+  }
+
+  try {
 
   // 3. Detect language and country (ENHANCED - always detect)
   let detectedLanguage: string;
@@ -388,6 +402,46 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     checkGoogleSafeBrowsing(domain),
   ]);
 
+  // 4b. LLM-based thematic classification & opportunity detection
+  let thematicRelevance: number | null = null;
+  let thematicCategories: string[] | null = null;
+  let opportunityType: OpportunityType | null = null;
+  let opportunityNotes: string | null = null;
+
+  try {
+    const llm = getLlmClient();
+    const [thematic, opportunity] = await Promise.all([
+      llm.classifyThematic(domain),
+      llm.detectOpportunity(domain),
+    ]);
+
+    if (thematic.relevance > 0) {
+      thematicRelevance = thematic.relevance;
+      thematicCategories = thematic.themes;
+    }
+
+    const validOpportunityTypes: OpportunityType[] = [
+      "guest_post", "resource_link", "mention", "partnership",
+      "affiliate", "interview", "guest_content", "broken_link",
+      "skyscraper", "infographic",
+    ];
+
+    if (
+      opportunity.confidence > 0.3 &&
+      validOpportunityTypes.includes(opportunity.opportunityType as OpportunityType)
+    ) {
+      opportunityType = opportunity.opportunityType as OpportunityType;
+      opportunityNotes = opportunity.notes || null;
+    }
+
+    log.info(
+      { prospectId, domain, thematicRelevance, opportunityType },
+      "LLM classification complete.",
+    );
+  } catch (err) {
+    log.warn({ err, prospectId }, "LLM classification failed, continuing without.");
+  }
+
   // 5. Determine tier from score first (needed for score calculation)
   let preliminaryScore = 0;
   if (openPageRank !== null) preliminaryScore += Math.min(openPageRank, 10) * 4;
@@ -407,9 +461,9 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     openPagerank: openPageRank,
     mozDa,
     tier,
-    linkNeighborhoodScore: null,  // TODO: Add neighborhood analysis
-    relevanceScore: null,         // TODO: Add content relevance
-    hasSocialPresence: false,     // TODO: Add social detection
+    linkNeighborhoodScore: null,
+    relevanceScore: thematicRelevance,
+    hasSocialPresence: false,
   });
 
   // 7. Apply spam penalty
@@ -423,6 +477,10 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     score: finalScore,
     tier,
     status: "READY_TO_CONTACT",
+    ...(thematicRelevance !== null && { thematicRelevance }),
+    ...(thematicCategories !== null && { thematicCategories }),
+    ...(opportunityType !== null && { opportunityType }),
+    ...(opportunityNotes !== null && { opportunityNotes }),
   };
 
   // ALWAYS update language, country, and timezone (override user input if detection is better)
@@ -432,8 +490,8 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     updateData["language"] = detectedLanguage;
   } else {
     // User provided language → keep it (unless it's invalid)
-    const validLanguages = ["fr", "en", "de", "es", "pt", "ru", "ar", "zh", "hi"];
-    if (!validLanguages.includes(prospect.language)) {
+    // Accept any ISO 639-1 language code (2-3 chars)
+    if (!prospect.language || prospect.language.length > 5) {
       log.warn(
         { prospectId, invalidLanguage: prospect.language },
         "Invalid language detected, replacing with auto-detected value"
@@ -473,12 +531,15 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
         tier,
         detectedLanguage: detectedLanguage ?? null,
         detectedCountry: detectedCountry ?? null,
+        thematicRelevance,
+        thematicCategories,
+        opportunityType,
       },
     },
   });
 
   log.info(
-    { prospectId, domain, finalScore, tier, detectedLanguage, detectedCountry, detectedTimezone },
+    { prospectId, domain, finalScore, tier, detectedLanguage, detectedCountry, detectedTimezone, thematicRelevance, opportunityType },
     "Enrichment complete."
   );
 
@@ -508,6 +569,20 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
 
   // 12. Try auto-enrollment if enabled
   await autoEnrollIfEligible(prospectId);
+
+  } catch (err) {
+    // Recovery: reset prospect status so it can be retried
+    log.error({ err, prospectId, domain }, "Enrichment failed, resetting status to NEW.");
+    try {
+      await prisma.prospect.update({
+        where: { id: prospectId },
+        data: { status: "NEW" },
+      });
+    } catch {
+      log.error({ prospectId }, "Failed to reset prospect status after enrichment failure.");
+    }
+    throw err; // Re-throw so BullMQ marks job as failed and retries
+  }
 }
 
 // ---------------------------------------------------------------------------

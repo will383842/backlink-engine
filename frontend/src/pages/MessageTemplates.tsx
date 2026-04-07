@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
+import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
+import type { Prospect } from "@/types";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -60,6 +62,19 @@ export default function MessageTemplates() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [autoFillProspectId, setAutoFillProspectId] = useState<number | null>(null);
+
+  // Fetch prospects for auto-fill dropdown
+  const { data: prospectsData } = useQuery({
+    queryKey: ["prospects-for-template"],
+    queryFn: async () => {
+      const res = await api.get("/prospects?limit=100");
+      return res.data;
+    },
+  });
+
+  const prospects = (prospectsData?.data ?? []) as Prospect[];
 
   useEffect(() => {
     loadTemplates();
@@ -68,7 +83,7 @@ export default function MessageTemplates() {
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/api/message-templates");
+      const response = await api.get("/message-templates");
       setTemplates(response.data.data);
     } catch (err: any) {
       toast.error("Erreur lors du chargement des templates");
@@ -109,8 +124,8 @@ export default function MessageTemplates() {
       setSaving(true);
 
       const url = selectedCategory
-        ? `/api/message-templates/${selectedLang}?category=${selectedCategory}`
-        : `/api/message-templates/${selectedLang}`;
+        ? `/message-templates/${selectedLang}?category=${selectedCategory}`
+        : `/message-templates/${selectedLang}`;
 
       await api.put(url, {
         subject,
@@ -131,6 +146,48 @@ export default function MessageTemplates() {
 
   const insertVariable = (variable: string) => {
     setBody(body + variable);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toast.success("📋 Message copié dans le presse-papier !");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      toast.error("Erreur lors de la copie");
+      console.error(err);
+    }
+  };
+
+  const handleAutoFill = async (prospectId: number) => {
+    const prospect = prospects.find((p) => p.id === prospectId);
+    if (!prospect) return;
+
+    try {
+      // Call the intelligent template selector endpoint
+      const res = await api.post("/message-templates/select", {
+        language: prospect.language || "en",
+        prospectCategory: prospect.category,
+        prospectTags: prospect.tags?.map((t) => t.tagId) || [],
+      });
+
+      const template = res.data.template;
+      if (template) {
+        setSelectedLang(template.language);
+        setSelectedCategory(template.category);
+        setSubject(template.subject);
+        setBody(template.body);
+        toast.success(`✅ Template auto-sélectionné pour ${prospect.domain} !`);
+      }
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        toast.error(`❌ Aucun template trouvé pour ce prospect (langue: ${prospect.language || "en"})`);
+      } else {
+        toast.error("Erreur lors de la sélection automatique");
+        console.error(err);
+      }
+    }
   };
 
   const renderPreview = () => {
@@ -314,9 +371,22 @@ export default function MessageTemplates() {
 
           {/* Preview */}
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">
-              👁️ Aperçu
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700">
+                👁️ Aperçu
+              </h3>
+              <button
+                onClick={() => copyToClipboard(`${previewSubject}\n\n${previewBody}`)}
+                disabled={!subject.trim() || !body.trim()}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  copied
+                    ? "bg-green-500 text-white"
+                    : "bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                }`}
+              >
+                {copied ? "✅ Copié !" : "📋 Copier"}
+              </button>
+            </div>
             <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
               {/* Preview Subject */}
               <div className="mb-4">
@@ -334,8 +404,113 @@ export default function MessageTemplates() {
                 </div>
               </div>
             </div>
+            <p className="mt-2 text-xs text-gray-500 italic">
+              💡 Astuce : Copiez ce message et collez-le directement dans le formulaire de contact du prospect
+            </p>
           </div>
         </div>
+      </div>
+
+      {/* Auto-fill from prospect */}
+      <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          🤖 Auto-remplissage intelligent
+        </h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Sélectionnez un prospect pour charger automatiquement le template le plus pertinent
+          selon sa langue, sa catégorie et ses tags.
+        </p>
+        <div className="flex gap-3">
+          <select
+            value={autoFillProspectId || ""}
+            onChange={(e) => setAutoFillProspectId(e.target.value ? Number(e.target.value) : null)}
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          >
+            <option value="">Sélectionnez un prospect...</option>
+            {prospects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.domain} ({p.language || "en"} - {p.category || "général"})
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => autoFillProspectId && handleAutoFill(autoFillProspectId)}
+            disabled={!autoFillProspectId}
+            className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            🚀 Auto-remplir
+          </button>
+        </div>
+      </div>
+
+      {/* Templates overview table */}
+      <div className="mt-8 bg-white rounded-lg shadow-sm p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          📊 Matrice des templates
+        </h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Vue d'ensemble de tous les templates disponibles. Cliquez sur une case pour éditer le template correspondant.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="border border-gray-300 px-4 py-2 bg-gray-50 text-left text-sm font-medium text-gray-700">
+                  Langue
+                </th>
+                {CATEGORIES.map((cat) => (
+                  <th
+                    key={cat.value || "general"}
+                    className="border border-gray-300 px-4 py-2 bg-gray-50 text-center text-sm font-medium text-gray-700"
+                  >
+                    {cat.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {LANGUAGES.map((lang) => (
+                <tr key={lang.code}>
+                  <td className="border border-gray-300 px-4 py-2 font-medium text-gray-900">
+                    {lang.label}
+                  </td>
+                  {CATEGORIES.map((cat) => {
+                    const exists = templates.some(
+                      (t) => t.language === lang.code && t.category === cat.value
+                    );
+                    return (
+                      <td
+                        key={cat.value || "general"}
+                        className={`border border-gray-300 px-4 py-2 text-center cursor-pointer transition-colors ${
+                          exists
+                            ? "bg-green-50 hover:bg-green-100"
+                            : "bg-gray-50 hover:bg-blue-50"
+                        }`}
+                        onClick={() => {
+                          setSelectedLang(lang.code);
+                          setSelectedCategory(cat.value);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        title={
+                          exists
+                            ? `Template existant - Cliquez pour éditer`
+                            : `Créer un template ${lang.label} ${cat.label}`
+                        }
+                      >
+                        <span className="text-2xl">
+                          {exists ? "✅" : "➕"}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-4 text-xs text-gray-500 italic">
+          💡 ✅ = Template existant | ➕ = Template manquant (cliquez pour créer)
+        </p>
       </div>
 
       {/* Stats */}

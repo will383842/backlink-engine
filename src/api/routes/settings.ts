@@ -254,7 +254,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
     const defaultConfig = {
       yourName: "",
       yourCompany: "SOS Expat",
-      yourWebsite: "https://sos-expat.com",
+      yourWebsite: process.env.DEFAULT_TARGET_URL ?? "https://life-expat.com",
       contactEmail: "",
       contactPhone: "",
     };

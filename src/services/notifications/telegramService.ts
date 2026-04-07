@@ -33,7 +33,7 @@ async function getTelegramConfig(): Promise<TelegramConfig | null> {
 /**
  * Send a message via Telegram Bot API
  */
-async function sendTelegramMessage(
+export async function sendTelegramMessage(
   botToken: string,
   chatId: string,
   message: string,
@@ -235,4 +235,21 @@ Les notifications Telegram sont correctement configurées !
   `.trim();
 
   return sendTelegramMessage(botToken, chatId, message);
+}
+
+/**
+ * Send the weekly report notification via Telegram.
+ * Uses the stored Telegram config from DB.
+ */
+export async function sendWeeklyReportNotification(
+  formattedMessage: string
+): Promise<boolean> {
+  const config = await getTelegramConfig();
+
+  if (!config || !config.enabled) {
+    log.warn("Telegram not configured or disabled, skipping weekly report notification.");
+    return false;
+  }
+
+  return sendTelegramMessage(config.botToken, config.chatId, formattedMessage);
 }

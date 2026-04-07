@@ -150,7 +150,7 @@ export default function EnrollPreview({
               </div>
 
               {/* Tags */}
-              {preview.tags.length > 0 && (
+              {(preview.tags?.length ?? 0) > 0 && (
                 <div>
                   <h4 className="mb-2 flex items-center gap-1 text-sm font-semibold text-surface-700">
                     <Tag size={14} /> {t("enrollPreview.tagsToApply")}

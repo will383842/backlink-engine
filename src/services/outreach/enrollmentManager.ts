@@ -9,6 +9,7 @@ import {
 } from "../../config/mailwizz.js";
 import type { SupportedLanguage } from "../../config/constants.js";
 import { DA_THRESHOLDS, SCORE_THRESHOLDS } from "../../config/constants.js";
+import type { AbVariant } from "../../llm/types.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { MailWizzClient } from "./mailwizzClient.js";
 import { isInSuppressionList } from "../suppression/suppressionManager.js";
@@ -44,6 +45,7 @@ interface CampaignForEnrollment {
   name: string;
   language: string;
   mailwizzListUid: string | null;
+  abTestEnabled: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,21 +160,44 @@ export async function enrollProspect(
     return;
   }
 
-  // 5. Generate personalized line via LLM
-  const personalizedLine = await getLlmClient().generatePersonalizedLine(
-    campaign.language,
-    prospect.domain,
-    undefined,
-    prospect.country ?? undefined,
-  );
+  // 5. Load sender settings for email generation
+  let senderSettings = { yourWebsite: "https://life-expat.com", yourCompany: "Life Expat", fromEmail: "", fromName: "", replyTo: "" };
+  try {
+    const row = await prisma.appSetting.findUnique({ where: { key: "sender" } });
+    if (row) Object.assign(senderSettings, row.value);
+  } catch { /* use defaults */ }
 
-  // 6. Generate unique campaign reference
+  // 6. Determine A/B variant (random 50/50 split when campaign has A/B testing enabled)
+  const abVariant: AbVariant | undefined = campaign.abTestEnabled
+    ? (Math.random() < 0.5 ? "A" : "B")
+    : undefined;
+
+  if (abVariant) {
+    log.info({ prospectId, campaignId, abVariant }, "A/B test: assigned variant");
+  }
+
+  // 7. Generate COMPLETE personalized email via AI
+  const llm = getLlmClient();
+  const generatedEmail = await llm.generateOutreachEmail({
+    domain: prospect.domain,
+    language: prospect.language ?? campaign.language,
+    country: prospect.country ?? undefined,
+    themes: (prospect as unknown as Record<string, unknown>).thematicCategories as string[] | undefined,
+    opportunityType: (prospect as unknown as Record<string, unknown>).opportunityType as string | undefined,
+    contactName: contact.name ?? undefined,
+    stepNumber: 0,
+    yourWebsite: senderSettings.yourWebsite,
+    yourCompany: senderSettings.yourCompany,
+    variant: abVariant,
+  });
+
+  // 7. Generate unique campaign reference
   const campaignRef = `BL-${campaignId}-${prospectId}-${Date.now()}`;
 
-  // 7. Build tags for MailWizz
+  // 8. Build tags for MailWizz
   const tags = buildTags(prospect, campaign);
 
-  // 8. Create subscriber in MailWizz (with tags)
+  // 9. Create subscriber in MailWizz
   const { subscriberUid } = await mailwizz.createSubscriber(listUid, {
     email: contact.email,
     fname: contact.name ?? undefined,
@@ -180,14 +205,70 @@ export async function enrollProspect(
     BLOG_URL: `https://${prospect.domain}`,
     COUNTRY: prospect.country ?? "",
     LANGUAGE: prospect.language ?? campaign.language,
-    PERSONALIZED_LINE: personalizedLine,
+    PERSONALIZED_LINE: generatedEmail.body.slice(0, 200),
     PROSPECT_ID: String(prospectId),
     CAMPAIGN_REF: campaignRef,
     TAGS: tags.join(","),
   });
 
-  // 9. Create enrollment + update prospect + update campaign + log event in a transaction
+  // 10. SEND the initial email — prefer email-engine, fallback to MailWizz transactional
+  let messageId: string | undefined;
+  let emailEngineCampaignId: number | undefined;
+
+  const { getEmailEngineClient } = await import("./emailEngineClient.js");
+  const emailEngine = getEmailEngineClient();
+
+  if (emailEngine.isConfigured()) {
+    // PRIMARY: Send via email-engine (PowerMTA + dedicated sending domains)
+    try {
+      const result = await emailEngine.sendEmail({
+        toEmail: contact.email,
+        toName: contact.name ?? undefined,
+        subject: generatedEmail.subject,
+        body: generatedEmail.body,
+        language: prospect.language ?? campaign.language,
+        tags: tags,
+        metadata: {
+          prospect_id: String(prospectId),
+          campaign_ref: campaignRef,
+          domain: prospect.domain,
+        },
+      });
+
+      if (result.success) {
+        emailEngineCampaignId = result.campaignId;
+        log.info({ prospectId, toEmail: contact.email, campaignId: result.campaignId }, "Initial email SENT via email-engine.");
+      } else {
+        log.warn({ prospectId, error: result.error }, "Email-engine send failed, trying MailWizz fallback.");
+      }
+    } catch (err) {
+      log.warn({ err, prospectId }, "Email-engine unavailable, trying MailWizz fallback.");
+    }
+  }
+
+  if (!emailEngineCampaignId) {
+    // FALLBACK: Send via MailWizz transactional API
+    try {
+      const result = await mailwizz.sendTransactionalEmail({
+        toEmail: contact.email,
+        toName: contact.name ?? undefined,
+        subject: generatedEmail.subject,
+        body: generatedEmail.body,
+        fromEmail: senderSettings.fromEmail || undefined,
+        fromName: senderSettings.fromName || undefined,
+        replyTo: senderSettings.replyTo || undefined,
+      });
+      messageId = result.messageId;
+      log.info({ prospectId, toEmail: contact.email, messageId }, "Initial email SENT via MailWizz fallback.");
+    } catch (err) {
+      log.error({ err, prospectId }, "Both email-engine and MailWizz failed. Email not sent.");
+    }
+  }
+
+  // 11. Create enrollment + sentEmail + update prospect + log event in a transaction
   const enrollment = await prisma.$transaction(async (tx) => {
+    const firstFollowupDate = calculateFirstFollowupDate(campaign);
+
     const newEnrollment = await tx.enrollment.create({
       data: {
         contactId: contact.id,
@@ -199,6 +280,33 @@ export async function enrollProspect(
         currentStep: 0,
         status: "active",
         enrolledAt: new Date(),
+        lastSentAt: new Date(),
+        nextSendAt: firstFollowupDate,
+      },
+    });
+
+    // Store the full email content for audit
+    await tx.sentEmail.create({
+      data: {
+        enrollmentId: newEnrollment.id,
+        prospectId,
+        contactId: contact.id,
+        campaignId: campaign.id,
+        stepNumber: 0,
+        subject: generatedEmail.subject,
+        body: generatedEmail.body,
+        language: prospect.language ?? campaign.language,
+        generatedBy: "ai",
+        promptContext: {
+          domain: prospect.domain,
+          contactName: contact.name ?? null,
+          abVariant: abVariant ?? null,
+        } as unknown as import("@prisma/client").Prisma.InputJsonValue,
+        mailwizzMessageId: messageId ?? null,
+        mailwizzCampaignUid: emailEngineCampaignId ? String(emailEngineCampaignId) : null,
+        status: (emailEngineCampaignId || messageId) ? "sent" : "failed",
+        sentAt: new Date(),
+        abVariant: abVariant ?? null,
       },
     });
 
@@ -231,8 +339,10 @@ export async function enrollProspect(
           campaignRef,
           subscriberUid,
           listUid,
-          personalizedLine,
+          messageId,
+          emailSubject: generatedEmail.subject,
           tags,
+          abVariant: abVariant ?? null,
         } as unknown as import("@prisma/client").Prisma.InputJsonValue,
       },
     });
@@ -241,9 +351,35 @@ export async function enrollProspect(
   });
 
   log.info(
-    { prospectId, enrollmentId: enrollment.id, campaignRef },
-    "Prospect enrolled successfully",
+    { prospectId, enrollmentId: enrollment.id, campaignRef, messageId },
+    "Prospect enrolled and initial email sent.",
   );
+}
+
+// ---------------------------------------------------------------------------
+// First follow-up date calculation from sequenceConfig
+// ---------------------------------------------------------------------------
+
+function calculateFirstFollowupDate(campaign: CampaignForEnrollment): Date | null {
+  try {
+    const config = (campaign as unknown as Record<string, unknown>).sequenceConfig;
+    if (!config || typeof config !== "object") return null;
+
+    const obj = config as Record<string, unknown>;
+    const steps = obj.steps;
+    if (!Array.isArray(steps) || steps.length === 0) return null;
+
+    // First step after initial email (step 0 = initial send)
+    // Find step with index 1 (first follow-up)
+    const firstFollowup = steps.length > 1 ? steps[1] : steps[0];
+    const delayDays = (firstFollowup as Record<string, unknown>).delayDays as number;
+
+    if (typeof delayDays !== "number" || delayDays <= 0) return null;
+
+    return new Date(Date.now() + delayDays * 86_400_000);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
