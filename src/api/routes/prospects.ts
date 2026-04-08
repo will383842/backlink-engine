@@ -1286,4 +1286,165 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       });
     },
   );
+
+  // ───── GET /form-queue ─── Prospects with contact form, not yet contacted ────
+  app.get<{
+    Querystring: { language?: string; category?: string; limit?: string };
+  }>(
+    "/form-queue",
+    {
+      schema: {
+        querystring: {
+          type: "object",
+          properties: {
+            language: { type: "string" },
+            category: { type: "string" },
+            limit: { type: "string", default: "50" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { language, category, limit } = request.query;
+      const take = Math.min(parseInt(limit ?? "50", 10) || 50, 200);
+
+      const where: Record<string, unknown> = {
+        contactFormUrl: { not: null },
+        status: { in: ["READY_TO_CONTACT", "NEW", "ENRICHING"] },
+        // Exclude prospects that have already been contacted via form
+        NOT: {
+          events: {
+            some: { eventType: "MANUAL_CONTACT_SENT" },
+          },
+        },
+      };
+
+      if (language) where["language"] = language;
+      if (category) where["category"] = category;
+
+      const [prospects, total, alreadyContacted] = await Promise.all([
+        prisma.prospect.findMany({
+          where,
+          select: {
+            id: true,
+            domain: true,
+            category: true,
+            language: true,
+            country: true,
+            contactFormUrl: true,
+            contactFormFields: true,
+            hasCaptcha: true,
+            score: true,
+            tier: true,
+            status: true,
+            thematicCategories: true,
+            contacts: {
+              select: { email: true, firstName: true, lastName: true, name: true },
+              take: 1,
+            },
+          },
+          orderBy: [{ score: "desc" }, { tier: "asc" }],
+          take,
+        }),
+        prisma.prospect.count({ where }),
+        // Count already contacted via form (for stats)
+        prisma.event.groupBy({
+          by: ["prospectId"],
+          where: { eventType: "MANUAL_CONTACT_SENT" },
+          _count: true,
+        }),
+      ]);
+
+      return reply.send({
+        data: prospects,
+        total,
+        alreadyContactedCount: alreadyContacted.length,
+      });
+    },
+  );
+
+  // ───── POST /:id/generate-form-message ─── Generate a message for contact form ────
+  app.post<{ Params: ProspectParams }>(
+    "/:id/generate-form-message",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseIdParam(request.params.id);
+
+      const prospect = await prisma.prospect.findUnique({
+        where: { id },
+        include: {
+          contacts: { take: 1 },
+        },
+      });
+
+      if (!prospect) {
+        return reply.status(404).send({ error: "Prospect not found" });
+      }
+
+      // Check if already contacted via form (dedup)
+      const alreadyContacted = await prisma.event.findFirst({
+        where: { prospectId: id, eventType: "MANUAL_CONTACT_SENT" },
+      });
+
+      if (alreadyContacted) {
+        return reply.status(400).send({
+          error: "already_contacted",
+          message: `This prospect was already contacted on ${(alreadyContacted.data as any)?.contactedAt ?? alreadyContacted.createdAt.toISOString()}`,
+          contactedAt: (alreadyContacted.data as any)?.contactedAt ?? alreadyContacted.createdAt.toISOString(),
+        });
+      }
+
+      // Load sender settings
+      let senderSettings = { yourWebsite: "https://life-expat.com", yourCompany: "Life Expat", yourName: "" };
+      try {
+        const row = await prisma.appSetting.findUnique({ where: { key: "sender" } });
+        if (row) Object.assign(senderSettings, row.value);
+        const outreachRow = await prisma.appSetting.findUnique({ where: { key: "outreach_config" } });
+        if (outreachRow) Object.assign(senderSettings, outreachRow.value);
+      } catch { /* defaults */ }
+
+      // Generate message via LLM
+      try {
+        const { getLlmClient } = await import("../../llm/index.js");
+        const llm = getLlmClient();
+
+        const generated = await llm.generateOutreachEmail({
+          domain: prospect.domain,
+          language: prospect.language ?? "en",
+          country: prospect.country ?? undefined,
+          themes: prospect.thematicCategories as string[] | undefined,
+          opportunityType: prospect.opportunityType ?? undefined,
+          contactName: prospect.contacts[0]?.firstName ?? prospect.contacts[0]?.name ?? undefined,
+          stepNumber: 0,
+          yourWebsite: senderSettings.yourWebsite,
+          yourCompany: senderSettings.yourCompany,
+        });
+
+        return reply.send({
+          data: {
+            subject: generated.subject,
+            body: generated.body,
+            language: prospect.language ?? "en",
+            prospectDomain: prospect.domain,
+            contactFormUrl: prospect.contactFormUrl,
+            hasCaptcha: prospect.hasCaptcha,
+            formFields: prospect.contactFormFields,
+          },
+        });
+      } catch (err) {
+        return reply.status(500).send({
+          error: "llm_error",
+          message: err instanceof Error ? err.message : "Failed to generate message",
+        });
+      }
+    },
+  );
 }

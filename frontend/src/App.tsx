@@ -17,6 +17,7 @@ import Reports from "./pages/Reports";
 import RecontactSuggestions from "./pages/RecontactSuggestions";
 import SentEmails from "./pages/SentEmails";
 import AbTestResults from "./pages/AbTestResults";
+import FormOutreach from "./pages/FormOutreach";
 
 function isAuthenticated(): boolean {
   return !!localStorage.getItem("bl_token");
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="backlinks" element={<Backlinks />} />
           <Route path="assets" element={<Assets />} />
           <Route path="replies" element={<Replies />} />
+          <Route path="form-outreach" element={<FormOutreach />} />
           <Route path="sent-emails" element={<SentEmails />} />
           <Route path="ab-testing" element={<AbTestResults />} />
           <Route path="suppression" element={<Suppression />} />

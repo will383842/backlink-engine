@@ -18,6 +18,7 @@ import {
   X,
   LogOut,
   RefreshCcw,
+  FileText,
 } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -37,6 +38,7 @@ const navItems: NavItem[] = [
   { to: "/backlinks", labelKey: "nav.backlinks", icon: <Link size={20} /> },
   { to: "/assets", labelKey: "nav.assets", icon: <Package size={20} /> },
   { to: "/replies", labelKey: "nav.replies", icon: <Mail size={20} /> },
+  { to: "/form-outreach", labelKey: "nav.formOutreach", icon: <FileText size={20} /> },
   { to: "/sent-emails", labelKey: "nav.sentEmails", icon: <Send size={20} /> },
   { to: "/ab-testing", labelKey: "nav.abTesting", icon: <SquareSplitVertical size={20} /> },
   { to: "/recontact", labelKey: "nav.recontact", icon: <RefreshCcw size={20} /> },
@@ -54,6 +56,7 @@ const pageTitleKeys: Record<string, string> = {
   "/backlinks": "pageTitles.backlinks",
   "/assets": "pageTitles.assets",
   "/replies": "pageTitles.replies",
+  "/form-outreach": "pageTitles.formOutreach",
   "/sent-emails": "pageTitles.sentEmails",
   "/ab-testing": "pageTitles.abTesting",
   "/recontact": "pageTitles.recontact",
