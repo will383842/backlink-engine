@@ -37,7 +37,7 @@ export async function setupCronJobs(): Promise<void> {
   await enrichmentQueue.upsertJobScheduler(
     "enrichment-auto-score",
     {
-      pattern: "*/5 * * * *", // every 5 minutes
+      pattern: "*/2 * * * *", // every 2 minutes (accelerated)
     },
     {
       name: "auto-score-new-prospects",
@@ -48,7 +48,7 @@ export async function setupCronJobs(): Promise<void> {
       },
     }
   );
-  log.info("Scheduled: enrichment auto-score (every 5 min).");
+  log.info("Scheduled: enrichment auto-score (every 2 min).");
 
   // -----------------------------------------------------------------------
   // 2. Auto-enrollment: enroll ready prospects every 10 minutes

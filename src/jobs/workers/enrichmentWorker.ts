@@ -693,7 +693,7 @@ async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> 
       const newProspects = await prisma.prospect.findMany({
         where: { status: "NEW", score: 0 },
         select: { id: true },
-        take: 50,
+        take: 100,
       });
 
       if (newProspects.length === 0) {
@@ -743,7 +743,7 @@ export function startEnrichmentWorker(): Worker<EnrichmentJobData> {
     processEnrichmentJob,
     {
       connection,
-      concurrency: 3,
+      concurrency: 6,
       limiter: {
         max: 10,
         duration: 60_000, // max 10 jobs per minute (respect API rate limits)
