@@ -287,12 +287,41 @@ export class EmailEngineClient {
       .split("\n")
       .map((line) => {
         if (line.trim() === "") return "<br>";
-        // Escape HTML first, then convert URLs to clickable links
-        const escaped = this.escapeHtml(line);
-        const withLinks = this.linkifyUrls(escaped);
+        // Linkify URLs first (on raw text), then escape the non-URL parts
+        const withLinks = this.linkifyAndEscape(line);
         return `<p>${withLinks}</p>`;
       })
       .join("\n");
+  }
+
+  /**
+   * Find URLs in plain text, wrap them in <a> tags, and escape everything else.
+   * URLs are extracted first to avoid escaping their special characters.
+   */
+  private linkifyAndEscape(line: string): string {
+    const urlRegex = /(?:https?:\/\/|www\.)[^\s<>)"]+/gi;
+    let lastIndex = 0;
+    const parts: string[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = urlRegex.exec(line)) !== null) {
+      // Escape text before the URL
+      if (match.index > lastIndex) {
+        parts.push(this.escapeHtml(line.slice(lastIndex, match.index)));
+      }
+      // Add the URL as a clickable link (not escaped)
+      const url = match[0];
+      const href = url.startsWith("www.") ? `https://${url}` : url;
+      parts.push(`<a href="${href}" style="color:#4F46E5;text-decoration:underline" target="_blank">${this.escapeHtml(url)}</a>`);
+      lastIndex = match.index + url.length;
+    }
+
+    // Escape remaining text after last URL
+    if (lastIndex < line.length) {
+      parts.push(this.escapeHtml(line.slice(lastIndex)));
+    }
+
+    return parts.length > 0 ? parts.join("") : this.escapeHtml(line);
   }
 
   private escapeHtml(str: string): string {
@@ -301,21 +330,6 @@ export class EmailEngineClient {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
-  }
-
-  /**
-   * Convert plain-text URLs into clickable <a> links.
-   * Runs AFTER escapeHtml so we match &amp;-encoded URLs too.
-   */
-  private linkifyUrls(escapedText: string): string {
-    // Match URLs that start with http(s):// or www.
-    return escapedText.replace(
-      /(?:https?:\/\/|www\.)[^\s&lt;)]+/gi,
-      (url) => {
-        const href = url.startsWith("www.") ? `https://${url}` : url;
-        return `<a href="${href}" style="color:#4F46E5;text-decoration:underline" target="_blank">${url}</a>`;
-      },
-    );
   }
 }
 

@@ -7,6 +7,37 @@ import { createChildLogger } from "../../utils/logger.js";
 const log = createChildLogger("mailwizz-client");
 
 // ---------------------------------------------------------------------------
+// HTML helpers
+// ---------------------------------------------------------------------------
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function linkifyAndEscapeLine(line: string): string {
+  const urlRegex = /(?:https?:\/\/|www\.)[^\s<>)"]+/gi;
+  let lastIndex = 0;
+  const parts: string[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = urlRegex.exec(line)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(escapeHtml(line.slice(lastIndex, match.index)));
+    }
+    const url = match[0];
+    const href = url.startsWith("www.") ? `https://${url}` : url;
+    parts.push(`<a href="${href}" style="color:#4F46E5;text-decoration:underline" target="_blank">${escapeHtml(url)}</a>`);
+    lastIndex = match.index + url.length;
+  }
+
+  if (lastIndex < line.length) {
+    parts.push(escapeHtml(line.slice(lastIndex)));
+  }
+
+  return parts.length > 0 ? parts.join("") : escapeHtml(line);
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -226,20 +257,7 @@ export class MailWizzClient {
         .split("\n")
         .map((line) => {
           if (line.trim() === "") return "<br>";
-          const escaped = line
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;");
-          // Convert URLs to clickable links
-          const withLinks = escaped.replace(
-            /(?:https?:\/\/|www\.)[^\s&lt;)]+/gi,
-            (url) => {
-              const href = url.startsWith("www.") ? `https://${url}` : url;
-              return `<a href="${href}" style="color:#4F46E5;text-decoration:underline" target="_blank">${url}</a>`;
-            },
-          );
-          return `<p>${withLinks}</p>`;
+          return `<p>${linkifyAndEscapeLine(line)}</p>`;
         })
         .join("\n");
       formData["plain_text"] = opts.body;
