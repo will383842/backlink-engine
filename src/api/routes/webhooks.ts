@@ -539,6 +539,147 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
       }
     },
   );
+  // ───── POST /mission-control/contact-created ─── Mission Control sync ──────
+  // Receives new press contacts / influenceurs from Mission Control and creates
+  // prospects + contacts in the backlink-engine pipeline. Dedup by emailNormalized.
+  app.post<{
+    Body: {
+      email: string;
+      name?: string;
+      firstName?: string;
+      lastName?: string;
+      type: string; // presse, blog, influenceur, youtubeur, instagrammeur, podcast_radio, backlink, annuaire, partenaire
+      publication?: string;
+      country?: string;
+      language?: string;
+      source_url?: string;
+      source_table?: string; // "press_contacts" | "influenceurs"
+      source_id?: number;
+    };
+  }>(
+    "/mission-control/contact-created",
+    {
+      preHandler: [authenticateWebhook],
+      config: {
+        rateLimit: { max: 100, timeWindow: "1 minute" },
+      },
+      schema: {
+        body: {
+          type: "object",
+          required: ["email", "type"],
+          properties: {
+            email: { type: "string" },
+            name: { type: "string" },
+            firstName: { type: "string" },
+            lastName: { type: "string" },
+            type: { type: "string" },
+            publication: { type: "string" },
+            country: { type: "string" },
+            language: { type: "string" },
+            source_url: { type: "string" },
+            source_table: { type: "string" },
+            source_id: { type: "number" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { email, name, firstName, lastName, type, publication, country, language, source_url, source_table, source_id } = request.body;
+      const emailNormalized = email.toLowerCase().trim();
+
+      request.log.info(
+        { email: emailNormalized, type, source_table },
+        "Mission Control contact-created webhook received",
+      );
+
+      // Category mapping: Mission Control type → Backlink Engine ProspectCategory
+      const CATEGORY_MAP: Record<string, string> = {
+        presse: "media",
+        blog: "blogger",
+        podcast_radio: "media",
+        influenceur: "influencer",
+        youtubeur: "influencer",
+        instagrammeur: "influencer",
+        backlink: "blogger",
+        annuaire: "other",
+        partenaire: "partner",
+      };
+
+      const category = CATEGORY_MAP[type];
+      if (!category) {
+        request.log.warn({ type }, "Unsupported contact type from Mission Control, ignoring");
+        return reply.status(200).send({ status: "skipped", reason: "unsupported_type", type });
+      }
+
+      // Idempotency: check by emailNormalized
+      const idempotencyKey = `webhook:mc:${emailNormalized}`;
+      try {
+        const isNew = await redis.set(idempotencyKey, "1", "EX", 3600, "NX");
+        if (!isNew) {
+          return reply.status(200).send({ status: "ok", deduplicated: true });
+        }
+      } catch {
+        // Redis down — proceed (fail open)
+      }
+
+      try {
+        // Check if contact already exists (dedup by email)
+        const existingContact = await prisma.contact.findUnique({
+          where: { emailNormalized },
+        });
+
+        if (existingContact) {
+          request.log.info(
+            { email: emailNormalized, existingProspectId: existingContact.prospectId },
+            "Contact already exists in backlink-engine, skipping",
+          );
+          return reply.status(200).send({
+            status: "duplicate",
+            prospectId: existingContact.prospectId,
+          });
+        }
+
+        // Determine domain from source_url or email
+        const domainSource = source_url || `https://${emailNormalized.split("@")[1]}`;
+
+        // Use ingestService for consistent prospect creation + enrichment
+        const { ingestProspect } = await import("../../services/ingestion/ingestService.js");
+
+        const result = await ingestProspect({
+          url: domainSource,
+          email,
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+          name: name || publication || undefined,
+          language: language || undefined,
+          country: country || undefined,
+          category,
+          source: "csv_import", // closest match for external sync
+          notes: `Synced from Mission Control (${source_table || "unknown"}, id: ${source_id || "?"})`,
+        });
+
+        request.log.info(
+          { email: emailNormalized, result: result.status, prospectId: result.prospectId },
+          "Mission Control contact processed",
+        );
+
+        return reply.status(200).send({
+          status: result.status,
+          prospectId: result.prospectId,
+        });
+      } catch (err) {
+        request.log.error(
+          { err, email: emailNormalized },
+          "Error processing Mission Control contact webhook",
+        );
+        return reply.status(500).send({
+          status: "error",
+          message: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    },
+  );
+
   // ───── POST /email-engine ─── Email Engine delivery feedback ──────
   // Receives bounce/delivery/open/click events from the email-engine.
   app.post<{
