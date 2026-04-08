@@ -220,11 +220,27 @@ export class MailWizzClient {
     if (opts.fromName) formData["from_name"] = opts.fromName;
     if (opts.replyTo) formData["reply_to"] = opts.replyTo;
 
-    // Convert plain text body to basic HTML if it doesn't contain HTML tags
+    // Convert plain text body to HTML with clickable URLs if it doesn't contain HTML tags
     if (!opts.body.includes("<")) {
       formData["body"] = opts.body
         .split("\n")
-        .map((line) => (line.trim() === "" ? "<br>" : `<p>${line}</p>`))
+        .map((line) => {
+          if (line.trim() === "") return "<br>";
+          const escaped = line
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+          // Convert URLs to clickable links
+          const withLinks = escaped.replace(
+            /(?:https?:\/\/|www\.)[^\s&lt;)]+/gi,
+            (url) => {
+              const href = url.startsWith("www.") ? `https://${url}` : url;
+              return `<a href="${href}" style="color:#4F46E5;text-decoration:underline" target="_blank">${url}</a>`;
+            },
+          );
+          return `<p>${withLinks}</p>`;
+        })
         .join("\n");
       formData["plain_text"] = opts.body;
     }

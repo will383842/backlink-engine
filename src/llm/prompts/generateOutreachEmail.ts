@@ -58,9 +58,19 @@ Your task: write a COMPLETE, unique, personalized outreach email (subject + body
    - 150-250 words for initial email
    - 80-150 words for follow-ups
    - Include a clear but soft call-to-action
+   - Naturally include yourWebsite URL in the body (e.g., "You can see our platform at https://life-expat.com")
+   - URLs will be automatically converted to clickable links — just write them as plain text
    - Sign off with first name only (no company signature, we add that)
 
-7. Return JSON ONLY:
+7. Subject line deliverability rules:
+   - NEVER use ALL CAPS words
+   - NEVER use exclamation marks or question marks at the end
+   - NEVER start with "Re:" on initial emails (only follow-ups)
+   - Avoid generic subjects ("Hello", "Hi", "Partnership")
+   - Be specific: mention their domain name or niche
+   - Keep it lowercase-natural, like a real person would write
+
+8. Return JSON ONLY:
 {
   "subject": "the email subject line",
   "body": "the full email body (plain text, use \\n for line breaks)"

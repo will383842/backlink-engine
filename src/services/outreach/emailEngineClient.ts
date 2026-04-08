@@ -285,7 +285,13 @@ export class EmailEngineClient {
   private textToHtml(text: string): string {
     return text
       .split("\n")
-      .map((line) => (line.trim() === "" ? "<br>" : `<p>${this.escapeHtml(line)}</p>`))
+      .map((line) => {
+        if (line.trim() === "") return "<br>";
+        // Escape HTML first, then convert URLs to clickable links
+        const escaped = this.escapeHtml(line);
+        const withLinks = this.linkifyUrls(escaped);
+        return `<p>${withLinks}</p>`;
+      })
       .join("\n");
   }
 
@@ -295,6 +301,21 @@ export class EmailEngineClient {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  /**
+   * Convert plain-text URLs into clickable <a> links.
+   * Runs AFTER escapeHtml so we match &amp;-encoded URLs too.
+   */
+  private linkifyUrls(escapedText: string): string {
+    // Match URLs that start with http(s):// or www.
+    return escapedText.replace(
+      /(?:https?:\/\/|www\.)[^\s&lt;)]+/gi,
+      (url) => {
+        const href = url.startsWith("www.") ? `https://${url}` : url;
+        return `<a href="${href}" style="color:#4F46E5;text-decoration:underline" target="_blank">${url}</a>`;
+      },
+    );
   }
 }
 
