@@ -425,6 +425,9 @@ export interface Reply {
   id: number;
   prospectId: number;
   prospectDomain: string;
+  prospectCategory: string | null;
+  prospectCountry: string | null;
+  prospectLanguage: string | null;
   category: ReplyCategory;
   confidence: number;
   summary: string;
@@ -432,6 +435,9 @@ export interface Reply {
   suggestedAction: string | null;
   isHandled: boolean;
   receivedAt: string;
+  contact: { id: number; email: string; name: string | null; firstName: string | null; lastName: string | null } | null;
+  enrollment: { id: number; campaignId: number; status: string } | null;
+  campaignName: string | null;
 }
 
 // ---------------------------------------------------------------------------

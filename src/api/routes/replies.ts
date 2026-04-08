@@ -57,9 +57,9 @@ export default async function repliesRoutes(app: FastifyInstance): Promise<void>
           skip,
           take,
           include: {
-            prospect: { select: { id: true, domain: true, status: true } },
-            contact: { select: { id: true, email: true, name: true } },
-            enrollment: { select: { id: true, campaignId: true, status: true } },
+            prospect: { select: { id: true, domain: true, status: true, category: true, country: true, language: true } },
+            contact: { select: { id: true, email: true, name: true, firstName: true, lastName: true } },
+            enrollment: { select: { id: true, campaignId: true, status: true, campaign: { select: { name: true } } } },
           },
         }),
         prisma.event.count({ where }),
@@ -70,15 +70,19 @@ export default async function repliesRoutes(app: FastifyInstance): Promise<void>
         id: ev.id,
         prospectId: ev.prospectId,
         prospectDomain: ev.prospect?.domain ?? "unknown",
+        prospectCategory: ev.prospect?.category ?? null,
+        prospectCountry: ev.prospect?.country ?? null,
+        prospectLanguage: ev.prospect?.language ?? null,
         category: (ev.data as Record<string, unknown>)?.category ?? "OTHER",
         confidence: (ev.data as Record<string, unknown>)?.confidence ?? 0,
         summary: (ev.data as Record<string, unknown>)?.summary ?? "",
-        fullText: (ev.data as Record<string, unknown>)?.replyPreview ?? "",
+        fullText: (ev.data as Record<string, unknown>)?.replyPreview ?? (ev.data as Record<string, unknown>)?.bodyPreview ?? "",
         suggestedAction: (ev.data as Record<string, unknown>)?.suggestedAction ?? null,
         isHandled: (ev.data as Record<string, unknown>)?.isHandled === true,
         receivedAt: ev.createdAt.toISOString(),
         contact: ev.contact,
         enrollment: ev.enrollment,
+        campaignName: (ev.enrollment as any)?.campaign?.name ?? null,
       }));
 
       return reply.send({

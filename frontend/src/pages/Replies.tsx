@@ -1,11 +1,37 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { CheckCircle2, Eye } from "lucide-react";
+import { CheckCircle2, Eye, Globe, Mail } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Reply, ReplyCategory } from "@/types";
 import { useTranslation } from "@/i18n";
+
+const CATEGORY_LABELS: Record<string, string> = {
+  blogger: "Blogueur",
+  influencer: "Influenceur",
+  media: "Presse",
+  partner: "Partenaire",
+  other: "Autre",
+  association: "Association",
+  agency: "Agence",
+  corporate: "Entreprise",
+  ecommerce: "E-commerce",
+};
+
+const CATEGORY_BADGE_COLORS: Record<string, string> = {
+  blogger: "bg-indigo-100 text-indigo-700",
+  influencer: "bg-pink-100 text-pink-700",
+  media: "bg-cyan-100 text-cyan-700",
+  partner: "bg-teal-100 text-teal-700",
+  other: "bg-surface-100 text-surface-600",
+};
+
+function getCountryFlag(code: string): string {
+  try {
+    return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+  } catch { return code; }
+}
 
 const CATEGORY_COLORS: Record<string, string> = {
   INTERESTED: "bg-emerald-100 text-emerald-700",
@@ -102,20 +128,48 @@ export default function Replies() {
               }`}
             >
               {/* Reply header row */}
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="font-medium text-surface-900">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-surface-900">
                   {r.prospectDomain}
                 </span>
+                {r.prospectCategory && (
+                  <span className={`badge text-[10px] ${CATEGORY_BADGE_COLORS[r.prospectCategory] ?? "bg-surface-100 text-surface-600"}`}>
+                    {CATEGORY_LABELS[r.prospectCategory] ?? r.prospectCategory}
+                  </span>
+                )}
+                {r.prospectCountry && (
+                  <span className="text-xs" title={r.prospectCountry}>{getCountryFlag(r.prospectCountry)}</span>
+                )}
+                {r.prospectLanguage && (
+                  <span className="text-[10px] text-surface-400 uppercase">{r.prospectLanguage}</span>
+                )}
+                <span className="text-surface-300">|</span>
                 <span className={`badge ${CATEGORY_COLORS[r.category]}`}>
                   {r.category.replace(/_/g, " ")}
                 </span>
                 <span className="text-xs text-surface-500">
-                  {r.confidence}% {t("replies.confidence")}
+                  {r.confidence}%
                 </span>
                 <div className="flex-1" />
                 <time className="text-xs text-surface-400">
                   {format(new Date(r.receivedAt), "dd MMM yyyy HH:mm")}
                 </time>
+              </div>
+
+              {/* Contact + campaign info */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-surface-500">
+                {r.contact?.email && (
+                  <span className="flex items-center gap-1">
+                    <Mail size={12} className="text-surface-400" />
+                    {r.contact.email}
+                  </span>
+                )}
+                {r.campaignName && (
+                  <span className="flex items-center gap-1">
+                    <Globe size={12} className="text-surface-400" />
+                    {r.campaignName}
+                  </span>
+                )}
               </div>
 
               {/* Summary */}
