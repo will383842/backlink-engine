@@ -388,20 +388,39 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
 
     const now = new Date();
 
+    if (!emailSent) {
+      // Both email-engine and MailWizz failed — keep as draft for retry, don't update enrollment/prospect
+      await prisma.event.create({
+        data: {
+          prospectId: email.prospectId,
+          contactId: email.contactId,
+          enrollmentId: email.enrollmentId,
+          eventType: "DRAFT_APPROVE_FAILED",
+          eventSource: "admin",
+          data: { sentEmailId: id, reason: "both_send_methods_failed" },
+        },
+      });
+
+      return reply.status(502).send({
+        status: "error",
+        message: "Email could not be sent (both email-engine and MailWizz failed). Draft preserved — you can retry.",
+      });
+    }
+
+    // Email sent successfully — update everything
     await prisma.$transaction(async (tx) => {
       await tx.sentEmail.update({
         where: { id },
         data: {
-          status: emailSent ? "sent" : "failed",
+          status: "sent",
           sentAt: now,
           mailwizzMessageId: messageId ?? null,
         },
       });
 
       // Update enrollment lastSentAt + calculate next followup
-      if (email.enrollment) {
-        const campaign = email.campaign;
-        const config = campaign.sequenceConfig as { steps?: { delayDays: number }[] } | null;
+      if (email.enrollment && email.campaign) {
+        const config = email.campaign.sequenceConfig as { steps?: { delayDays: number }[] } | null;
         const nextStepIndex = email.stepNumber + 1;
         let nextSendAt: Date | null = null;
 
@@ -426,7 +445,7 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
         where: { id: email.prospectId },
         data: {
           status: "CONTACTED_EMAIL",
-          firstContactedAt: email.prospect.status === "READY_TO_CONTACT" ? now : undefined,
+          firstContactedAt: (email.prospect.status === "NEW" || email.prospect.status === "READY_TO_CONTACT") ? now : undefined,
           lastContactedAt: now,
         },
       });
@@ -440,7 +459,7 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
           eventSource: "admin",
           data: {
             sentEmailId: id,
-            emailSent,
+            emailSent: true,
             messageId: messageId ?? null,
           },
         },
@@ -448,7 +467,7 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
     });
 
     return reply.send({
-      data: { id, status: emailSent ? "sent" : "failed", sentAt: now },
+      data: { id, status: "sent", sentAt: now },
     });
   });
 
@@ -471,6 +490,19 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
         where: { id },
         data: { status: "rejected" },
       });
+
+      // Stop the enrollment — user explicitly rejected this prospect
+      if (email.enrollmentId) {
+        await tx.enrollment.update({
+          where: { id: email.enrollmentId },
+          data: {
+            status: "stopped",
+            stoppedReason: "draft_rejected",
+            completedAt: new Date(),
+            nextSendAt: null,
+          },
+        });
+      }
 
       await tx.event.create({
         data: {

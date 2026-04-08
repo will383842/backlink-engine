@@ -124,6 +124,16 @@ export async function advanceEligibleEnrollments(): Promise<AdvanceResult> {
         break;
       }
 
+      // Check if there's a pending draft for this enrollment — don't advance until it's approved/rejected
+      const pendingDraft = await prisma.sentEmail.findFirst({
+        where: { enrollmentId: enrollment.id, status: "draft" },
+      });
+      if (pendingDraft) {
+        log.debug({ enrollmentId: enrollment.id, draftId: pendingDraft.id }, "Pending draft exists, skipping advancement.");
+        result.skipped++;
+        continue;
+      }
+
       // Check stop conditions
       const shouldStop = await checkStopConditions(enrollment);
       if (shouldStop) {
@@ -341,7 +351,7 @@ async function advanceToNextStep(
       data: {
         currentStep: nextStepIndex,
         lastSentAt: sendNow ? now : undefined,
-        nextSendAt: sendNow ? nextSendAt : null, // In review mode, don't schedule next until this one is approved
+        nextSendAt, // Always set — sequence advancer re-checks mode before sending
       },
     });
 

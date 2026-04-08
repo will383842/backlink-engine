@@ -280,7 +280,8 @@ export async function enrollProspect(
 
   // 10. Create enrollment + sentEmail + update prospect + log event in a transaction
   const enrollment = await prisma.$transaction(async (tx) => {
-    const firstFollowupDate = sendNow ? calculateFirstFollowupDate(campaign) : null;
+    // Always calculate follow-up date (even for drafts — needed to unfreeze after approval)
+    const firstFollowupDate = calculateFirstFollowupDate(campaign);
 
     const newEnrollment = await tx.enrollment.create({
       data: {
