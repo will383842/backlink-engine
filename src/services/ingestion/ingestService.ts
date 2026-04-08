@@ -184,6 +184,7 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
             firstName,
             lastName,
             name: data.name ?? null, // Keep for backward compatibility
+            sourceContactType: data.sourceContactType || null,
             emailStatus: validation.status,
             discoveredVia: data.source,
           },

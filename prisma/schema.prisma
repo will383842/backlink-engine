@@ -291,6 +291,7 @@ model Contact {
   lastName        String?
   name            String? // DEPRECATED: Use firstName + lastName instead (kept for backward compatibility)
   role            String      @default("unknown")
+  sourceContactType String?   @db.VarChar(30) // Original type from Mission Control (presse, youtubeur, instagrammeur...)
   emailStatus     EmailStatus @default(unverified)
   discoveredVia   String      @default("manual")
   optedOut        Boolean     @default(false)

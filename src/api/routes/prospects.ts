@@ -1423,7 +1423,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           themes: prospect.thematicCategories as string[] | undefined,
           opportunityType: prospect.opportunityType ?? undefined,
           contactName: prospect.contacts[0]?.firstName ?? prospect.contacts[0]?.name ?? undefined,
-          contactType: prospect.sourceContactType ?? undefined,
+          contactType: (prospect.contacts[0] as any)?.sourceContactType ?? prospect.sourceContactType ?? undefined,
           channel: "contact_form",
           stepNumber: 0,
           yourWebsite: senderSettings.yourWebsite,

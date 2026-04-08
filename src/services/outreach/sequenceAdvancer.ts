@@ -266,7 +266,7 @@ async function advanceToNextStep(
     themes: prospect.thematicCategories as string[] | undefined,
     opportunityType: prospect.opportunityType ?? undefined,
     contactName: contact.firstName ?? contact.name ?? undefined,
-    contactType: prospect.sourceContactType ?? undefined,
+    contactType: (contact as unknown as Record<string, unknown>).sourceContactType as string ?? prospect.sourceContactType ?? undefined,
     stepNumber: nextStepIndex,
     previousSubject: previousEmail?.subject,
     yourWebsite: senderSettings.yourWebsite,
