@@ -91,6 +91,8 @@ export interface GenerateEmailInput {
   contactName?: string;
   /** Original contact type from Mission Control (presse, blog, influenceur, youtubeur, instagrammeur, podcast_radio...) */
   contactType?: string;
+  /** Channel: "email" (default) or "contact_form" — adapts tone and length */
+  channel?: "email" | "contact_form";
   stepNumber: number;
   previousSubject?: string;
   yourWebsite: string;

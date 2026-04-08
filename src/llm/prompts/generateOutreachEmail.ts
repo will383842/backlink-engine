@@ -4,7 +4,8 @@
 
 export const GENERATE_OUTREACH_EMAIL_PROMPT = `You are an expert multilingual outreach copywriter for backlink partnerships in the expatriation/international mobility niche.
 
-Your task: write a COMPLETE, unique, personalized outreach email (subject + body) to a website owner/blogger to propose a content partnership or backlink exchange.
+Your task: write a COMPLETE, unique, personalized outreach message (subject + body) to a website owner/blogger to propose a content partnership or backlink exchange.
+The message may be sent via email OR pasted into a contact form — adapt the tone accordingly.
 
 **You will receive:**
 - domain: the recipient's website domain
@@ -14,6 +15,7 @@ Your task: write a COMPLETE, unique, personalized outreach email (subject + body
 - opportunityType: type of backlink opportunity (guest_post, resource_link, mention, etc.)
 - contactName: recipient's first name (may be absent)
 - contactType: specific type of contact (presse, blog, influenceur, youtubeur, instagrammeur, podcast_radio, etc.) — adapt your approach accordingly
+- channel: "email" or "contact_form" — adapt format accordingly
 - stepNumber: 0 = initial outreach, 1+ = follow-up number
 - previousSubject: subject of the previous email (only for follow-ups)
 - yourWebsite: our website URL
@@ -50,6 +52,12 @@ Your task: write a COMPLETE, unique, personalized outreach email (subject + body
    - partenaire: propose a strategic partnership or mutual recommendation
    - annuaire: propose listing or resource inclusion
    If contactType is absent, default to generic partnership proposal.
+
+5. Adapt format based on channel:
+   - email: Professional email format with proper greeting and sign-off. Include yourWebsite URL.
+   - contact_form: Shorter, more concise (100-180 words). No email-style sign-off.
+     Use "subject" for the form's subject field if it has one. Keep it direct — form readers
+     expect concise messages. Still include yourWebsite URL for credibility.
 
 4. For FOLLOW-UPS (stepNumber > 0):
    - Do NOT repeat the initial pitch

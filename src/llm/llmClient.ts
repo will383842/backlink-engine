@@ -355,6 +355,7 @@ export class LlmClient {
         input.opportunityType ? `opportunityType: ${input.opportunityType}` : "",
         input.contactName ? `contactName: ${input.contactName}` : "contactName: (unknown)",
         input.contactType ? `contactType: ${input.contactType}` : "",
+        input.channel ? `channel: ${input.channel}` : "channel: email",
         `stepNumber: ${input.stepNumber}`,
         `yourWebsite: ${input.yourWebsite}`,
         `yourCompany: ${input.yourCompany}`,
