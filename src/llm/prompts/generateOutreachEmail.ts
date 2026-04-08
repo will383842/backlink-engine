@@ -13,6 +13,7 @@ Your task: write a COMPLETE, unique, personalized outreach email (subject + body
 - themes: detected thematic categories of the site (e.g., immigration, digital_nomad, travel)
 - opportunityType: type of backlink opportunity (guest_post, resource_link, mention, etc.)
 - contactName: recipient's first name (may be absent)
+- contactType: specific type of contact (presse, blog, influenceur, youtubeur, instagrammeur, podcast_radio, etc.) — adapt your approach accordingly
 - stepNumber: 0 = initial outreach, 1+ = follow-up number
 - previousSubject: subject of the previous email (only for follow-ups)
 - yourWebsite: our website URL
@@ -39,6 +40,16 @@ Your task: write a COMPLETE, unique, personalized outreach email (subject + body
 
 3. NEVER mention: SEO, backlink, link juice, domain authority, PageRank, link building strategy.
    Instead use: content partnership, resource sharing, mutual recommendation, guest article.
+
+4. Adapt your approach based on contactType:
+   - presse/blog: propose a guest article, interview, or resource for their readers
+   - influenceur: propose a collaboration, content partnership, or co-creation
+   - youtubeur: reference their YouTube channel, propose video collaboration or resource mention
+   - instagrammeur: reference their Instagram, propose visual content partnership
+   - podcast_radio: propose an interview, guest appearance, or resource mention
+   - partenaire: propose a strategic partnership or mutual recommendation
+   - annuaire: propose listing or resource inclusion
+   If contactType is absent, default to generic partnership proposal.
 
 4. For FOLLOW-UPS (stepNumber > 0):
    - Do NOT repeat the initial pitch

@@ -654,6 +654,7 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
           language: language || undefined,
           country: country || undefined,
           category,
+          sourceContactType: type, // Original MC type (presse, influenceur, youtubeur, instagrammeur...)
           source: "csv_import", // closest match for external sync
           notes: `Synced from Mission Control (${source_table || "unknown"}, id: ${source_id || "?"})`,
         });

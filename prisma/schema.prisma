@@ -193,6 +193,7 @@ model Prospect {
   domain                String           @unique
   source                ProspectSource   @default(manual)
   category              ProspectCategory @default(blogger)
+  sourceContactType     String?          @db.VarChar(30) // Original type from Mission Control (presse, blog, influenceur, youtubeur, instagrammeur...)
   language              String?          @db.VarChar(10) // ISO 639-1 (fr, en, nl, ja...)
   country               String?          @db.VarChar(2) // ISO 3166-1 alpha-2
   timezone              String?          @db.VarChar(50) // IANA timezone (e.g., "Europe/Paris")

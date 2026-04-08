@@ -354,6 +354,7 @@ export class LlmClient {
         input.themes?.length ? `themes: ${input.themes.join(", ")}` : "",
         input.opportunityType ? `opportunityType: ${input.opportunityType}` : "",
         input.contactName ? `contactName: ${input.contactName}` : "contactName: (unknown)",
+        input.contactType ? `contactType: ${input.contactType}` : "",
         `stepNumber: ${input.stepNumber}`,
         `yourWebsite: ${input.yourWebsite}`,
         `yourCompany: ${input.yourCompany}`,

@@ -25,6 +25,7 @@ export interface IngestInput {
   language?: string;
   country?: string;
   category?: string;
+  sourceContactType?: string; // Original type from Mission Control (presse, blog, influenceur, youtubeur, instagrammeur...)
   contactFormUrl?: string;
   notes?: string;
   source: "manual" | "csv_import" | "scraper";
@@ -135,6 +136,7 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
           domain,
           source: data.source,
           category: (data.category || "blogger") as any,
+          sourceContactType: data.sourceContactType || null,
           language: (language !== "unknown" ? language : null) as any,
           country: country || null,
           contactFormUrl: data.contactFormUrl,

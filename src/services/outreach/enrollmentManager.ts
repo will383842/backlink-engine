@@ -186,6 +186,7 @@ export async function enrollProspect(
     themes: (prospect as unknown as Record<string, unknown>).thematicCategories as string[] | undefined,
     opportunityType: (prospect as unknown as Record<string, unknown>).opportunityType as string | undefined,
     contactName: contact.name ?? undefined,
+    contactType: (prospect as unknown as Record<string, unknown>).sourceContactType as string | undefined,
     stepNumber: 0,
     yourWebsite: senderSettings.yourWebsite,
     yourCompany: senderSettings.yourCompany,
