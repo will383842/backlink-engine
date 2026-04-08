@@ -593,23 +593,46 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
       );
 
       // Category mapping: Mission Control type → Backlink Engine ProspectCategory
+      // Map ALL Mission Control types to Backlink Engine categories
       const CATEGORY_MAP: Record<string, string> = {
+        // Médias & Influence
         presse: "media",
         blog: "blogger",
         podcast_radio: "media",
         influenceur: "influencer",
         youtubeur: "influencer",
         instagrammeur: "influencer",
+        // Digital
         backlink: "blogger",
         annuaire: "other",
         partenaire: "partner",
+        // Institutionnel
+        consulat: "association",
+        association: "association",
+        ecole: "association",
+        institut_culturel: "association",
+        chambre_commerce: "association",
+        alliance_francaise: "association",
+        ufe: "association",
+        // Services B2B
+        avocat: "corporate",
+        immobilier: "corporate",
+        assurance: "corporate",
+        banque_fintech: "corporate",
+        traducteur: "corporate",
+        agence_voyage: "corporate",
+        emploi: "corporate",
+        // Communautés
+        communaute_expat: "association",
+        groupe_whatsapp_telegram: "other",
+        coworking_coliving: "corporate",
+        logement: "corporate",
+        lieu_communautaire: "association",
+        plateforme_nomad: "other",
       };
 
-      const category = CATEGORY_MAP[type];
-      if (!category) {
-        request.log.warn({ type }, "Unsupported contact type from Mission Control, ignoring");
-        return reply.status(200).send({ status: "skipped", reason: "unsupported_type", type });
-      }
+      // Default to "other" for unknown types (don't reject anymore — sync everything)
+      const category = CATEGORY_MAP[type] ?? "other";
 
       // Idempotency: check by emailNormalized
       const idempotencyKey = `webhook:mc:${emailNormalized}`;

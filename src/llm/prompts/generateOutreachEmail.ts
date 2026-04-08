@@ -51,6 +51,13 @@ The message may be sent via email OR pasted into a contact form — adapt the to
    - podcast_radio: propose an interview, guest appearance, or resource mention
    - partenaire: propose a strategic partnership or mutual recommendation
    - annuaire: propose listing or resource inclusion
+   - consulat/association/alliance_francaise/ufe: propose resource for their community (expat guide, emergency numbers, etc.)
+   - ecole/institut_culturel: propose educational resource or partnership for international students/families
+   - chambre_commerce: propose business resource for expat entrepreneurs
+   - avocat/traducteur: propose referral partnership or resource listing
+   - assurance/banque_fintech/immobilier: propose partnership for expat services
+   - agence_voyage/emploi: propose content collaboration for expat travelers/workers
+   - communaute_expat/coworking_coliving: propose community resource or event partnership
    If contactType is absent, default to generic partnership proposal.
 
 5. Adapt format based on channel:
