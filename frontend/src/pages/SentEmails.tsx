@@ -9,16 +9,25 @@ import {
   ChevronRight,
   X,
   Mail,
+  Check,
+  Ban,
+  Pencil,
 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { useSentEmails, useSentEmailStats, useCampaigns } from "@/hooks/useApi";
 import type { SentEmail, SentEmailFilters } from "@/types";
 import { useTranslation } from "@/i18n";
+import api from "@/lib/api";
 
 // ---------------------------------------------------------------------------
 // Status badge colors
 // ---------------------------------------------------------------------------
 
 const STATUS_COLORS: Record<string, string> = {
+  draft: "bg-yellow-100 text-yellow-800",
+  approved: "bg-indigo-100 text-indigo-700",
+  rejected: "bg-gray-200 text-gray-600",
   sent: "bg-blue-100 text-blue-700",
   delivered: "bg-cyan-100 text-cyan-700",
   opened: "bg-emerald-100 text-emerald-700",
@@ -28,7 +37,7 @@ const STATUS_COLORS: Record<string, string> = {
   failed: "bg-red-200 text-red-800",
 };
 
-const STATUS_OPTIONS = ["sent", "delivered", "opened", "clicked", "bounced", "complained", "failed"];
+const STATUS_OPTIONS = ["draft", "sent", "delivered", "opened", "clicked", "bounced", "complained", "rejected", "failed"];
 
 // ---------------------------------------------------------------------------
 // Stats card component
@@ -79,6 +88,51 @@ function EmailDetailModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [editSubject, setEditSubject] = useState(email.subject);
+  const [editBody, setEditBody] = useState(email.body);
+
+  const approveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post(`/sent-emails/${email.id}/approve`);
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Email approuvé et envoyé");
+      queryClient.invalidateQueries({ queryKey: ["sentEmails"] });
+      onClose();
+    },
+    onError: () => toast.error("Erreur lors de l'approbation"),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.post(`/sent-emails/${email.id}/reject`);
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Email rejeté");
+      queryClient.invalidateQueries({ queryKey: ["sentEmails"] });
+      onClose();
+    },
+    onError: () => toast.error("Erreur lors du rejet"),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await api.put(`/sent-emails/${email.id}`, { subject: editSubject, body: editBody });
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("Brouillon modifié");
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["sentEmails"] });
+    },
+    onError: () => toast.error("Erreur lors de la sauvegarde"),
+  });
+
+  const isDraft = email.status === "draft";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
@@ -158,11 +212,77 @@ function EmailDetailModal({
           <h5 className="mb-2 text-xs font-semibold uppercase tracking-wider text-surface-400">
             {t("sentEmails.emailBody")}
           </h5>
-          <div
-            className="prose prose-sm max-w-none rounded-lg bg-surface-50 p-4 text-surface-700"
-            dangerouslySetInnerHTML={{ __html: email.body }}
-          />
+          {editing ? (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-surface-500">Sujet</label>
+                <input
+                  type="text"
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-surface-500">Corps</label>
+                <textarea
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
+                  rows={12}
+                  className="mt-1 w-full rounded-lg border border-surface-300 px-3 py-2 text-sm font-mono focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => saveMutation.mutate()}
+                  disabled={saveMutation.isPending}
+                  className="btn-primary flex items-center gap-1.5 text-sm"
+                >
+                  <Check size={14} /> Sauvegarder
+                </button>
+                <button onClick={() => setEditing(false)} className="btn-secondary text-sm">
+                  Annuler
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="prose prose-sm max-w-none rounded-lg bg-surface-50 p-4 text-surface-700"
+              dangerouslySetInnerHTML={{ __html: email.body }}
+            />
+          )}
         </div>
+
+        {/* Draft action buttons */}
+        {isDraft && !editing && (
+          <div className="sticky bottom-0 flex items-center justify-between border-t border-surface-200 bg-yellow-50 px-6 py-4 rounded-b-2xl">
+            <span className="text-sm font-medium text-yellow-800">
+              Brouillon en attente de review
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEditing(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm font-medium text-surface-700 transition-colors hover:bg-surface-50"
+              >
+                <Pencil size={14} /> Modifier
+              </button>
+              <button
+                onClick={() => rejectMutation.mutate()}
+                disabled={rejectMutation.isPending}
+                className="flex items-center gap-1.5 rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-200"
+              >
+                <Ban size={14} /> Rejeter
+              </button>
+              <button
+                onClick={() => approveMutation.mutate()}
+                disabled={approveMutation.isPending}
+                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+              >
+                <Check size={14} /> Approuver & Envoyer
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

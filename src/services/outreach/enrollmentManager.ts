@@ -15,6 +15,7 @@ import { MailWizzClient } from "./mailwizzClient.js";
 import { isInSuppressionList } from "../suppression/suppressionManager.js";
 import { getLlmClient } from "../../llm/index.js";
 import { getMailwizzConfig } from "../mailwizz/config.js";
+import { shouldSendImmediately } from "./outreachMode.js";
 
 const log = createChildLogger("enrollment");
 
@@ -197,95 +198,107 @@ export async function enrollProspect(
   // 8. Build tags for MailWizz
   const tags = buildTags(prospect, campaign);
 
-  // 9. Create subscriber in MailWizz
-  const { subscriberUid } = await mailwizz.createSubscriber(listUid, {
-    email: contact.email,
-    fname: contact.name ?? undefined,
-    BLOG_NAME: prospect.domain,
-    BLOG_URL: `https://${prospect.domain}`,
-    COUNTRY: prospect.country ?? "",
-    LANGUAGE: prospect.language ?? campaign.language,
-    PERSONALIZED_LINE: generatedEmail.body.slice(0, 200),
-    PROSPECT_ID: String(prospectId),
-    CAMPAIGN_REF: campaignRef,
-    TAGS: tags.join(","),
-  });
+  // 9. Check outreach mode: auto (send immediately) vs review (create draft)
+  const sendNow = await shouldSendImmediately();
 
-  // 10. SEND the initial email — prefer email-engine, fallback to MailWizz transactional
+  let subscriberUid: string | undefined;
   let messageId: string | undefined;
   let emailEngineCampaignId: number | undefined;
+  let emailStatus: string;
 
-  const { getEmailEngineClient } = await import("./emailEngineClient.js");
-  const emailEngine = getEmailEngineClient();
+  if (sendNow) {
+    // ── AUTO MODE: Create MailWizz subscriber + send email immediately ──
+    const mwResult = await mailwizz.createSubscriber(listUid, {
+      email: contact.email,
+      fname: contact.name ?? undefined,
+      BLOG_NAME: prospect.domain,
+      BLOG_URL: `https://${prospect.domain}`,
+      COUNTRY: prospect.country ?? "",
+      LANGUAGE: prospect.language ?? campaign.language,
+      PERSONALIZED_LINE: generatedEmail.body.slice(0, 200),
+      PROSPECT_ID: String(prospectId),
+      CAMPAIGN_REF: campaignRef,
+      TAGS: tags.join(","),
+    });
+    subscriberUid = mwResult.subscriberUid;
 
-  if (emailEngine.isConfigured()) {
-    // PRIMARY: Send via email-engine (PowerMTA + dedicated sending domains)
-    try {
-      const result = await emailEngine.sendEmail({
-        toEmail: contact.email,
-        toName: contact.name ?? undefined,
-        subject: generatedEmail.subject,
-        body: generatedEmail.body,
-        language: prospect.language ?? campaign.language,
-        tags: tags,
-        metadata: {
-          prospect_id: String(prospectId),
-          campaign_ref: campaignRef,
-          domain: prospect.domain,
-        },
-      });
+    // Send via email-engine (primary) or MailWizz transactional (fallback)
+    const { getEmailEngineClient } = await import("./emailEngineClient.js");
+    const emailEngine = getEmailEngineClient();
 
-      if (result.success) {
-        emailEngineCampaignId = result.campaignId;
-        log.info({ prospectId, toEmail: contact.email, campaignId: result.campaignId }, "Initial email SENT via email-engine.");
-      } else {
-        log.warn({ prospectId, error: result.error }, "Email-engine send failed, trying MailWizz fallback.");
+    if (emailEngine.isConfigured()) {
+      try {
+        const result = await emailEngine.sendEmail({
+          toEmail: contact.email,
+          toName: contact.name ?? undefined,
+          subject: generatedEmail.subject,
+          body: generatedEmail.body,
+          language: prospect.language ?? campaign.language,
+          tags: tags,
+          metadata: {
+            prospect_id: String(prospectId),
+            campaign_ref: campaignRef,
+            domain: prospect.domain,
+          },
+        });
+
+        if (result.success) {
+          emailEngineCampaignId = result.campaignId;
+          log.info({ prospectId, toEmail: contact.email, campaignId: result.campaignId }, "Initial email SENT via email-engine.");
+        } else {
+          log.warn({ prospectId, error: result.error }, "Email-engine send failed, trying MailWizz fallback.");
+        }
+      } catch (err) {
+        log.warn({ err, prospectId }, "Email-engine unavailable, trying MailWizz fallback.");
       }
-    } catch (err) {
-      log.warn({ err, prospectId }, "Email-engine unavailable, trying MailWizz fallback.");
     }
+
+    if (!emailEngineCampaignId) {
+      try {
+        const result = await mailwizz.sendTransactionalEmail({
+          toEmail: contact.email,
+          toName: contact.name ?? undefined,
+          subject: generatedEmail.subject,
+          body: generatedEmail.body,
+          fromEmail: senderSettings.fromEmail || undefined,
+          fromName: senderSettings.fromName || undefined,
+          replyTo: senderSettings.replyTo || undefined,
+        });
+        messageId = result.messageId;
+        log.info({ prospectId, toEmail: contact.email, messageId }, "Initial email SENT via MailWizz fallback.");
+      } catch (err) {
+        log.error({ err, prospectId }, "Both email-engine and MailWizz failed. Email not sent.");
+      }
+    }
+
+    emailStatus = (emailEngineCampaignId || messageId) ? "sent" : "failed";
+  } else {
+    // ── REVIEW MODE: Generate draft, do NOT send ──
+    emailStatus = "draft";
+    log.info({ prospectId, campaignId }, "REVIEW MODE — email created as draft, awaiting approval.");
   }
 
-  if (!emailEngineCampaignId) {
-    // FALLBACK: Send via MailWizz transactional API
-    try {
-      const result = await mailwizz.sendTransactionalEmail({
-        toEmail: contact.email,
-        toName: contact.name ?? undefined,
-        subject: generatedEmail.subject,
-        body: generatedEmail.body,
-        fromEmail: senderSettings.fromEmail || undefined,
-        fromName: senderSettings.fromName || undefined,
-        replyTo: senderSettings.replyTo || undefined,
-      });
-      messageId = result.messageId;
-      log.info({ prospectId, toEmail: contact.email, messageId }, "Initial email SENT via MailWizz fallback.");
-    } catch (err) {
-      log.error({ err, prospectId }, "Both email-engine and MailWizz failed. Email not sent.");
-    }
-  }
-
-  // 11. Create enrollment + sentEmail + update prospect + log event in a transaction
+  // 10. Create enrollment + sentEmail + update prospect + log event in a transaction
   const enrollment = await prisma.$transaction(async (tx) => {
-    const firstFollowupDate = calculateFirstFollowupDate(campaign);
+    const firstFollowupDate = sendNow ? calculateFirstFollowupDate(campaign) : null;
 
     const newEnrollment = await tx.enrollment.create({
       data: {
         contactId: contact.id,
         campaignId: campaign.id,
         prospectId: prospect.id,
-        mailwizzSubscriberUid: subscriberUid,
+        mailwizzSubscriberUid: subscriberUid ?? null,
         mailwizzListUid: listUid,
         campaignRef,
         currentStep: 0,
         status: "active",
         enrolledAt: new Date(),
-        lastSentAt: new Date(),
+        lastSentAt: sendNow ? new Date() : null,
         nextSendAt: firstFollowupDate,
       },
     });
 
-    // Store the full email content for audit
+    // Store the full email content for audit (or review)
     await tx.sentEmail.create({
       data: {
         enrollmentId: newEnrollment.id,
@@ -304,23 +317,26 @@ export async function enrollProspect(
         } as unknown as import("@prisma/client").Prisma.InputJsonValue,
         mailwizzMessageId: messageId ?? null,
         mailwizzCampaignUid: emailEngineCampaignId ? String(emailEngineCampaignId) : null,
-        status: (emailEngineCampaignId || messageId) ? "sent" : "failed",
-        sentAt: new Date(),
+        status: emailStatus,
+        sentAt: sendNow ? new Date() : null as unknown as Date,
         abVariant: abVariant ?? null,
       },
     });
 
-    const now = new Date();
-    await tx.prospect.update({
-      where: { id: prospectId },
-      data: {
-        status: "CONTACTED_EMAIL",
-        firstContactedAt: prospect.status === "NEW" || prospect.status === "READY_TO_CONTACT"
-          ? now
-          : undefined,
-        lastContactedAt: now,
-      },
-    });
+    // Only update prospect status if actually sent
+    if (sendNow) {
+      const now = new Date();
+      await tx.prospect.update({
+        where: { id: prospectId },
+        data: {
+          status: "CONTACTED_EMAIL",
+          firstContactedAt: prospect.status === "NEW" || prospect.status === "READY_TO_CONTACT"
+            ? now
+            : undefined,
+          lastContactedAt: now,
+        },
+      });
+    }
 
     await tx.campaign.update({
       where: { id: campaignId },
@@ -332,17 +348,18 @@ export async function enrollProspect(
         prospectId,
         contactId: contact.id,
         enrollmentId: newEnrollment.id,
-        eventType: "ENROLLED",
+        eventType: sendNow ? "ENROLLED" : "DRAFT_CREATED",
         eventSource: "enrollment-manager",
         data: {
           campaignId,
           campaignRef,
-          subscriberUid,
+          subscriberUid: subscriberUid ?? null,
           listUid,
-          messageId,
+          messageId: messageId ?? null,
           emailSubject: generatedEmail.subject,
           tags,
           abVariant: abVariant ?? null,
+          outreachMode: sendNow ? "auto" : "review",
         } as unknown as import("@prisma/client").Prisma.InputJsonValue,
       },
     });
@@ -351,8 +368,8 @@ export async function enrollProspect(
   });
 
   log.info(
-    { prospectId, enrollmentId: enrollment.id, campaignRef, messageId },
-    "Prospect enrolled and initial email sent.",
+    { prospectId, enrollmentId: enrollment.id, campaignRef, mode: sendNow ? "auto" : "review" },
+    sendNow ? "Prospect enrolled and initial email sent." : "Prospect enrolled — draft email awaiting review.",
   );
 }
 

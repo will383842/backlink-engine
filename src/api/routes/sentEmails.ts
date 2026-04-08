@@ -292,6 +292,272 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
     return reply.send({ data: results });
   });
 
+  // ───── GET /drafts ─── List all draft emails pending review ──────
+  app.get("/drafts", async (_request, reply) => {
+    const drafts = await prisma.sentEmail.findMany({
+      where: { status: "draft" },
+      include: {
+        prospect: { select: { id: true, domain: true, status: true, country: true, language: true } },
+        contact: { select: { id: true, email: true, firstName: true, lastName: true } },
+        campaign: { select: { id: true, name: true, language: true } },
+        enrollment: { select: { id: true, status: true, currentStep: true } },
+      },
+      orderBy: { id: "desc" },
+    });
+
+    return reply.send({ data: drafts, total: drafts.length });
+  });
+
+  // ───── POST /:id/approve ─── Approve and send a draft email ────
+  app.post<{ Params: { id: string } }>("/:id/approve", async (request, reply) => {
+    const id = parseIdParam(request.params.id);
+
+    const email = await prisma.sentEmail.findUnique({
+      where: { id },
+      include: {
+        contact: true,
+        prospect: true,
+        enrollment: true,
+        campaign: true,
+      },
+    });
+
+    if (!email) {
+      return reply.status(404).send({ error: "Email not found" });
+    }
+
+    if (email.status !== "draft") {
+      return reply.status(400).send({ error: `Cannot approve email with status "${email.status}". Only drafts can be approved.` });
+    }
+
+    // Send the email now
+    let messageId: string | undefined;
+    let emailSent = false;
+
+    const { getEmailEngineClient } = await import("../../services/outreach/emailEngineClient.js");
+    const emailEngine = getEmailEngineClient();
+
+    if (emailEngine.isConfigured()) {
+      try {
+        const result = await emailEngine.sendEmail({
+          toEmail: email.contact.email,
+          toName: email.contact.firstName ?? email.contact.name ?? undefined,
+          subject: email.subject,
+          body: email.body,
+          language: email.language,
+          tags: [`bl_step_${email.stepNumber}`],
+          metadata: {
+            prospect_id: String(email.prospectId),
+            enrollment_id: String(email.enrollmentId),
+            step: String(email.stepNumber),
+          },
+        });
+        emailSent = result.success;
+      } catch {
+        // fall through to MailWizz
+      }
+    }
+
+    if (!emailSent) {
+      try {
+        const { MailWizzClient } = await import("../../services/outreach/mailwizzClient.js");
+        const { mailwizzConfig } = await import("../../config/mailwizz.js");
+        const mailwizz = new MailWizzClient(mailwizzConfig.apiUrl, mailwizzConfig.apiKey);
+
+        let senderSettings = { fromEmail: "", fromName: "", replyTo: "" };
+        try {
+          const row = await prisma.appSetting.findUnique({ where: { key: "sender" } });
+          if (row) Object.assign(senderSettings, row.value);
+        } catch { /* defaults */ }
+
+        const result = await mailwizz.sendTransactionalEmail({
+          toEmail: email.contact.email,
+          toName: email.contact.firstName ?? email.contact.name ?? undefined,
+          subject: email.subject,
+          body: email.body,
+          fromEmail: senderSettings.fromEmail || undefined,
+          fromName: senderSettings.fromName || undefined,
+          replyTo: senderSettings.replyTo || undefined,
+        });
+        messageId = result.messageId;
+        emailSent = true;
+      } catch {
+        // both failed
+      }
+    }
+
+    const now = new Date();
+
+    await prisma.$transaction(async (tx) => {
+      await tx.sentEmail.update({
+        where: { id },
+        data: {
+          status: emailSent ? "sent" : "failed",
+          sentAt: now,
+          mailwizzMessageId: messageId ?? null,
+        },
+      });
+
+      // Update enrollment lastSentAt + calculate next followup
+      if (email.enrollment) {
+        const campaign = email.campaign;
+        const config = campaign.sequenceConfig as { steps?: { delayDays: number }[] } | null;
+        const nextStepIndex = email.stepNumber + 1;
+        let nextSendAt: Date | null = null;
+
+        if (config?.steps && nextStepIndex < config.steps.length) {
+          const nextStep = config.steps[nextStepIndex];
+          if (nextStep) {
+            nextSendAt = new Date(now.getTime() + nextStep.delayDays * 86_400_000);
+          }
+        }
+
+        await tx.enrollment.update({
+          where: { id: email.enrollmentId },
+          data: {
+            lastSentAt: now,
+            nextSendAt,
+          },
+        });
+      }
+
+      // Update prospect status
+      await tx.prospect.update({
+        where: { id: email.prospectId },
+        data: {
+          status: "CONTACTED_EMAIL",
+          firstContactedAt: email.prospect.status === "READY_TO_CONTACT" ? now : undefined,
+          lastContactedAt: now,
+        },
+      });
+
+      await tx.event.create({
+        data: {
+          prospectId: email.prospectId,
+          contactId: email.contactId,
+          enrollmentId: email.enrollmentId,
+          eventType: "DRAFT_APPROVED",
+          eventSource: "admin",
+          data: {
+            sentEmailId: id,
+            emailSent,
+            messageId: messageId ?? null,
+          },
+        },
+      });
+    });
+
+    return reply.send({
+      data: { id, status: emailSent ? "sent" : "failed", sentAt: now },
+    });
+  });
+
+  // ───── POST /:id/reject ─── Reject a draft email ──────────────
+  app.post<{ Params: { id: string } }>("/:id/reject", async (request, reply) => {
+    const id = parseIdParam(request.params.id);
+
+    const email = await prisma.sentEmail.findUnique({ where: { id } });
+
+    if (!email) {
+      return reply.status(404).send({ error: "Email not found" });
+    }
+
+    if (email.status !== "draft") {
+      return reply.status(400).send({ error: `Cannot reject email with status "${email.status}".` });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.sentEmail.update({
+        where: { id },
+        data: { status: "rejected" },
+      });
+
+      await tx.event.create({
+        data: {
+          prospectId: email.prospectId,
+          contactId: email.contactId,
+          enrollmentId: email.enrollmentId,
+          eventType: "DRAFT_REJECTED",
+          eventSource: "admin",
+          data: { sentEmailId: id },
+        },
+      });
+    });
+
+    return reply.send({ data: { id, status: "rejected" } });
+  });
+
+  // ───── PUT /:id ─── Edit a draft email (subject + body) ───────
+  app.put<{
+    Params: { id: string };
+    Body: { subject?: string; body?: string };
+  }>(
+    "/:id",
+    {
+      schema: {
+        body: {
+          type: "object",
+          properties: {
+            subject: { type: "string" },
+            body: { type: "string" },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseIdParam(request.params.id);
+      const { subject, body } = request.body;
+
+      const email = await prisma.sentEmail.findUnique({ where: { id } });
+
+      if (!email) {
+        return reply.status(404).send({ error: "Email not found" });
+      }
+
+      if (email.status !== "draft") {
+        return reply.status(400).send({ error: `Cannot edit email with status "${email.status}". Only drafts can be edited.` });
+      }
+
+      const updated = await prisma.sentEmail.update({
+        where: { id },
+        data: {
+          ...(subject !== undefined && { subject }),
+          ...(body !== undefined && { body }),
+          generatedBy: "manual", // Mark as manually edited
+        },
+      });
+
+      return reply.send({ data: updated });
+    },
+  );
+
+  // ───── POST /approve-all ─── Approve all draft emails at once ──
+  app.post("/approve-all", async (_request, reply) => {
+    const drafts = await prisma.sentEmail.findMany({
+      where: { status: "draft" },
+      select: { id: true },
+    });
+
+    if (drafts.length === 0) {
+      return reply.send({ data: { approved: 0 } });
+    }
+
+    // Mark all as approved (they will be sent by a separate process or one by one)
+    // For safety, we approve them one by one via the approve endpoint logic
+    // But for bulk, we just mark them — the actual sending happens via approve
+    const ids = drafts.map((d) => d.id);
+
+    // NOTE: For bulk approve, we don't send immediately — we just mark as "approved"
+    // so the sequence advancer or a dedicated worker can pick them up.
+    // For now, return the count and let the admin approve individually.
+    return reply.send({
+      data: {
+        pendingDrafts: drafts.length,
+        message: `${drafts.length} drafts pending. Approve individually via POST /:id/approve to send.`,
+      },
+    });
+  });
+
   // ───── GET /prospect/:prospectId ─── All emails for a prospect ──
   app.get<{ Params: { prospectId: string } }>(
     "/prospect/:prospectId",

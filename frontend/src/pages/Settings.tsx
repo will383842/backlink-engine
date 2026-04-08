@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, Bot, User, Building2, Globe, Mail, Phone, MessageCircle, Send } from "lucide-react";
+import { Save, Bot, User, Building2, Globe, Mail, Phone, MessageCircle, Send, Shield, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { AppSettings } from "@/types";
@@ -67,6 +67,9 @@ export default function Settings() {
     contactPhone: "",
   });
 
+  const [outreachMode, setOutreachMode] = useState<"auto" | "review">("review");
+  const [pendingDrafts, setPendingDrafts] = useState(0);
+
   const [telegramConfig, setTelegramConfig] = useState<TelegramConfig>({
     enabled: false,
     botToken: "",
@@ -84,6 +87,34 @@ export default function Settings() {
     queryFn: async () => {
       const res = await api.get("/settings");
       return res.data?.data ?? res.data;
+    },
+  });
+
+  // Fetch outreach mode
+  const { data: outreachModeData } = useQuery({
+    queryKey: ["settings", "outreach-mode"],
+    queryFn: async () => {
+      const res = await api.get<{ data: { mode: "auto" | "review"; pendingDrafts: number } }>("/settings/outreach-mode");
+      return res.data;
+    },
+  });
+
+  useEffect(() => {
+    if (outreachModeData?.data) {
+      setOutreachMode(outreachModeData.data.mode);
+      setPendingDrafts(outreachModeData.data.pendingDrafts);
+    }
+  }, [outreachModeData]);
+
+  const toggleOutreachMode = useMutation({
+    mutationFn: async (mode: "auto" | "review") => {
+      const res = await api.put("/settings/outreach-mode", { mode });
+      return res.data;
+    },
+    onSuccess: (_, mode) => {
+      setOutreachMode(mode);
+      toast.success(mode === "auto" ? "Mode AUTO activé — emails envoyés immédiatement" : "Mode REVIEW activé — emails en brouillon");
+      queryClient.invalidateQueries({ queryKey: ["settings", "outreach-mode"] });
     },
   });
 
@@ -226,6 +257,64 @@ export default function Settings() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
+      {/* Outreach Mode Toggle */}
+      <div className="card space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold text-surface-900 flex items-center gap-2">
+            {outreachMode === "auto" ? <Zap size={20} className="text-amber-500" /> : <Shield size={20} className="text-brand-600" />}
+            Mode d'envoi des emails
+          </h3>
+          <p className="mt-1 text-sm text-surface-600">
+            Choisissez entre envoyer automatiquement ou vérifier chaque email avant envoi
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => toggleOutreachMode.mutate("review")}
+            className={`rounded-xl border-2 p-4 text-left transition-all ${
+              outreachMode === "review"
+                ? "border-brand-500 bg-brand-50 ring-1 ring-brand-200"
+                : "border-surface-200 hover:border-surface-300"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Shield size={18} className={outreachMode === "review" ? "text-brand-600" : "text-surface-400"} />
+              <span className="font-semibold text-surface-900">Review (brouillon)</span>
+            </div>
+            <p className="mt-1 text-xs text-surface-500">
+              Les emails sont sauvegardés comme brouillons. Vous pouvez les prévisualiser, modifier, approuver ou rejeter avant envoi.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => toggleOutreachMode.mutate("auto")}
+            className={`rounded-xl border-2 p-4 text-left transition-all ${
+              outreachMode === "auto"
+                ? "border-amber-500 bg-amber-50 ring-1 ring-amber-200"
+                : "border-surface-200 hover:border-surface-300"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Zap size={18} className={outreachMode === "auto" ? "text-amber-600" : "text-surface-400"} />
+              <span className="font-semibold text-surface-900">Auto (direct)</span>
+            </div>
+            <p className="mt-1 text-xs text-surface-500">
+              Les emails sont générés et envoyés immédiatement, sans vérification humaine.
+            </p>
+          </button>
+        </div>
+
+        {pendingDrafts > 0 && (
+          <div className="rounded-lg bg-brand-50 border border-brand-200 px-4 py-3 text-sm text-brand-700">
+            <strong>{pendingDrafts}</strong> email{pendingDrafts > 1 ? "s" : ""} en attente de review →{" "}
+            <a href="/sent-emails?status=draft" className="font-semibold underline">Voir les brouillons</a>
+          </div>
+        )}
+      </div>
+
       {/* Outreach Config */}
       <form
         onSubmit={(e) => {

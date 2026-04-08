@@ -8,6 +8,7 @@ import { mailwizzConfig } from "../../config/mailwizz.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { MailWizzClient } from "./mailwizzClient.js";
 import { getLlmClient } from "../../llm/index.js";
+import { shouldSendImmediately } from "./outreachMode.js";
 
 const log = createChildLogger("sequence-advancer");
 
@@ -262,79 +263,88 @@ async function advanceToNextStep(
     variant: abVariant ?? undefined,
   });
 
-  // SEND the follow-up email — prefer email-engine, fallback MailWizz
+  // Check outreach mode: auto vs review
+  const sendNow = await shouldSendImmediately();
+
   let messageId: string | undefined;
   let emailSent = false;
+  let emailStatus: string;
 
-  const { getEmailEngineClient } = await import("./emailEngineClient.js");
-  const emailEngine = getEmailEngineClient();
+  if (sendNow) {
+    // ── AUTO MODE: Send follow-up immediately ──
+    const { getEmailEngineClient } = await import("./emailEngineClient.js");
+    const emailEngine = getEmailEngineClient();
 
-  if (emailEngine.isConfigured()) {
-    try {
-      const result = await emailEngine.sendEmail({
-        toEmail: contact.email,
-        toName: contact.firstName ?? contact.name ?? undefined,
-        subject: generatedEmail.subject,
-        body: generatedEmail.body,
-        language: prospect.language ?? "en",
-        tags: [`bl_step_${nextStepIndex}`],
-        metadata: {
-          prospect_id: String(enrollment.prospectId),
-          enrollment_id: String(enrollment.id),
-          step: String(nextStepIndex),
-        },
-      });
-      emailSent = result.success;
-      if (result.success) {
-        log.info({ enrollmentId: enrollment.id, step: nextStepIndex, toEmail: contact.email }, "Follow-up SENT via email-engine.");
-      }
-    } catch (err) {
-      log.warn({ err, enrollmentId: enrollment.id }, "Email-engine unavailable for follow-up.");
-    }
-  }
-
-  if (!emailSent) {
-    // Fallback: MailWizz transactional
-    try {
-      const mailwizz = new MailWizzClient(mailwizzConfig.apiUrl, mailwizzConfig.apiKey);
-
-      if (enrollment.mailwizzSubscriberUid && enrollment.mailwizzListUid) {
-        await mailwizz.updateSubscriber(enrollment.mailwizzListUid, enrollment.mailwizzSubscriberUid, {
-          CURRENT_STEP: String(nextStepIndex),
-        }).catch((err: unknown) => {
-          log.warn({ err, enrollmentId: enrollment.id }, "Failed to update MailWizz subscriber step.");
+    if (emailEngine.isConfigured()) {
+      try {
+        const result = await emailEngine.sendEmail({
+          toEmail: contact.email,
+          toName: contact.firstName ?? contact.name ?? undefined,
+          subject: generatedEmail.subject,
+          body: generatedEmail.body,
+          language: prospect.language ?? "en",
+          tags: [`bl_step_${nextStepIndex}`],
+          metadata: {
+            prospect_id: String(enrollment.prospectId),
+            enrollment_id: String(enrollment.id),
+            step: String(nextStepIndex),
+          },
         });
+        emailSent = result.success;
+        if (result.success) {
+          log.info({ enrollmentId: enrollment.id, step: nextStepIndex, toEmail: contact.email }, "Follow-up SENT via email-engine.");
+        }
+      } catch (err) {
+        log.warn({ err, enrollmentId: enrollment.id }, "Email-engine unavailable for follow-up.");
       }
-
-      const result = await mailwizz.sendTransactionalEmail({
-        toEmail: contact.email,
-        toName: contact.firstName ?? contact.name ?? undefined,
-        subject: generatedEmail.subject,
-        body: generatedEmail.body,
-        fromEmail: senderSettings.fromEmail || undefined,
-        fromName: senderSettings.fromName || undefined,
-        replyTo: senderSettings.replyTo || undefined,
-      });
-      messageId = result.messageId;
-      emailSent = true;
-      log.info({ enrollmentId: enrollment.id, step: nextStepIndex, messageId }, "Follow-up SENT via MailWizz fallback.");
-    } catch (err) {
-      log.error({ err, enrollmentId: enrollment.id, step: nextStepIndex }, "Both email-engine and MailWizz failed for follow-up.");
     }
+
+    if (!emailSent) {
+      try {
+        const mailwizz = new MailWizzClient(mailwizzConfig.apiUrl, mailwizzConfig.apiKey);
+
+        if (enrollment.mailwizzSubscriberUid && enrollment.mailwizzListUid) {
+          await mailwizz.updateSubscriber(enrollment.mailwizzListUid, enrollment.mailwizzSubscriberUid, {
+            CURRENT_STEP: String(nextStepIndex),
+          }).catch((err: unknown) => {
+            log.warn({ err, enrollmentId: enrollment.id }, "Failed to update MailWizz subscriber step.");
+          });
+        }
+
+        const result = await mailwizz.sendTransactionalEmail({
+          toEmail: contact.email,
+          toName: contact.firstName ?? contact.name ?? undefined,
+          subject: generatedEmail.subject,
+          body: generatedEmail.body,
+          fromEmail: senderSettings.fromEmail || undefined,
+          fromName: senderSettings.fromName || undefined,
+          replyTo: senderSettings.replyTo || undefined,
+        });
+        messageId = result.messageId;
+        emailSent = true;
+        log.info({ enrollmentId: enrollment.id, step: nextStepIndex, messageId }, "Follow-up SENT via MailWizz fallback.");
+      } catch (err) {
+        log.error({ err, enrollmentId: enrollment.id, step: nextStepIndex }, "Both email-engine and MailWizz failed for follow-up.");
+      }
+    }
+    emailStatus = emailSent ? "sent" : "failed";
+  } else {
+    // ── REVIEW MODE: Create draft follow-up ──
+    emailStatus = "draft";
+    log.info({ enrollmentId: enrollment.id, step: nextStepIndex }, "REVIEW MODE — follow-up created as draft.");
   }
 
-  // Update enrollment in DB + store sent email
+  // Update enrollment in DB + store email
   await prisma.$transaction(async (tx) => {
     await tx.enrollment.update({
       where: { id: enrollment.id },
       data: {
         currentStep: nextStepIndex,
-        lastSentAt: now,
-        nextSendAt,
+        lastSentAt: sendNow ? now : undefined,
+        nextSendAt: sendNow ? nextSendAt : null, // In review mode, don't schedule next until this one is approved
       },
     });
 
-    // Store full email content for audit
     await tx.sentEmail.create({
       data: {
         enrollmentId: enrollment.id,
@@ -354,30 +364,33 @@ async function advanceToNextStep(
           abVariant: abVariant ?? null,
         },
         mailwizzMessageId: messageId ?? null,
-        status: emailSent ? "sent" : "failed",
-        sentAt: now,
+        status: emailStatus,
+        sentAt: sendNow ? now : null as unknown as Date,
         abVariant: abVariant ?? null,
       },
     });
 
-    await tx.prospect.update({
-      where: { id: enrollment.prospectId },
-      data: { lastContactedAt: now },
-    });
+    if (sendNow) {
+      await tx.prospect.update({
+        where: { id: enrollment.prospectId },
+        data: { lastContactedAt: now },
+      });
+    }
 
     await tx.event.create({
       data: {
         prospectId: enrollment.prospectId,
         contactId: enrollment.contactId,
         enrollmentId: enrollment.id,
-        eventType: "SEQUENCE_STEP_SENT",
+        eventType: sendNow ? "SEQUENCE_STEP_SENT" : "DRAFT_CREATED",
         eventSource: "sequence-advancer",
         data: {
           step: nextStepIndex,
           delayDays: step.delayDays,
-          messageId,
+          messageId: messageId ?? null,
           emailSubject: generatedEmail.subject,
           nextSendAt: nextSendAt?.toISOString() ?? null,
+          outreachMode: sendNow ? "auto" : "review",
         },
       },
     });

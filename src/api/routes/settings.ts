@@ -7,6 +7,8 @@ import {
   getThrottleStats,
 } from "../../services/autoEnrollment/config.js";
 import { sendTestNotification } from "../../services/notifications/telegramService.js";
+import { getOutreachMode, setOutreachMode } from "../../services/outreach/outreachMode.js";
+import type { OutreachMode } from "../../services/outreach/outreachMode.js";
 
 // ─────────────────────────────────────────────────────────────
 // Global settings management
@@ -457,6 +459,51 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
           message: "Échec de l'envoi du message de test. Vérifiez le Bot Token et le Chat ID.",
         });
       }
+    },
+  );
+
+  // ───── GET /outreach-mode ─── Get outreach mode (auto/review) ──
+  app.get("/outreach-mode", async (_request, reply) => {
+    const mode = await getOutreachMode();
+    const draftCount = await prisma.sentEmail.count({ where: { status: "draft" } });
+
+    return reply.send({
+      data: {
+        mode,
+        pendingDrafts: draftCount,
+        description: mode === "auto"
+          ? "Emails are sent immediately after generation (no human review)"
+          : "Emails are saved as drafts and require manual approval before sending",
+      },
+    });
+  });
+
+  // ───── PUT /outreach-mode ─── Toggle outreach mode ─────────────
+  app.put<{ Body: { mode: OutreachMode } }>(
+    "/outreach-mode",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["mode"],
+          properties: {
+            mode: { type: "string", enum: ["auto", "review"] },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { mode } = request.body;
+      await setOutreachMode(mode);
+
+      return reply.send({
+        data: {
+          mode,
+          message: mode === "auto"
+            ? "Switched to AUTO mode — emails will be sent immediately"
+            : "Switched to REVIEW mode — emails will be saved as drafts for approval",
+        },
+      });
     },
   );
 }

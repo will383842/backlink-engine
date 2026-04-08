@@ -399,7 +399,9 @@ model SentEmail {
   mailwizzCampaignUid String?
   mailwizzMessageId   String?
   // Delivery status (updated by webhooks)
-  status          String   @default("sent") // sent, delivered, opened, clicked, bounced, complained, failed
+  // Statuses: draft (pending review), approved (ready to send), rejected (will not send),
+  //           sent, delivered, opened, clicked, bounced, complained, failed
+  status          String   @default("sent")
   sentAt          DateTime @default(now())
   deliveredAt     DateTime?
   firstOpenedAt   DateTime?
