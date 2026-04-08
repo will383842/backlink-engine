@@ -255,6 +255,113 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
     },
   );
 
+  // ───── GET /outreach-overview ─── Clear view: contactable / no method / enriching ───
+  app.get(
+    "/outreach-overview",
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      const data = await getCached(
+        "dashboard:outreach-overview",
+        60,
+        async () => {
+          // Contactable: has valid email OR contact form
+          const [
+            readyWithEmail,
+            readyWithForm,
+            readyWithBoth,
+            readyNoMethod,
+            enriching,
+            newProspects,
+            contacted,
+            replied,
+            won,
+          ] = await Promise.all([
+            // Ready + valid email (not invalid, not opted out)
+            prisma.$queryRawUnsafe<[{count: bigint}]>(`
+              SELECT COUNT(DISTINCT p.id) as count FROM prospects p
+              JOIN contacts c ON c."prospectId" = p.id
+              WHERE p.status = 'READY_TO_CONTACT'
+                AND c."emailStatus" NOT IN ('invalid')
+                AND c."optedOut" = false
+            `),
+            // Ready + contact form
+            prisma.prospect.count({
+              where: { status: "READY_TO_CONTACT", contactFormUrl: { not: null } },
+            }),
+            // Ready + both
+            prisma.$queryRawUnsafe<[{count: bigint}]>(`
+              SELECT COUNT(DISTINCT p.id) as count FROM prospects p
+              JOIN contacts c ON c."prospectId" = p.id
+              WHERE p.status = 'READY_TO_CONTACT'
+                AND c."emailStatus" NOT IN ('invalid')
+                AND c."optedOut" = false
+                AND p."contactFormUrl" IS NOT NULL
+            `),
+            // Ready + NO contact method
+            prisma.$queryRawUnsafe<[{count: bigint}]>(`
+              SELECT COUNT(*) as count FROM prospects p
+              WHERE p.status = 'READY_TO_CONTACT'
+                AND p."contactFormUrl" IS NULL
+                AND NOT EXISTS (
+                  SELECT 1 FROM contacts c
+                  WHERE c."prospectId" = p.id
+                    AND c."emailStatus" NOT IN ('invalid')
+                    AND c."optedOut" = false
+                )
+            `),
+            // Currently enriching
+            prisma.prospect.count({
+              where: { status: { in: ["NEW", "ENRICHING"] } },
+            }),
+            // NEW only
+            prisma.prospect.count({ where: { status: "NEW" } }),
+            // Already contacted
+            prisma.prospect.count({
+              where: { status: { in: ["CONTACTED_EMAIL", "CONTACTED_MANUAL", "FOLLOWUP_DUE"] } },
+            }),
+            // Replied
+            prisma.prospect.count({
+              where: { status: { in: ["REPLIED", "NEGOTIATING"] } },
+            }),
+            // Won
+            prisma.prospect.count({
+              where: { status: { in: ["WON", "LINK_PENDING", "LINK_VERIFIED"] } },
+            }),
+          ]);
+
+          const emailCount = Number(readyWithEmail[0]?.count ?? 0);
+          const formCount = readyWithForm;
+          const bothCount = Number(readyWithBoth[0]?.count ?? 0);
+          const noMethodCount = Number(readyNoMethod[0]?.count ?? 0);
+          // Email only = email - both, Form only = form - both
+          const emailOnly = emailCount - bothCount;
+          const formOnly = formCount - bothCount;
+          const totalContactable = emailOnly + formOnly + bothCount;
+
+          return {
+            contactable: {
+              total: totalContactable,
+              emailOnly,
+              formOnly,
+              both: bothCount,
+            },
+            noContactMethod: noMethodCount,
+            enriching: {
+              total: enriching,
+              newCount: newProspects,
+            },
+            outreach: {
+              contacted,
+              replied,
+              won,
+            },
+          };
+        },
+      );
+
+      return reply.send({ data });
+    },
+  );
+
   // ───── GET /campaigns ─── Campaign performance statistics ───────
   app.get(
     "/campaigns",

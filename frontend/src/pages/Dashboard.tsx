@@ -63,6 +63,21 @@ export default function Dashboard() {
     },
   });
 
+  // Outreach overview (contactable / no method / enriching)
+  const { data: outreachOverview } = useQuery({
+    queryKey: ["outreachOverview"],
+    queryFn: async () => {
+      const res = await api.get("/dashboard/outreach-overview");
+      return res.data?.data as {
+        contactable: { total: number; emailOnly: number; formOnly: number; both: number };
+        noContactMethod: number;
+        enriching: { total: number; newCount: number };
+        outreach: { contacted: number; replied: number; won: number };
+      } | undefined;
+    },
+    staleTime: 60_000,
+  });
+
   // Email performance stats (from SentEmail table)
   const { data: emailStats } = useQuery({
     queryKey: ["sentEmailStats"],
@@ -141,6 +156,72 @@ export default function Dashboard() {
           />
         </div>
       </section>
+
+      {/* Outreach Overview — 3 clear categories */}
+      {outreachOverview && (
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <Mail size={20} className="text-brand-500" />
+            <h3 className="text-lg font-semibold text-surface-900">Vue Outreach</h3>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {/* Contactable */}
+            <div
+              className="cursor-pointer rounded-xl border-2 border-emerald-200 bg-emerald-50 p-5 transition-shadow hover:shadow-md"
+              onClick={() => navigate("/prospects?status=READY_TO_CONTACT")}
+            >
+              <p className="text-sm font-medium text-emerald-700">Contactables</p>
+              <p className="mt-1 text-3xl font-bold text-emerald-800">{outreachOverview.contactable.total}</p>
+              <div className="mt-2 space-y-1 text-xs text-emerald-600">
+                <p>📧 {outreachOverview.contactable.emailOnly} par email uniquement</p>
+                <p>📝 {outreachOverview.contactable.formOnly} par formulaire uniquement</p>
+                {outreachOverview.contactable.both > 0 && (
+                  <p>📧+📝 {outreachOverview.contactable.both} les deux</p>
+                )}
+              </div>
+            </div>
+
+            {/* No contact method */}
+            <div className="rounded-xl border-2 border-surface-200 bg-surface-50 p-5">
+              <p className="text-sm font-medium text-surface-500">Sans coordonnees</p>
+              <p className="mt-1 text-3xl font-bold text-surface-400">{outreachOverview.noContactMethod}</p>
+              <p className="mt-2 text-xs text-surface-400">
+                Enrichis mais aucun email ni formulaire trouve
+              </p>
+            </div>
+
+            {/* Enriching */}
+            <div
+              className="cursor-pointer rounded-xl border-2 border-amber-200 bg-amber-50 p-5 transition-shadow hover:shadow-md"
+              onClick={() => navigate("/prospects?status=NEW")}
+            >
+              <p className="text-sm font-medium text-amber-700">En cours d'enrichissement</p>
+              <p className="mt-1 text-3xl font-bold text-amber-800">{outreachOverview.enriching.total}</p>
+              <p className="mt-2 text-xs text-amber-600">
+                {outreachOverview.enriching.newCount} en attente — enrichissement auto 24h/24
+              </p>
+            </div>
+          </div>
+
+          {/* Outreach progress */}
+          {(outreachOverview.outreach.contacted > 0 || outreachOverview.outreach.replied > 0 || outreachOverview.outreach.won > 0) && (
+            <div className="mt-3 flex gap-3">
+              <div className="rounded-lg bg-indigo-50 border border-indigo-200 px-4 py-2 text-sm">
+                <span className="text-indigo-600 font-semibold">{outreachOverview.outreach.contacted}</span>
+                <span className="text-indigo-500 ml-1">contactes</span>
+              </div>
+              <div className="rounded-lg bg-purple-50 border border-purple-200 px-4 py-2 text-sm">
+                <span className="text-purple-600 font-semibold">{outreachOverview.outreach.replied}</span>
+                <span className="text-purple-500 ml-1">reponses</span>
+              </div>
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-2 text-sm">
+                <span className="text-emerald-600 font-semibold">{outreachOverview.outreach.won}</span>
+                <span className="text-emerald-500 ml-1">gagnes</span>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* To-do */}
       <section>
