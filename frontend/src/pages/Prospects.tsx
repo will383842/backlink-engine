@@ -1,11 +1,42 @@
 import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Users, Mail, FileText, Globe } from "lucide-react";
 import { format } from "date-fns";
 import api from "@/lib/api";
 import type { Prospect, ProspectStatus, PaginatedResponse, Tag } from "@/types";
 import { useTranslation } from "@/i18n";
+
+// ── Type labels & colors ──
+const SOURCE_TYPE_CONFIG: Record<string, { label: string; emoji: string; color: string }> = {
+  presse: { label: "Presse", emoji: "📰", color: "bg-cyan-100 text-cyan-700 border-cyan-200" },
+  ecole: { label: "Ecoles", emoji: "🏫", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  youtubeur: { label: "YouTubeurs", emoji: "▶️", color: "bg-red-100 text-red-700 border-red-200" },
+  influenceur: { label: "Influenceurs", emoji: "✨", color: "bg-pink-100 text-pink-700 border-pink-200" },
+  consulat: { label: "Consulats", emoji: "🏛️", color: "bg-amber-100 text-amber-700 border-amber-200" },
+  avocat: { label: "Avocats", emoji: "⚖️", color: "bg-indigo-100 text-indigo-700 border-indigo-200" },
+  association: { label: "Associations", emoji: "🤝", color: "bg-teal-100 text-teal-700 border-teal-200" },
+  alliance_francaise: { label: "Alliance Fr.", emoji: "🇫🇷", color: "bg-blue-100 text-blue-700 border-blue-200" },
+  ufe: { label: "UFE", emoji: "🌍", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  instagrammeur: { label: "Instagram", emoji: "📸", color: "bg-purple-100 text-purple-700 border-purple-200" },
+  communaute_expat: { label: "Communautes", emoji: "👥", color: "bg-orange-100 text-orange-700 border-orange-200" },
+};
+
+const CATEGORY_CONFIG: Record<string, { label: string; color: string }> = {
+  blogger: { label: "Blogueurs", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  influencer: { label: "Influenceurs", color: "bg-pink-50 text-pink-700 border-pink-200" },
+  media: { label: "Medias", color: "bg-cyan-50 text-cyan-700 border-cyan-200" },
+  association: { label: "Institutionnel", color: "bg-amber-50 text-amber-700 border-amber-200" },
+  corporate: { label: "Services B2B", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  partner: { label: "Partenaires", color: "bg-teal-50 text-teal-700 border-teal-200" },
+  other: { label: "Autres", color: "bg-surface-50 text-surface-600 border-surface-200" },
+};
+
+function getCountryFlag(code: string): string {
+  try {
+    return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+  } catch { return code; }
+}
 
 const STATUS_OPTIONS: ProspectStatus[] = [
   "NEW",
@@ -103,6 +134,24 @@ export default function Prospects() {
 
   const tags = (tagsData?.tags ?? []) as Tag[];
 
+  // Stats by type
+  const { data: statsData } = useQuery({
+    queryKey: ["prospects-stats"],
+    queryFn: async () => {
+      const res = await api.get("/prospects/stats-by-type");
+      return res.data?.data as {
+        total: number;
+        byCategory: { category: string; count: number }[];
+        bySourceType: { type: string; count: number }[];
+        byStatus: { status: string; count: number }[];
+        byContactMethod: { method: string; count: number }[];
+        byLanguage: { language: string; count: number }[];
+        byCountry: { country: string; count: number }[];
+      };
+    },
+    staleTime: 60_000,
+  });
+
   const { data, isLoading } = useQuery<PaginatedResponse<Prospect>>({
     queryKey: ["prospects", page, { ...filters, search: debouncedSearch }],
     queryFn: async () => {
@@ -123,6 +172,97 @@ export default function Prospects() {
 
   return (
     <div className="space-y-4">
+      {/* Stats Header */}
+      {statsData && (
+        <div className="space-y-4">
+          {/* Total + Contact Method */}
+          <div className="grid gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-sm text-surface-500"><Users size={16} /> Total</div>
+              <p className="mt-1 text-2xl font-bold text-surface-900">{statsData.total}</p>
+            </div>
+            {statsData.byContactMethod.map((m) => {
+              const cfg: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+                email_only: { label: "Email", icon: <Mail size={16} />, color: "text-emerald-600" },
+                form_only: { label: "Formulaire", icon: <FileText size={16} />, color: "text-blue-600" },
+                email_and_form: { label: "Email + Form", icon: <Mail size={16} />, color: "text-indigo-600" },
+                none: { label: "Sans contact", icon: <Users size={16} />, color: "text-surface-400" },
+              };
+              const c = cfg[m.method] ?? { label: m.method, icon: null, color: "text-surface-600" };
+              return (
+                <div key={m.method} className="rounded-xl border bg-white p-4 shadow-sm">
+                  <div className={`flex items-center gap-2 text-sm ${c.color}`}>{c.icon} {c.label}</div>
+                  <p className={`mt-1 text-2xl font-bold ${c.color}`}>{m.count}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* By Category (BL) */}
+          <div className="card">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">Par categorie</h4>
+            <div className="flex flex-wrap gap-2">
+              {statsData.byCategory.map((c) => {
+                const cfg = CATEGORY_CONFIG[c.category] ?? { label: c.category, color: "bg-surface-50 text-surface-600 border-surface-200" };
+                return (
+                  <button
+                    key={c.category}
+                    onClick={() => updateFilter("status", "")}
+                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:shadow-sm ${cfg.color}`}
+                  >
+                    {cfg.label} <span className="ml-1 font-bold">{c.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* By Source Type (MC) */}
+          <div className="card">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">Par type de contact</h4>
+            <div className="flex flex-wrap gap-2">
+              {statsData.bySourceType.map((s) => {
+                const cfg = SOURCE_TYPE_CONFIG[s.type] ?? { label: s.type, emoji: "📋", color: "bg-surface-100 text-surface-600 border-surface-200" };
+                return (
+                  <div key={s.type} className={`rounded-lg border px-3 py-2 text-sm ${cfg.color}`}>
+                    <span className="mr-1">{cfg.emoji}</span>
+                    {cfg.label} <span className="ml-1 font-bold">{s.count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Languages + Countries */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="card">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
+                <Globe size={14} className="inline mr-1" />Top langues
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {statsData.byLanguage.slice(0, 12).map((l) => (
+                  <span key={l.language} className="rounded bg-surface-100 px-2 py-1 text-xs text-surface-600">
+                    {(l.language ?? "?").toUpperCase()} <strong>{l.count}</strong>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="card">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
+                <Globe size={14} className="inline mr-1" />Top pays
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {statsData.byCountry.slice(0, 12).map((c) => (
+                  <span key={c.country} className="rounded bg-surface-100 px-2 py-1 text-xs text-surface-600">
+                    {c.country ? getCountryFlag(c.country) : "?"} {c.country ?? "?"} <strong>{c.count}</strong>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="card">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

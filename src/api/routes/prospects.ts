@@ -1287,6 +1287,77 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
     },
   );
 
+  // ───── GET /stats-by-type ─── Counts by category, sourceContactType, status, contact method ────
+  app.get("/stats-by-type", async (_request, reply) => {
+    const [byCategory, bySourceType, byStatus, contactMethod, byLanguage, byCountry] = await Promise.all([
+      // By BL category
+      prisma.prospect.groupBy({
+        by: ["category"],
+        _count: { _all: true },
+        orderBy: { _count: { category: "desc" } },
+      }),
+      // By MC source contact type (from contacts table)
+      prisma.$queryRawUnsafe<{ type: string; count: bigint }[]>(`
+        SELECT c."sourceContactType" as type, COUNT(DISTINCT p.id) as count
+        FROM prospects p
+        JOIN contacts c ON c."prospectId" = p.id
+        WHERE c."sourceContactType" IS NOT NULL
+        GROUP BY c."sourceContactType"
+        ORDER BY count DESC
+      `),
+      // By status
+      prisma.prospect.groupBy({
+        by: ["status"],
+        _count: { _all: true },
+        orderBy: { _count: { status: "desc" } },
+      }),
+      // Contact method breakdown
+      prisma.$queryRawUnsafe<{ method: string; count: bigint }[]>(`
+        SELECT
+          CASE
+            WHEN EXISTS (SELECT 1 FROM contacts c WHERE c."prospectId" = p.id AND c."emailStatus" NOT IN ('invalid') AND c."optedOut" = false)
+              AND p."contactFormUrl" IS NOT NULL THEN 'email_and_form'
+            WHEN EXISTS (SELECT 1 FROM contacts c WHERE c."prospectId" = p.id AND c."emailStatus" NOT IN ('invalid') AND c."optedOut" = false)
+              THEN 'email_only'
+            WHEN p."contactFormUrl" IS NOT NULL THEN 'form_only'
+            ELSE 'none'
+          END as method,
+          COUNT(*) as count
+        FROM prospects p
+        GROUP BY method
+        ORDER BY count DESC
+      `),
+      // Top 10 languages
+      prisma.prospect.groupBy({
+        by: ["language"],
+        _count: { _all: true },
+        where: { language: { not: null } },
+        orderBy: { _count: { language: "desc" } },
+        take: 15,
+      }),
+      // Top 10 countries
+      prisma.prospect.groupBy({
+        by: ["country"],
+        _count: { _all: true },
+        where: { country: { not: null } },
+        orderBy: { _count: { country: "desc" } },
+        take: 15,
+      }),
+    ]);
+
+    return reply.send({
+      data: {
+        total: byCategory.reduce((s, e) => s + e._count._all, 0),
+        byCategory: byCategory.map((e) => ({ category: e.category, count: e._count._all })),
+        bySourceType: bySourceType.map((e) => ({ type: e.type, count: Number(e.count) })),
+        byStatus: byStatus.map((e) => ({ status: e.status, count: e._count._all })),
+        byContactMethod: contactMethod.map((e) => ({ method: e.method, count: Number(e.count) })),
+        byLanguage: byLanguage.map((e) => ({ language: e.language, count: e._count._all })),
+        byCountry: byCountry.map((e) => ({ country: e.country, count: e._count._all })),
+      },
+    });
+  });
+
   // ───── GET /form-queue ─── Prospects with contact form, not yet contacted ────
   app.get<{
     Querystring: { language?: string; category?: string; limit?: string };
