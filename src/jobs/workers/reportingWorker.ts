@@ -8,7 +8,14 @@ import {
   storeWeeklyReport,
   formatWeeklyReportTelegram,
 } from "../../services/reporting/weeklyReport.js";
-import { sendWeeklyReportNotification } from "../../services/notifications/telegramService.js";
+import {
+  generateDailyBroadcastReport,
+  formatDailyBroadcastTelegram,
+} from "../../services/reporting/dailyBroadcastReport.js";
+import {
+  sendWeeklyReportNotification,
+  sendDailyBroadcastReport,
+} from "../../services/notifications/telegramService.js";
 
 const log = createChildLogger("reporting-worker");
 
@@ -28,7 +35,11 @@ interface WeeklyStatsJobData {
   date?: string;
 }
 
-type ReportingJobData = DailyStatsJobData | WeeklyStatsJobData;
+interface DailyBroadcastReportJobData {
+  type: "daily-broadcast-report";
+}
+
+type ReportingJobData = DailyStatsJobData | WeeklyStatsJobData | DailyBroadcastReportJobData;
 
 // ---------------------------------------------------------------------------
 // Daily stats shape
@@ -178,15 +189,22 @@ async function storeDailyStats(stats: DailyStats): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function processReportingJob(job: Job<ReportingJobData>): Promise<void> {
-  const { type, date } = job.data;
+  const { type } = job.data;
 
   if (type === "daily-stats") {
+    const date = "date" in job.data ? job.data.date : undefined;
     await processDailyStats(job, date);
     return;
   }
 
   if (type === "weekly-stats") {
+    const date = "date" in job.data ? job.data.date : undefined;
     await processWeeklyStats(job, date);
+    return;
+  }
+
+  if (type === "daily-broadcast-report") {
+    await processDailyBroadcastReport(job);
     return;
   }
 
@@ -263,6 +281,40 @@ async function processWeeklyStats(
       telegramSent: sent,
     },
     "Weekly report complete."
+  );
+}
+
+async function processDailyBroadcastReport(job: Job<ReportingJobData>): Promise<void> {
+  log.info({ jobId: job.id }, "Generating daily broadcast report.");
+
+  await job.updateProgress(10);
+
+  const report = await generateDailyBroadcastReport();
+
+  await job.updateProgress(50);
+
+  // Only send if there are active campaigns or activity today
+  if (report.campaigns.length === 0 && report.totals.sent === 0) {
+    log.info("No broadcast campaigns with activity, skipping Telegram notification.");
+    await job.updateProgress(100);
+    return;
+  }
+
+  const message = formatDailyBroadcastTelegram(report);
+  const sent = await sendDailyBroadcastReport(message);
+
+  await job.updateProgress(100);
+
+  log.info(
+    {
+      campaigns: report.campaigns.length,
+      sent: report.totals.sent,
+      bounced: report.totals.bounced,
+      failed: report.totals.failed,
+      alerts: report.alerts.length,
+      telegramSent: sent,
+    },
+    "Daily broadcast report complete.",
   );
 }
 

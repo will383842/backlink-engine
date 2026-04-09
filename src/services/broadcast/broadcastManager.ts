@@ -5,6 +5,7 @@ import { isInSuppressionList } from "../suppression/suppressionManager.js";
 import { shouldSendImmediately } from "../outreach/outreachMode.js";
 import { getEmailEngineClient } from "../outreach/emailEngineClient.js";
 import { getVariations, pickAndPersonalize } from "./variationCache.js";
+import { sendBroadcastAlert } from "../notifications/telegramService.js";
 
 const log = createChildLogger("broadcast-manager");
 
@@ -295,7 +296,7 @@ export async function countEligibleContacts(campaignId: number): Promise<number>
 export async function checkCampaignHealth(campaignId: number): Promise<{ healthy: boolean; reason?: string }> {
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
-    select: { totalSent: true, totalBounced: true, totalComplained: true },
+    select: { name: true, totalSent: true, totalBounced: true, totalComplained: true },
   });
 
   if (!campaign || campaign.totalSent < 10) return { healthy: true };
@@ -306,12 +307,20 @@ export async function checkCampaignHealth(campaignId: number): Promise<{ healthy
   if (bounceRate > 0.05) {
     await prisma.campaign.update({ where: { id: campaignId }, data: { isActive: false } });
     log.warn({ campaignId, bounceRate }, "Campaign auto-paused: bounce rate > 5%");
+    // Real-time Telegram alert
+    sendBroadcastAlert(campaign.name, "auto_paused",
+      `Bounce rate: ${(bounceRate * 100).toFixed(1)}% (seuil: 5%)\nBounces: ${campaign.totalBounced}/${campaign.totalSent} envoyes`
+    ).catch(() => {});
     return { healthy: false, reason: `Bounce rate ${(bounceRate * 100).toFixed(1)}% > 5%` };
   }
 
   if (complaintRate > 0.001) {
     await prisma.campaign.update({ where: { id: campaignId }, data: { isActive: false } });
     log.warn({ campaignId, complaintRate }, "Campaign auto-paused: complaint rate > 0.1%");
+    // Real-time Telegram alert
+    sendBroadcastAlert(campaign.name, "auto_paused",
+      `Plaintes: ${(complaintRate * 100).toFixed(2)}% (seuil: 0.1%)\nPlaintes: ${campaign.totalComplained}/${campaign.totalSent} envoyes`
+    ).catch(() => {});
     return { healthy: false, reason: `Complaint rate ${(complaintRate * 100).toFixed(2)}% > 0.1%` };
   }
 

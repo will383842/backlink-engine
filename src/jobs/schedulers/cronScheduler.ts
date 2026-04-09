@@ -263,5 +263,24 @@ export async function setupCronJobs(): Promise<void> {
   );
   log.info("Scheduled: broadcast warmup advance (daily 00:05 UTC).");
 
+  // -----------------------------------------------------------------------
+  // 13. Daily broadcast report: every day at 21:00 UTC
+  // -----------------------------------------------------------------------
+  await reportingQueue.upsertJobScheduler(
+    "reporting-daily-broadcast",
+    {
+      pattern: "0 21 * * *", // daily at 21:00 UTC
+    },
+    {
+      name: "daily-broadcast-report",
+      data: { type: "daily-broadcast-report" },
+      opts: {
+        removeOnComplete: { count: 30 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  );
+  log.info("Scheduled: daily broadcast report (21:00 UTC).");
+
   log.info("All cron jobs scheduled successfully.");
 }

@@ -12,6 +12,8 @@ interface TelegramConfig {
     prospectWon: boolean;
     backlinkLost: boolean;
     backlinkVerified: boolean;
+    broadcastDailyReport?: boolean;
+    broadcastAlerts?: boolean;
   };
 }
 
@@ -252,4 +254,73 @@ export async function sendWeeklyReportNotification(
   }
 
   return sendTelegramMessage(config.botToken, config.chatId, formattedMessage);
+}
+
+// ---------------------------------------------------------------------------
+// Broadcast notifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Send daily broadcast report via Telegram.
+ */
+export async function sendDailyBroadcastReport(
+  formattedMessage: string
+): Promise<boolean> {
+  const config = await getTelegramConfig();
+
+  if (!config || !config.enabled) {
+    log.warn("Telegram not configured, skipping broadcast daily report.");
+    return false;
+  }
+
+  // Default to true if the toggle doesn't exist yet
+  if (config.events.broadcastDailyReport === false) {
+    return false;
+  }
+
+  return sendTelegramMessage(config.botToken, config.chatId, formattedMessage);
+}
+
+/**
+ * Send real-time broadcast alert (campaign paused, high bounce, failures).
+ */
+export async function sendBroadcastAlert(
+  campaignName: string,
+  alertType: "auto_paused" | "high_bounce" | "high_complaint" | "send_failed",
+  details: string
+): Promise<boolean> {
+  const config = await getTelegramConfig();
+
+  if (!config || !config.enabled) {
+    return false;
+  }
+
+  if (config.events.broadcastAlerts === false) {
+    return false;
+  }
+
+  const icons: Record<string, string> = {
+    auto_paused: "🛑",
+    high_bounce: "⚠️",
+    high_complaint: "🚫",
+    send_failed: "💥",
+  };
+
+  const labels: Record<string, string> = {
+    auto_paused: "CAMPAGNE AUTO-PAUSEE",
+    high_bounce: "TAUX DE BOUNCE ELEVE",
+    high_complaint: "PLAINTES DETECTEES",
+    send_failed: "ECHEC D'ENVOI",
+  };
+
+  const message = `
+${icons[alertType]} <b>${labels[alertType]}</b>
+
+<b>Campagne :</b> ${campaignName}
+${details}
+
+<i>Action requise — verifiez la console broadcast.</i>
+  `.trim();
+
+  return sendTelegramMessage(config.botToken, config.chatId, message);
 }
