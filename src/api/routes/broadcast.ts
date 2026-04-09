@@ -218,14 +218,14 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
         });
 
         // By contact type (via prospect sourceContactType)
-        const byType = await prisma.$queryRawUnsafe<{ type: string; count: bigint }[]>(`
+        const byType = await prisma.$queryRaw<{ type: string; count: bigint }[]>`
           SELECT p."sourceContactType" as type, COUNT(*) as count
           FROM sent_emails se
           JOIN prospects p ON se."prospectId" = p.id
           WHERE se."campaignId" = ${id}
           GROUP BY p."sourceContactType"
           ORDER BY count DESC
-        `);
+        `;
 
         // By status
         const byStatus = await prisma.sentEmail.groupBy({

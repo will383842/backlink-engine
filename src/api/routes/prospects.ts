@@ -1302,14 +1302,14 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         orderBy: { _count: { category: "desc" } },
       }),
       // By MC source contact type (from contacts table)
-      prisma.$queryRawUnsafe<{ type: string; count: bigint }[]>(`
+      prisma.$queryRaw<{ type: string; count: bigint }[]>`
         SELECT c."sourceContactType" as type, COUNT(DISTINCT p.id) as count
         FROM prospects p
         JOIN contacts c ON c."prospectId" = p.id
         WHERE c."sourceContactType" IS NOT NULL
         GROUP BY c."sourceContactType"
         ORDER BY count DESC
-      `),
+      `,
       // By status
       prisma.prospect.groupBy({
         by: ["status"],
@@ -1317,7 +1317,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         orderBy: { _count: { status: "desc" } },
       }),
       // Contact method breakdown
-      prisma.$queryRawUnsafe<{ method: string; count: bigint }[]>(`
+      prisma.$queryRaw<{ method: string; count: bigint }[]>`
         SELECT
           CASE
             WHEN EXISTS (SELECT 1 FROM contacts c WHERE c."prospectId" = p.id AND c."emailStatus" NOT IN ('invalid') AND c."optedOut" = false)
@@ -1331,7 +1331,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         FROM prospects p
         GROUP BY method
         ORDER BY count DESC
-      `),
+      `,
       // Top 10 languages
       prisma.prospect.groupBy({
         by: ["language"],

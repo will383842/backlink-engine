@@ -276,28 +276,28 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
             won,
           ] = await Promise.all([
             // Ready + valid email (not invalid, not opted out)
-            prisma.$queryRawUnsafe<[{count: bigint}]>(`
+            prisma.$queryRaw<[{count: bigint}]>`
               SELECT COUNT(DISTINCT p.id) as count FROM prospects p
               JOIN contacts c ON c."prospectId" = p.id
               WHERE p.status = 'READY_TO_CONTACT'
                 AND c."emailStatus" NOT IN ('invalid')
                 AND c."optedOut" = false
-            `),
+            `,
             // Ready + contact form
             prisma.prospect.count({
               where: { status: "READY_TO_CONTACT", contactFormUrl: { not: null } },
             }),
             // Ready + both
-            prisma.$queryRawUnsafe<[{count: bigint}]>(`
+            prisma.$queryRaw<[{count: bigint}]>`
               SELECT COUNT(DISTINCT p.id) as count FROM prospects p
               JOIN contacts c ON c."prospectId" = p.id
               WHERE p.status = 'READY_TO_CONTACT'
                 AND c."emailStatus" NOT IN ('invalid')
                 AND c."optedOut" = false
                 AND p."contactFormUrl" IS NOT NULL
-            `),
+            `,
             // Ready + NO contact method
-            prisma.$queryRawUnsafe<[{count: bigint}]>(`
+            prisma.$queryRaw<[{count: bigint}]>`
               SELECT COUNT(*) as count FROM prospects p
               WHERE p.status = 'READY_TO_CONTACT'
                 AND p."contactFormUrl" IS NULL
@@ -307,7 +307,7 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
                     AND c."emailStatus" NOT IN ('invalid')
                     AND c."optedOut" = false
                 )
-            `),
+            `,
             // Currently enriching
             prisma.prospect.count({
               where: { status: { in: ["NEW", "ENRICHING"] } },
