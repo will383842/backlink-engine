@@ -32,6 +32,39 @@ const FALLBACK_TEMPLATES: Record<string, GeneratedEmail[]> = {
   pt: [
     { subject: "Oportunidade de parceria — SOS Expat", body: "Olá {{CONTACT_NAME}},\n\nA SOS Expat conecta expatriados em todo o mundo com profissionais qualificados: advogados, consultores e especialistas.\n\nAcreditamos que uma parceria com {{DOMAIN}} poderia beneficiar ambas as comunidades.\n\nEstaria disponível para uma breve conversa?\n\nAtenciosamente,\nSOS Expat\nhttps://sos-expat.com" },
   ],
+  nl: [
+    { subject: "Samenwerkingsmogelijkheid — SOS Expat", body: "Beste {{CONTACT_NAME}},\n\nSOS Expat verbindt expatriates wereldwijd met gekwalificeerde professionals: advocaten, consultants en experts.\n\nWij geloven dat een samenwerking met {{DOMAIN}} waardevol kan zijn voor beide gemeenschappen.\n\nZou u openstaan voor een kort gesprek?\n\nMet vriendelijke groet,\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  it: [
+    { subject: "Opportunità di collaborazione — SOS Expat", body: "Gentile {{CONTACT_NAME}},\n\nSOS Expat mette in contatto gli espatriati di tutto il mondo con professionisti qualificati: avvocati, consulenti ed esperti.\n\nCrediamo che una collaborazione con {{DOMAIN}} possa portare valore a entrambe le nostre comunità.\n\nSarebbe disponibile per un breve scambio?\n\nCordiali saluti,\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  ar: [
+    { subject: "فرصة شراكة — SOS Expat", body: "{{CONTACT_NAME}} عزيزي/عزيزتي\n\nتربط SOS Expat المغتربين حول العالم بمحترفين مؤهلين: محامين ومستشارين وخبراء.\n\nنعتقد أن الشراكة مع {{DOMAIN}} يمكن أن تعود بالنفع على مجتمعينا.\n\nهل أنتم مستعدون لمحادثة قصيرة؟\n\nمع أطيب التحيات،\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  ja: [
+    { subject: "パートナーシップのご提案 — SOS Expat", body: "{{CONTACT_NAME}} 様\n\nSOS Expatは、世界中の駐在員と弁護士、コンサルタント、専門家などの有資格専門家をつなぐプラットフォームです。\n\n{{DOMAIN}}とのパートナーシップが、双方のコミュニティに価値をもたらすと考えております。\n\n短いお打ち合わせのお時間をいただけますでしょうか？\n\nよろしくお願いいたします。\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  ru: [
+    { subject: "Возможность сотрудничества — SOS Expat", body: "Здравствуйте, {{CONTACT_NAME}}!\n\nSOS Expat связывает экспатриантов по всему миру с квалифицированными специалистами: юристами, консультантами и экспертами.\n\nМы считаем, что сотрудничество с {{DOMAIN}} может быть выгодным для обоих наших сообществ.\n\nБыли бы вы открыты для короткой беседы?\n\nС уважением,\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  sv: [
+    { subject: "Samarbetsmöjlighet — SOS Expat", body: "Hej {{CONTACT_NAME}},\n\nSOS Expat kopplar samman utlandssvenskar världen över med kvalificerade yrkesverksamma: advokater, konsulter och experter.\n\nVi tror att ett samarbete med {{DOMAIN}} kan gynna båda våra gemenskaper.\n\nSkulle du vara öppen för ett kort samtal?\n\nMed vänliga hälsningar,\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  pl: [
+    { subject: "Możliwość współpracy — SOS Expat", body: "Szanowny/a {{CONTACT_NAME}},\n\nSOS Expat łączy ekspatów na całym świecie z wykwalifikowanymi specjalistami: prawnikami, konsultantami i ekspertami.\n\nWierzymy, że współpraca z {{DOMAIN}} może przynieść korzyści obu naszym społecznościom.\n\nCzy byłby/łaby Pan/Pani otwarty/a na krótką rozmowę?\n\nZ poważaniem,\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  ko: [
+    { subject: "파트너십 제안 — SOS Expat", body: "{{CONTACT_NAME}} 님께,\n\nSOS Expat는 전 세계 해외 거주자들을 변호사, 컨설턴트, 전문가 등 자격을 갖춘 전문가와 연결하는 플랫폼입니다.\n\n{{DOMAIN}}과의 파트너십이 양측 커뮤니티에 가치를 가져올 수 있다고 생각합니다.\n\n짧은 대화의 기회를 주시겠습니까?\n\n감사합니다.\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  da: [
+    { subject: "Samarbejdsmulighed — SOS Expat", body: "Kære {{CONTACT_NAME}},\n\nSOS Expat forbinder udlandsdanskere verden over med kvalificerede fagfolk: advokater, konsulenter og eksperter.\n\nVi tror, at et samarbejde med {{DOMAIN}} kan gavne begge vores fællesskaber.\n\nVille du være åben for en kort samtale?\n\nMed venlig hilsen,\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  tr: [
+    { subject: "İş birliği fırsatı — SOS Expat", body: "Sayın {{CONTACT_NAME}},\n\nSOS Expat, dünya genelindeki gurbetçileri avukatlar, danışmanlar ve uzmanlar gibi nitelikli profesyonellerle buluşturan bir platformdur.\n\n{{DOMAIN}} ile bir iş birliğinin her iki topluluk için de faydalı olabileceğine inanıyoruz.\n\nKısa bir görüşmeye açık olur musunuz?\n\nSaygılarımla,\nSOS Expat\nhttps://sos-expat.com" },
+  ],
+  no: [
+    { subject: "Samarbeidsmulighet — SOS Expat", body: "Hei {{CONTACT_NAME}},\n\nSOS Expat kobler utlandsboende nordmenn verden over med kvalifiserte fagfolk: advokater, konsulenter og eksperter.\n\nVi tror et samarbeid med {{DOMAIN}} kan være gunstig for begge våre miljøer.\n\nVille du vært åpen for en kort samtale?\n\nMed vennlig hilsen,\nSOS Expat\nhttps://sos-expat.com" },
+  ],
 };
 
 /**
