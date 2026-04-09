@@ -339,6 +339,8 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
 
         // Update campaign-level counters (for broadcast stats + health monitoring)
         const mwEventToCampaignField: Record<string, string> = {
+          sent: "totalDelivered",
+          delivery: "totalDelivered",
           open: "totalOpened",
           click: "totalClicked",
           bounce: "totalBounced",
