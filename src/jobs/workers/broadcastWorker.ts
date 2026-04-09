@@ -120,6 +120,69 @@ async function processActiveBroadcasts(): Promise<void> {
         { campaignId: campaign.id, sent, errors, total: contacts.length },
         "Broadcast batch completed.",
       );
+
+      // ── Process manual recipients ──
+      const manualRemaining = remaining - sent;
+      if (manualRemaining > 0) {
+        const manualRecipients = await prisma.broadcastManualRecipient.findMany({
+          where: { campaignId: campaign.id, status: "pending" },
+          take: manualRemaining,
+          orderBy: { addedAt: "asc" },
+        });
+
+        for (const mr of manualRecipients) {
+          try {
+            const sourceEmail = campaign.sourceEmail as { subject: string; body: string } | null;
+            if (!sourceEmail) break;
+
+            const { getVariations, pickAndPersonalize } = await import("../../services/broadcast/variationCache.js");
+            const { sendViaSMTP } = await import("../../services/outreach/smtpSender.js");
+            const { getNextSendingDomain } = await import("../../services/outreach/domainRotator.js");
+
+            const lang = mr.language || campaign.language || "fr";
+            const type = mr.contactType || "other";
+            const variations = await getVariations(campaign.id, lang, type, sourceEmail, campaign.brief || "");
+            const personalized = pickAndPersonalize(variations, mr.name, mr.email.split("@")[1]);
+            const domain = await getNextSendingDomain();
+
+            const result = await sendViaSMTP({
+              toEmail: mr.email,
+              toName: mr.name || "",
+              fromEmail: domain.fromEmail,
+              fromName: domain.fromName,
+              replyTo: domain.replyTo,
+              subject: personalized.subject,
+              bodyText: personalized.body,
+            });
+
+            await prisma.broadcastManualRecipient.update({
+              where: { id: mr.id },
+              data: { status: result.success ? "sent" : "failed", sentAt: new Date() },
+            });
+
+            if (result.success) {
+              sent++;
+              await prisma.campaign.update({
+                where: { id: campaign.id },
+                data: { totalSent: { increment: 1 } },
+              });
+            }
+
+            const jitter = 10_000 + Math.floor(Math.random() * 20_000);
+            await new Promise((resolve) => setTimeout(resolve, jitter));
+          } catch (err) {
+            log.error({ err, recipientId: mr.id }, "Error sending to manual recipient");
+            await prisma.broadcastManualRecipient.update({
+              where: { id: mr.id },
+              data: { status: "failed" },
+            });
+          }
+        }
+
+        if (manualRecipients.length > 0) {
+          log.info({ campaignId: campaign.id, manual: manualRecipients.length }, "Manual recipients processed.");
+        }
+      }
     } catch (err) {
       log.error({ err, campaignId: campaign.id }, "Error processing broadcast campaign");
     }

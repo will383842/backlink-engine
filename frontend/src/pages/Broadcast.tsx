@@ -8,10 +8,15 @@ import {
   Send,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   MousePointer,
   AlertCircle,
   Clock,
   Zap,
+  Plus,
+  RefreshCw,
+  Pencil,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -407,7 +412,47 @@ function StatPill({ icon, value, label, color }: { icon: React.ReactNode; value:
   );
 }
 
+type DetailTab = "stats" | "variations" | "contacts" | "exclusions" | "manual";
+
+const DETAIL_TABS: { key: DetailTab; label: string }[] = [
+  { key: "stats", label: "Stats" },
+  { key: "variations", label: "Variations" },
+  { key: "contacts", label: "Contacts" },
+  { key: "exclusions", label: "Exclusions" },
+  { key: "manual", label: "Manuel" },
+];
+
 function CampaignDetail({ campaignId }: { campaignId: number }) {
+  const [tab, setTab] = useState<DetailTab>("stats");
+
+  return (
+    <div className="border-t bg-surface-50 p-4 space-y-4">
+      {/* Tab bar */}
+      <div className="flex gap-1">
+        {DETAIL_TABS.map((dt) => (
+          <button
+            key={dt.key}
+            onClick={() => setTab(dt.key)}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              tab === dt.key ? "bg-brand-600 text-white" : "bg-surface-100 text-surface-600 hover:bg-surface-200"
+            }`}
+          >
+            {dt.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "stats" && <StatsTab campaignId={campaignId} />}
+      {tab === "variations" && <VariationsTab campaignId={campaignId} />}
+      {tab === "contacts" && <ContactsTab campaignId={campaignId} />}
+      {tab === "exclusions" && <ExclusionsTab campaignId={campaignId} />}
+      {tab === "manual" && <ManualTab campaignId={campaignId} />}
+    </div>
+  );
+}
+
+// ---- Stats Tab (original content) ----
+function StatsTab({ campaignId }: { campaignId: number }) {
   const { t } = useTranslation();
 
   const { data: stats } = useQuery<BroadcastStats>({
@@ -421,7 +466,7 @@ function CampaignDetail({ campaignId }: { campaignId: number }) {
 
   if (!stats) {
     return (
-      <div className="border-t p-4 flex justify-center">
+      <div className="flex justify-center py-4">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
       </div>
     );
@@ -431,13 +476,12 @@ function CampaignDetail({ campaignId }: { campaignId: number }) {
   const clickRate = stats.totalOpened > 0 ? ((stats.totalClicked / stats.totalOpened) * 100).toFixed(1) : "0";
   const bounceRate = stats.totalSent > 0 ? ((stats.totalBounced / stats.totalSent) * 100).toFixed(1) : "0";
 
-  const schedule = (stats.warmupSchedule ?? [5, 10, 20, 40, 75, 150, 300, 500]);
+  const schedule = stats.warmupSchedule ?? [5, 10, 20, 40, 75, 150, 300, 500];
   const currentDay = stats.currentWarmupDay;
   const dailyLimit = schedule[Math.min(currentDay, schedule.length - 1)] ?? 0;
 
   return (
-    <div className="border-t bg-surface-50 p-4 space-y-4">
-      {/* Stats cards */}
+    <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         <MiniStat label={t("broadcast.totalRecipients")} value={stats.totalEnrolled + stats.eligibleRemaining} />
         <MiniStat label={t("broadcast.sent")} value={stats.totalSent} />
@@ -448,7 +492,6 @@ function CampaignDetail({ campaignId }: { campaignId: number }) {
         <MiniStat label={t("broadcast.remaining")} value={stats.eligibleRemaining} />
       </div>
 
-      {/* Warmup progress */}
       <div className="rounded-lg bg-white p-3">
         <div className="flex items-center justify-between text-sm mb-1">
           <span className="text-surface-600 flex items-center gap-1">
@@ -468,7 +511,6 @@ function CampaignDetail({ campaignId }: { campaignId: number }) {
         </div>
       </div>
 
-      {/* Distribution */}
       <div className="grid gap-4 lg:grid-cols-2">
         {stats.byLanguage.length > 0 && (
           <div className="rounded-lg bg-white p-3">
@@ -497,6 +539,530 @@ function CampaignDetail({ campaignId }: { campaignId: number }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ---- Variations Tab ----
+interface Variation {
+  id?: number;
+  language: string;
+  contactType: string;
+  subject: string;
+  body: string;
+}
+
+function VariationsTab({ campaignId }: { campaignId: number }) {
+  const queryClient = useQueryClient();
+  const [activeType, setActiveType] = useState<string | null>(null);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editSubject, setEditSubject] = useState("");
+  const [editBody, setEditBody] = useState("");
+
+  const { data: variations = [], isLoading } = useQuery<Variation[]>({
+    queryKey: ["broadcast-variations", campaignId],
+    queryFn: async () => {
+      const res = await api.get(`/broadcast/${campaignId}/variations`);
+      return res.data.data;
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (v: Variation) =>
+      api.put(`/broadcast/${campaignId}/variations/${v.language}/${v.contactType}`, {
+        subject: editSubject,
+        body: editBody,
+      }),
+    onSuccess: () => {
+      toast.success("Variation sauvegardee");
+      queryClient.invalidateQueries({ queryKey: ["broadcast-variations", campaignId] });
+      setEditingIdx(null);
+    },
+    onError: () => toast.error("Erreur lors de la sauvegarde"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (v: Variation) =>
+      api.delete(`/broadcast/${campaignId}/variations/${v.language}/${v.contactType}`),
+    onSuccess: () => {
+      toast.success("Variation supprimee");
+      queryClient.invalidateQueries({ queryKey: ["broadcast-variations", campaignId] });
+    },
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: (contactType: string) =>
+      api.post(`/broadcast/${campaignId}/variations/generate`, { contactType }),
+    onSuccess: () => {
+      toast.success("Regeneration lancee");
+      queryClient.invalidateQueries({ queryKey: ["broadcast-variations", campaignId] });
+    },
+    onError: () => toast.error("Erreur de regeneration"),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-4">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  const types = [...new Set(variations.map((v) => v.contactType))];
+  const selected = activeType ?? types[0] ?? null;
+  const filtered = variations.filter((v) => v.contactType === selected);
+
+  return (
+    <div className="space-y-3">
+      {types.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {types.map((ct) => (
+            <button
+              key={ct}
+              onClick={() => { setActiveType(ct); setEditingIdx(null); }}
+              className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${
+                selected === ct ? "bg-brand-600 text-white" : "bg-surface-100 text-surface-600 hover:bg-surface-200"
+              }`}
+            >
+              {ct}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => regenerateMutation.mutate(selected)}
+            disabled={regenerateMutation.isPending}
+            className="flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={regenerateMutation.isPending ? "animate-spin" : ""} />
+            Regenerer
+          </button>
+        </div>
+      )}
+
+      {filtered.length === 0 && (
+        <p className="text-sm text-surface-400 text-center py-4">Aucune variation pour ce type</p>
+      )}
+
+      <div className="space-y-2">
+        {filtered.map((v, idx) => (
+          <div key={`${v.language}-${v.contactType}-${idx}`} className="rounded-lg bg-white p-3">
+            {editingIdx === idx ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
+                  className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm"
+                  placeholder="Objet"
+                />
+                <textarea
+                  value={editBody}
+                  onChange={(e) => setEditBody(e.target.value)}
+                  rows={6}
+                  className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm font-mono"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setEditingIdx(null)}
+                    className="rounded-lg border border-surface-300 px-3 py-1 text-xs font-medium text-surface-600 hover:bg-surface-50"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={() => saveMutation.mutate(v)}
+                    disabled={saveMutation.isPending}
+                    className="rounded-lg bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    Sauvegarder
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-surface-800 truncate">{v.subject}</p>
+                    <p className="text-xs text-surface-500 mt-1">
+                      {v.body.length > 100 ? v.body.slice(0, 100) + "..." : v.body}
+                    </p>
+                    <span className="inline-block mt-1 rounded bg-surface-100 px-1.5 py-0.5 text-[10px] text-surface-500">{v.language}</span>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      onClick={() => { setEditingIdx(idx); setEditSubject(v.subject); setEditBody(v.body); }}
+                      className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-50"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => { if (confirm("Supprimer cette variation ?")) deleteMutation.mutate(v); }}
+                      className="rounded-lg p-1.5 text-red-400 hover:bg-red-50"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- Contacts Tab ----
+interface EligibleContact {
+  id: number;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  sourceContactType?: string;
+  language?: string;
+  domain?: string;
+}
+
+function ContactsTab({ campaignId }: { campaignId: number }) {
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState("");
+
+  const { data, isLoading } = useQuery<{ contacts: EligibleContact[]; total: number }>({
+    queryKey: ["broadcast-contacts", campaignId, page, filter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), limit: "25" });
+      if (filter) params.set("sourceContactType", filter);
+      const res = await api.get(`/broadcast/${campaignId}/eligible-contacts?${params}`);
+      return res.data.data;
+    },
+  });
+
+  const excludeMutation = useMutation({
+    mutationFn: (contactId: number) =>
+      api.post(`/broadcast/${campaignId}/exclusions`, { contactId }),
+    onSuccess: () => {
+      toast.success("Contact exclu");
+      queryClient.invalidateQueries({ queryKey: ["broadcast-contacts", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["broadcast-exclusions", campaignId] });
+    },
+  });
+
+  const contacts = data?.contacts ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / 25));
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <select
+          value={filter}
+          onChange={(e) => { setFilter(e.target.value); setPage(1); }}
+          className="rounded-lg border border-surface-300 px-3 py-1.5 text-sm"
+        >
+          <option value="">Tous les types</option>
+          {CONTACT_TYPES.map((ct) => (
+            <option key={ct.value} value={ct.value}>{ct.label}</option>
+          ))}
+        </select>
+        <span className="text-xs text-surface-400">{total} contacts</span>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-4">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+        </div>
+      ) : contacts.length === 0 ? (
+        <p className="text-sm text-surface-400 text-center py-4">Aucun contact eligible</p>
+      ) : (
+        <div className="rounded-lg bg-white overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-surface-100 text-left text-xs text-surface-500">
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Nom</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Langue</th>
+                <th className="px-3 py-2">Domaine</th>
+                <th className="px-3 py-2 w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {contacts.map((c) => (
+                <tr key={c.id} className="border-b border-surface-100">
+                  <td className="px-3 py-2 text-surface-700 truncate max-w-[200px]">{c.email}</td>
+                  <td className="px-3 py-2 text-surface-600">{[c.firstName, c.lastName].filter(Boolean).join(" ") || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500">{c.sourceContactType || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500">{c.language?.toUpperCase() || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500 truncate max-w-[140px]">{c.domain || "-"}</td>
+                  <td className="px-3 py-2">
+                    <button
+                      onClick={() => excludeMutation.mutate(c.id)}
+                      className="rounded px-2 py-0.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100"
+                    >
+                      Exclure
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 disabled:opacity-30"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-xs text-surface-500">{page} / {totalPages}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 disabled:opacity-30"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Exclusions Tab ----
+interface Exclusion {
+  id: number;
+  contactId: number;
+  email: string;
+  name?: string;
+  contactType?: string;
+  reason?: string;
+  createdAt: string;
+}
+
+function ExclusionsTab({ campaignId }: { campaignId: number }) {
+  const queryClient = useQueryClient();
+
+  const { data: exclusions = [], isLoading } = useQuery<Exclusion[]>({
+    queryKey: ["broadcast-exclusions", campaignId],
+    queryFn: async () => {
+      const res = await api.get(`/broadcast/${campaignId}/exclusions`);
+      return res.data.data;
+    },
+  });
+
+  const reincludeMutation = useMutation({
+    mutationFn: (contactId: number) =>
+      api.delete(`/broadcast/${campaignId}/exclusions/${contactId}`),
+    onSuccess: () => {
+      toast.success("Contact re-inclus");
+      queryClient.invalidateQueries({ queryKey: ["broadcast-exclusions", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["broadcast-contacts", campaignId] });
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-4">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (exclusions.length === 0) {
+    return <p className="text-sm text-surface-400 text-center py-4">Aucune exclusion</p>;
+  }
+
+  return (
+    <div className="rounded-lg bg-white overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-surface-100 text-left text-xs text-surface-500">
+            <th className="px-3 py-2">Email</th>
+            <th className="px-3 py-2">Nom</th>
+            <th className="px-3 py-2">Type</th>
+            <th className="px-3 py-2">Raison</th>
+            <th className="px-3 py-2">Date</th>
+            <th className="px-3 py-2 w-20"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {exclusions.map((ex) => (
+            <tr key={ex.id} className="border-b border-surface-100">
+              <td className="px-3 py-2 text-surface-700 truncate max-w-[200px]">{ex.email}</td>
+              <td className="px-3 py-2 text-surface-600">{ex.name || "-"}</td>
+              <td className="px-3 py-2 text-surface-500">{ex.contactType || "-"}</td>
+              <td className="px-3 py-2 text-surface-500">{ex.reason || "-"}</td>
+              <td className="px-3 py-2 text-surface-500">{format(new Date(ex.createdAt), "dd/MM/yyyy")}</td>
+              <td className="px-3 py-2">
+                <button
+                  onClick={() => reincludeMutation.mutate(ex.contactId)}
+                  className="rounded px-2 py-0.5 text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100"
+                >
+                  Re-inclure
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ---- Manual Tab ----
+interface ManualRecipient {
+  id: number;
+  email: string;
+  name?: string;
+  contactType?: string;
+  language?: string;
+  status?: string;
+}
+
+function ManualTab({ campaignId }: { campaignId: number }) {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [contactType, setContactType] = useState("");
+  const [language, setLanguage] = useState("fr");
+
+  const { data: recipients = [], isLoading } = useQuery<ManualRecipient[]>({
+    queryKey: ["broadcast-manual", campaignId],
+    queryFn: async () => {
+      const res = await api.get(`/broadcast/${campaignId}/manual-recipients`);
+      return res.data.data;
+    },
+  });
+
+  const addMutation = useMutation({
+    mutationFn: () =>
+      api.post(`/broadcast/${campaignId}/manual-recipients`, {
+        email,
+        name: name || undefined,
+        contactType: contactType || undefined,
+        language,
+      }),
+    onSuccess: () => {
+      toast.success("Destinataire ajoute");
+      queryClient.invalidateQueries({ queryKey: ["broadcast-manual", campaignId] });
+      setEmail(""); setName(""); setContactType("");
+    },
+    onError: () => toast.error("Erreur lors de l'ajout"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      api.delete(`/broadcast/${campaignId}/manual-recipients/${id}`),
+    onSuccess: () => {
+      toast.success("Destinataire supprime");
+      queryClient.invalidateQueries({ queryKey: ["broadcast-manual", campaignId] });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg bg-white p-3 space-y-3">
+        <h5 className="text-sm font-semibold text-surface-700">Ajouter un destinataire</h5>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email *"
+            className="rounded-lg border border-surface-300 px-3 py-1.5 text-sm"
+          />
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nom"
+            className="rounded-lg border border-surface-300 px-3 py-1.5 text-sm"
+          />
+          <select
+            value={contactType}
+            onChange={(e) => setContactType(e.target.value)}
+            className="rounded-lg border border-surface-300 px-3 py-1.5 text-sm"
+          >
+            <option value="">Type (optionnel)</option>
+            {CONTACT_TYPES.map((ct) => (
+              <option key={ct.value} value={ct.value}>{ct.label}</option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="rounded-lg border border-surface-300 px-3 py-1.5 text-sm flex-1"
+            >
+              <option value="fr">FR</option>
+              <option value="en">EN</option>
+              <option value="de">DE</option>
+              <option value="es">ES</option>
+              <option value="pt">PT</option>
+              <option value="nl">NL</option>
+              <option value="it">IT</option>
+            </select>
+            <button
+              onClick={() => addMutation.mutate()}
+              disabled={!email || addMutation.isPending}
+              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50 flex items-center gap-1"
+            >
+              <Plus size={14} />
+              Ajouter
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-4">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+        </div>
+      ) : recipients.length === 0 ? (
+        <p className="text-sm text-surface-400 text-center py-4">Aucun destinataire manuel</p>
+      ) : (
+        <div className="rounded-lg bg-white overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-surface-100 text-left text-xs text-surface-500">
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Nom</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Langue</th>
+                <th className="px-3 py-2">Statut</th>
+                <th className="px-3 py-2 w-16"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {recipients.map((r) => (
+                <tr key={r.id} className="border-b border-surface-100">
+                  <td className="px-3 py-2 text-surface-700 truncate max-w-[200px]">{r.email}</td>
+                  <td className="px-3 py-2 text-surface-600">{r.name || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500">{r.contactType || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500">{r.language?.toUpperCase() || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500">{r.status || "pending"}</td>
+                  <td className="px-3 py-2">
+                    <button
+                      onClick={() => { if (confirm("Supprimer ce destinataire ?")) deleteMutation.mutate(r.id); }}
+                      className="rounded-lg p-1 text-red-400 hover:bg-red-50"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -308,6 +308,7 @@ model Contact {
   enrollments Enrollment[]
   events      Event[]
   sentEmails  SentEmail[]
+  exclusions  BroadcastExclusion[]
 
   @@index([prospectId])
   @@index([emailStatus])
@@ -352,9 +353,11 @@ model Campaign {
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
 
-  enrollments Enrollment[]
-  sentEmails  SentEmail[]
-  tags        CampaignTag[]
+  enrollments       Enrollment[]
+  sentEmails        SentEmail[]
+  tags              CampaignTag[]
+  exclusions        BroadcastExclusion[]
+  manualRecipients  BroadcastManualRecipient[]
 
   @@index([isActive])
   @@index([language])
@@ -965,4 +968,42 @@ model TemplateTag {
   @@index([templateId])
   @@index([tagId])
   @@map("template_tags")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Broadcast Management
+// ─────────────────────────────────────────────────────────────
+
+model BroadcastExclusion {
+  id         Int      @id @default(autoincrement())
+  campaignId Int
+  contactId  Int
+  reason     String?  @db.VarChar(255)
+  excludedAt DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId])
+  @@map("broadcast_exclusions")
+}
+
+model BroadcastManualRecipient {
+  id          Int       @id @default(autoincrement())
+  campaignId  Int
+  email       String    @db.VarChar(320)
+  name        String?   @db.VarChar(255)
+  contactType String?   @db.VarChar(30)
+  language    String?   @db.VarChar(10)
+  status      String    @default("pending")
+  sentAt      DateTime?
+  addedAt     DateTime  @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, email])
+  @@index([campaignId])
+  @@index([status])
+  @@map("broadcast_manual_recipients")
 }

@@ -286,6 +286,9 @@ export async function getEligibleContacts(
       AND c."emailNormalized" NOT IN (
         SELECT "emailNormalized" FROM suppression_entries
       )
+      AND c.id NOT IN (
+        SELECT "contactId" FROM broadcast_exclusions WHERE "campaignId" = ${campaignId}
+      )
     ORDER BY c."createdAt" ASC
     LIMIT ${limit}
   `;
@@ -323,9 +326,94 @@ export async function countEligibleContacts(campaignId: number): Promise<number>
       AND c."emailNormalized" NOT IN (
         SELECT "emailNormalized" FROM suppression_entries
       )
+      AND c.id NOT IN (
+        SELECT "contactId" FROM broadcast_exclusions WHERE "campaignId" = ${campaignId}
+      )
   `;
 
   return Number(result[0]?.count ?? 0);
+}
+
+/**
+ * Get eligible contacts with pagination and optional type filter.
+ */
+export async function getEligibleContactsPaginated(
+  campaignId: number,
+  page: number,
+  limit: number,
+  sourceContactType?: string,
+): Promise<{ data: EligibleContact[]; total: number }> {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { targetSourceContactTypes: true },
+  });
+
+  if (!campaign) return { data: [], total: 0 };
+
+  const targetTypes = (campaign.targetSourceContactTypes as string[]) ?? [];
+
+  const typeFilter = targetTypes.length > 0
+    ? Prisma.sql`AND (c."sourceContactType" = ANY(${targetTypes}) OR p."sourceContactType" = ANY(${targetTypes}))`
+    : Prisma.empty;
+
+  const specificTypeFilter = sourceContactType
+    ? Prisma.sql`AND c."sourceContactType" = ${sourceContactType}`
+    : Prisma.empty;
+
+  const offset = (page - 1) * limit;
+
+  const [data, countResult] = await Promise.all([
+    prisma.$queryRaw<EligibleContact[]>`
+      SELECT
+        c.id AS "contactId",
+        c.email,
+        c."emailNormalized",
+        c."firstName",
+        c."lastName",
+        c."sourceContactType",
+        p.language,
+        p.country,
+        p.id AS "prospectId",
+        p.domain
+      FROM contacts c
+      JOIN prospects p ON c."prospectId" = p.id
+      WHERE c."optedOut" = false
+        AND c."emailStatus" NOT IN ('invalid')
+        ${typeFilter}
+        ${specificTypeFilter}
+        AND c.id NOT IN (
+          SELECT "contactId" FROM enrollments WHERE "campaignId" = ${campaignId}
+        )
+        AND c."emailNormalized" NOT IN (
+          SELECT "emailNormalized" FROM suppression_entries
+        )
+        AND c.id NOT IN (
+          SELECT "contactId" FROM broadcast_exclusions WHERE "campaignId" = ${campaignId}
+        )
+      ORDER BY c."createdAt" ASC
+      LIMIT ${limit} OFFSET ${offset}
+    `,
+    prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(*) as count
+      FROM contacts c
+      JOIN prospects p ON c."prospectId" = p.id
+      WHERE c."optedOut" = false
+        AND c."emailStatus" NOT IN ('invalid')
+        ${typeFilter}
+        ${specificTypeFilter}
+        AND c.id NOT IN (
+          SELECT "contactId" FROM enrollments WHERE "campaignId" = ${campaignId}
+        )
+        AND c."emailNormalized" NOT IN (
+          SELECT "emailNormalized" FROM suppression_entries
+        )
+        AND c.id NOT IN (
+          SELECT "contactId" FROM broadcast_exclusions WHERE "campaignId" = ${campaignId}
+        )
+    `,
+  ]);
+
+  return { data, total: Number(countResult[0]?.count ?? 0) };
 }
 
 /**

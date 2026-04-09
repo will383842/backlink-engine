@@ -4,14 +4,21 @@ import { authenticateUser } from "../middleware/auth.js";
 import {
   countEligibleContacts,
   getEligibleContacts,
+  getEligibleContactsPaginated,
   enrollBroadcastRecipient,
 } from "../../services/broadcast/broadcastManager.js";
 import {
   getBroadcastDailyLimit,
   getBroadcastSentToday,
 } from "../../services/broadcast/warmupScheduler.js";
-import { invalidateCampaignVariations } from "../../services/broadcast/variationCache.js";
+import {
+  invalidateCampaignVariations,
+  getAllCampaignVariations,
+  setVariations,
+  getVariations as getOrGenerateVariations,
+} from "../../services/broadcast/variationCache.js";
 import { getCached } from "../../services/cacheService.js";
+import { isInSuppressionList } from "../../services/suppression/suppressionManager.js";
 
 // ---------------------------------------------------------------------------
 // Plugin
@@ -426,6 +433,331 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
         message: "Test email sent",
         preview: personalized,
       });
+    },
+  );
+
+  // ───── GET /:id/variations ─── List cached variations ─────────────────
+  app.get(
+    "/:id/variations",
+    async (
+      request: FastifyRequest<{ Params: { id: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      const variations = await getAllCampaignVariations(id);
+      return reply.send({ data: variations });
+    },
+  );
+
+  // ───── PUT /:id/variations/:language/:contactType ─── Update variations ──
+  app.put(
+    "/:id/variations/:language/:contactType",
+    async (
+      request: FastifyRequest<{
+        Params: { id: string; language: string; contactType: string };
+        Body: { variations: { subject: string; body: string }[] };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const { language, contactType } = request.params;
+      const { variations } = request.body;
+
+      if (!variations || !Array.isArray(variations) || variations.length === 0) {
+        return reply.status(400).send({ error: "variations array is required and must not be empty" });
+      }
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      await setVariations(id, language, contactType, variations);
+      return reply.send({ message: "Variations updated", count: variations.length });
+    },
+  );
+
+  // ───── POST /:id/variations/generate ─── Force regenerate variations ────
+  app.post(
+    "/:id/variations/generate",
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Body: { language: string; contactType: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const { language, contactType } = request.body;
+
+      if (!language || !contactType) {
+        return reply.status(400).send({ error: "language and contactType are required" });
+      }
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      const sourceEmail = campaign.sourceEmail as { subject: string; body: string } | null;
+      if (!sourceEmail) {
+        return reply.status(400).send({ error: "Campaign has no source email" });
+      }
+
+      // Invalidate existing cache for this combo
+      const { redis } = await import("../../config/redis.js");
+      try {
+        await redis.del(`broadcast:${id}:variations:${language}:${contactType}`);
+      } catch { /* ignore */ }
+
+      // Generate fresh
+      const variations = await getOrGenerateVariations(id, language, contactType, sourceEmail, campaign.brief || "");
+      return reply.send({ data: { language, contactType, variations, count: variations.length } });
+    },
+  );
+
+  // ───── GET /:id/eligible-contacts ─── Paginated eligible contacts ──────
+  app.get(
+    "/:id/eligible-contacts",
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Querystring: { page?: string; limit?: string; sourceContactType?: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const page = Math.max(1, parseInt(request.query.page || "1"));
+      const limit = Math.min(100, Math.max(1, parseInt(request.query.limit || "25")));
+      const sourceContactType = request.query.sourceContactType || undefined;
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      const { data, total } = await getEligibleContactsPaginated(id, page, limit, sourceContactType);
+      return reply.send({
+        data,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    },
+  );
+
+  // ───── POST /:id/exclusions ─── Exclude a contact from campaign ────────
+  app.post(
+    "/:id/exclusions",
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Body: { contactId: number; reason?: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const { contactId, reason } = request.body;
+
+      if (!contactId) {
+        return reply.status(400).send({ error: "contactId is required" });
+      }
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      const exclusion = await prisma.broadcastExclusion.upsert({
+        where: { campaignId_contactId: { campaignId: id, contactId } },
+        create: { campaignId: id, contactId, reason: reason || "manual" },
+        update: { reason: reason || "manual" },
+      });
+
+      return reply.status(201).send({ data: exclusion });
+    },
+  );
+
+  // ───── GET /:id/exclusions ─── List excluded contacts ──────────────────
+  app.get(
+    "/:id/exclusions",
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Querystring: { page?: string; limit?: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const page = Math.max(1, parseInt(request.query.page || "1"));
+      const limit = Math.min(100, Math.max(1, parseInt(request.query.limit || "25")));
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      const [data, total] = await Promise.all([
+        prisma.broadcastExclusion.findMany({
+          where: { campaignId: id },
+          include: {
+            contact: {
+              select: { email: true, firstName: true, lastName: true, sourceContactType: true },
+              include: { prospect: { select: { language: true, domain: true } } },
+            },
+          },
+          orderBy: { excludedAt: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        prisma.broadcastExclusion.count({ where: { campaignId: id } }),
+      ]);
+
+      return reply.send({
+        data: data.map((e) => ({
+          id: e.id,
+          contactId: e.contactId,
+          email: e.contact.email,
+          firstName: e.contact.firstName,
+          lastName: e.contact.lastName,
+          sourceContactType: e.contact.sourceContactType,
+          language: e.contact.prospect?.language,
+          domain: e.contact.prospect?.domain,
+          reason: e.reason,
+          excludedAt: e.excludedAt,
+        })),
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    },
+  );
+
+  // ───── DELETE /:id/exclusions/:contactId ─── Remove exclusion ──────────
+  app.delete(
+    "/:id/exclusions/:contactId",
+    async (
+      request: FastifyRequest<{ Params: { id: string; contactId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const campaignId = parseInt(request.params.id);
+      const contactId = parseInt(request.params.contactId);
+
+      try {
+        await prisma.broadcastExclusion.delete({
+          where: { campaignId_contactId: { campaignId, contactId } },
+        });
+      } catch {
+        return reply.status(404).send({ error: "Exclusion not found" });
+      }
+
+      return reply.send({ message: "Contact re-included" });
+    },
+  );
+
+  // ───── POST /:id/manual-recipients ─── Add manual recipient ────────────
+  app.post(
+    "/:id/manual-recipients",
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Body: { email: string; name?: string; contactType?: string; language?: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const { email, name, contactType, language } = request.body;
+
+      if (!email) {
+        return reply.status(400).send({ error: "email is required" });
+      }
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      // Check suppression list
+      if (await isInSuppressionList(email)) {
+        return reply.status(400).send({ error: "Email is in suppression list" });
+      }
+
+      try {
+        const recipient = await prisma.broadcastManualRecipient.upsert({
+          where: { campaignId_email: { campaignId: id, email: email.toLowerCase().trim() } },
+          create: {
+            campaignId: id,
+            email: email.toLowerCase().trim(),
+            name: name || null,
+            contactType: contactType || null,
+            language: language || campaign.language || "fr",
+          },
+          update: {
+            name: name || undefined,
+            contactType: contactType || undefined,
+            language: language || undefined,
+          },
+        });
+        return reply.status(201).send({ data: recipient });
+      } catch {
+        return reply.status(409).send({ error: "Recipient already exists in this campaign" });
+      }
+    },
+  );
+
+  // ───── GET /:id/manual-recipients ─── List manual recipients ───────────
+  app.get(
+    "/:id/manual-recipients",
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Querystring: { page?: string; limit?: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const page = Math.max(1, parseInt(request.query.page || "1"));
+      const limit = Math.min(100, Math.max(1, parseInt(request.query.limit || "25")));
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      const [data, total] = await Promise.all([
+        prisma.broadcastManualRecipient.findMany({
+          where: { campaignId: id },
+          orderBy: { addedAt: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        prisma.broadcastManualRecipient.count({ where: { campaignId: id } }),
+      ]);
+
+      return reply.send({
+        data,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    },
+  );
+
+  // ───── DELETE /:id/manual-recipients/:recipientId ─── Remove ───────────
+  app.delete(
+    "/:id/manual-recipients/:recipientId",
+    async (
+      request: FastifyRequest<{ Params: { id: string; recipientId: string } }>,
+      reply: FastifyReply,
+    ) => {
+      const recipientId = parseInt(request.params.recipientId);
+
+      try {
+        await prisma.broadcastManualRecipient.delete({ where: { id: recipientId } });
+      } catch {
+        return reply.status(404).send({ error: "Manual recipient not found" });
+      }
+
+      return reply.send({ message: "Manual recipient removed" });
     },
   );
 }

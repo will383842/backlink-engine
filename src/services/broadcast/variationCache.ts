@@ -170,3 +170,46 @@ export async function invalidateCampaignVariations(campaignId: number): Promise<
     // Ignore Redis errors
   }
 }
+
+/**
+ * Get all cached variations for a campaign, grouped by language and contactType.
+ */
+export async function getAllCampaignVariations(
+  campaignId: number,
+): Promise<{ language: string; contactType: string; variations: GeneratedEmail[]; count: number }[]> {
+  const results: { language: string; contactType: string; variations: GeneratedEmail[]; count: number }[] = [];
+  try {
+    const keys = await redis.keys(`broadcast:${campaignId}:variations:*`);
+    for (const key of keys) {
+      const parts = key.split(":");
+      const language = parts[3];
+      const contactType = parts[4];
+      const raw = await redis.get(key);
+      if (raw) {
+        const variations = JSON.parse(raw) as GeneratedEmail[];
+        results.push({ language, contactType, variations, count: variations.length });
+      }
+    }
+  } catch {
+    // Redis error
+  }
+  return results.sort((a, b) => `${a.contactType}:${a.language}`.localeCompare(`${b.contactType}:${b.language}`));
+}
+
+/**
+ * Set (overwrite) variations for a specific campaign + language + contactType.
+ */
+export async function setVariations(
+  campaignId: number,
+  language: string,
+  contactType: string,
+  variations: GeneratedEmail[],
+): Promise<void> {
+  const key = cacheKey(campaignId, language, contactType);
+  try {
+    await redis.setex(key, CACHE_TTL, JSON.stringify(variations));
+    log.info({ campaignId, language, contactType, count: variations.length }, "Variations updated.");
+  } catch {
+    // Redis error
+  }
+}
