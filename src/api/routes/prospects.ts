@@ -24,6 +24,7 @@ interface ListProspectsQuery {
   country?: string;
   language?: string;
   category?: string;
+  sourceContactType?: string; // Filter by MC original type (presse, ecole, youtubeur...)
   tier?: string;
   score?: string;
   source?: string;
@@ -124,6 +125,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
             score: { type: "string" },
             source: { type: "string" },
             search: { type: "string" },
+            sourceContactType: { type: "string" },
             tagId: { type: "string" },
             page: { type: "string", default: "1" },
             limit: { type: "string", default: "50" },
@@ -132,7 +134,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       },
     },
     async (request, reply) => {
-      const { status, country, language, category, tier, score, source, search, tagId, page, limit } =
+      const { status, country, language, category, sourceContactType, tier, score, source, search, tagId, page, limit } =
         request.query;
 
       const take = Math.min(parseInt(limit ?? "50", 10) || 50, 200);
@@ -147,6 +149,9 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       if (score) where["score"] = { gte: parseInt(score, 10) };
       if (source) where["source"] = source;
       if (search) where["domain"] = { contains: search, mode: "insensitive" };
+      if (sourceContactType) {
+        where["contacts"] = { some: { sourceContactType } };
+      }
       if (tagId) {
         where["tags"] = {
           some: {

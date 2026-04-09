@@ -80,6 +80,7 @@ interface Filters {
   language: string;
   tier: string;
   source: string;
+  sourceContactType: string;
   scoreMin: string;
   scoreMax: string;
   search: string;
@@ -96,6 +97,7 @@ export default function Prospects() {
     language: "",
     tier: "",
     source: "",
+    sourceContactType: "",
     scoreMin: "",
     scoreMax: "",
     search: "",
@@ -161,6 +163,7 @@ export default function Prospects() {
       if (filters.language) params.language = filters.language;
       if (filters.tier) params.tier = filters.tier;
       if (filters.source) params.source = filters.source;
+      if (filters.sourceContactType) params.sourceContactType = filters.sourceContactType;
       if (filters.scoreMin) params.scoreMin = filters.scoreMin;
       if (filters.scoreMax) params.scoreMax = filters.scoreMax;
       if (debouncedSearch) params.search = debouncedSearch;
@@ -198,17 +201,36 @@ export default function Prospects() {
             })}
           </div>
 
-          {/* By Category (BL) */}
+          {/* By Category (BL) — clickable */}
           <div className="card">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">Par categorie</h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400">Par categorie</h4>
+              {filters.status === "CATEGORY_FILTER" && (
+                <button onClick={() => { updateFilter("status", ""); }} className="text-xs text-brand-600 hover:underline">
+                  Voir tous
+                </button>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2">
               {statsData.byCategory.map((c) => {
                 const cfg = CATEGORY_CONFIG[c.category] ?? { label: c.category, color: "bg-surface-50 text-surface-600 border-surface-200" };
+                // Category filter uses the category query param, not status
+                const catParam = "category";
+                const isActive = new URLSearchParams(window.location.search).get(catParam) === c.category;
                 return (
                   <button
                     key={c.category}
-                    onClick={() => updateFilter("status", "")}
-                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors hover:shadow-sm ${cfg.color}`}
+                    onClick={() => {
+                      // Use URL params to set category filter
+                      const params = new URLSearchParams(window.location.search);
+                      if (isActive) {
+                        params.delete(catParam);
+                      } else {
+                        params.set(catParam, c.category);
+                      }
+                      navigate(`/prospects?${params.toString()}`);
+                    }}
+                    className={`rounded-lg border px-3 py-2 text-sm font-medium transition-all cursor-pointer hover:shadow-sm ${cfg.color}`}
                   >
                     {cfg.label} <span className="ml-1 font-bold">{c.count}</span>
                   </button>
@@ -217,17 +239,33 @@ export default function Prospects() {
             </div>
           </div>
 
-          {/* By Source Type (MC) */}
+          {/* By Source Type (MC) — clickable */}
           <div className="card">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">Par type de contact</h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400">Par type de contact</h4>
+              {filters.sourceContactType && (
+                <button onClick={() => updateFilter("sourceContactType", "")} className="text-xs text-brand-600 hover:underline">
+                  Voir tous
+                </button>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2">
               {statsData.bySourceType.map((s) => {
                 const cfg = SOURCE_TYPE_CONFIG[s.type] ?? { label: s.type, emoji: "📋", color: "bg-surface-100 text-surface-600 border-surface-200" };
+                const isActive = filters.sourceContactType === s.type;
                 return (
-                  <div key={s.type} className={`rounded-lg border px-3 py-2 text-sm ${cfg.color}`}>
+                  <button
+                    key={s.type}
+                    onClick={() => updateFilter("sourceContactType", isActive ? "" : s.type)}
+                    className={`rounded-lg border px-3 py-2 text-sm transition-all cursor-pointer ${
+                      isActive
+                        ? "ring-2 ring-brand-500 shadow-md scale-105 " + cfg.color
+                        : "hover:shadow-sm " + cfg.color
+                    }`}
+                  >
                     <span className="mr-1">{cfg.emoji}</span>
                     {cfg.label} <span className="ml-1 font-bold">{s.count}</span>
-                  </div>
+                  </button>
                 );
               })}
             </div>
