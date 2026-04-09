@@ -819,17 +819,40 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
                 },
               });
             }
-            // Stop enrollment + mark contact invalid
-            if (enrollment) {
-              await prisma.enrollment.update({
-                where: { id: enrollment.id },
-                data: { status: "stopped", stoppedReason: "bounce" },
+
+            if (bounce_type === "soft") {
+              // Soft bounce: increment counter, only suppress after 3 attempts
+              const updated = await prisma.contact.update({
+                where: { id: contact.id },
+                data: { softBounceCount: { increment: 1 } },
+              });
+              if (updated.softBounceCount >= 3) {
+                // 3+ soft bounces → treat as hard bounce
+                await prisma.contact.update({
+                  where: { id: contact.id },
+                  data: { emailStatus: "invalid" as never },
+                });
+                if (enrollment) {
+                  await prisma.enrollment.update({
+                    where: { id: enrollment.id },
+                    data: { status: "stopped", stoppedReason: "bounce_soft_max" },
+                  });
+                }
+              }
+              // Don't stop enrollment on first soft bounce — allows retry
+            } else {
+              // Hard bounce: stop immediately + mark invalid
+              if (enrollment) {
+                await prisma.enrollment.update({
+                  where: { id: enrollment.id },
+                  data: { status: "stopped", stoppedReason: "bounce" },
+                });
+              }
+              await prisma.contact.update({
+                where: { id: contact.id },
+                data: { emailStatus: "invalid" as never },
               });
             }
-            await prisma.contact.update({
-              where: { id: contact.id },
-              data: { emailStatus: "invalid" as never },
-            });
             break;
 
           case "complained":

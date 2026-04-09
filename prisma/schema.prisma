@@ -299,6 +299,7 @@ model Contact {
   sourceContactType String?   @db.VarChar(30) // Original type from Mission Control (presse, youtubeur, instagrammeur...)
   emailStatus     EmailStatus @default(unverified)
   discoveredVia   String      @default("manual")
+  softBounceCount Int         @default(0)
   optedOut        Boolean     @default(false)
   optedOutAt      DateTime?
   createdAt       DateTime    @default(now())

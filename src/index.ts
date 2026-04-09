@@ -34,6 +34,7 @@ import crawlingRoutes from "./api/routes/crawling.js";
 import targetPagesRoutes from "./api/routes/targetPages.js";
 import sentEmailsRoutes from "./api/routes/sentEmails.js";
 import broadcastRoutes from "./api/routes/broadcast.js";
+import unsubscribeRoutes from "./api/routes/unsubscribe.js";
 import { registerJwt } from "./api/middleware/auth.js";
 import { resetLlmClient } from "./llm/index.js";
 
@@ -166,6 +167,7 @@ app.setErrorHandler((error: Error & { statusCode?: number; code?: string }, requ
 await app.register(authRoutes, { prefix: "/api/auth" });
 await app.register(webhooksRoutes, { prefix: "/api/webhooks" });
 await app.register(ingestRoutes, { prefix: "/api/ingest" });
+await app.register(unsubscribeRoutes, { prefix: "/api" }); // Public: /api/unsubscribe (no auth)
 
 // Protected (require JWT)
 await app.register(prospectsRoutes, { prefix: "/api/prospects" });

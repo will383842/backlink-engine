@@ -4,6 +4,9 @@ import { createChildLogger } from "../../utils/logger.js";
 import { isInSuppressionList } from "../suppression/suppressionManager.js";
 import { shouldSendImmediately } from "../outreach/outreachMode.js";
 import { getEmailEngineClient } from "../outreach/emailEngineClient.js";
+import { getNextSendingDomain } from "../outreach/domainRotator.js";
+import { canSendToIsp, recordSendToIsp } from "../outreach/ispThrottler.js";
+import { generateUnsubscribeUrl } from "../../api/routes/unsubscribe.js";
 import { getVariations, pickAndPersonalize } from "./variationCache.js";
 import { sendBroadcastAlert } from "../notifications/telegramService.js";
 
@@ -80,12 +83,25 @@ export async function enrollBroadcastRecipient(
 
     // 5. Pick random variation and personalize
     const contactName = [contact.firstName, contact.lastName].filter(Boolean).join(" ") || null;
-    const email = pickAndPersonalize(variations, contactName, contact.domain);
+    const emailContent = pickAndPersonalize(variations, contactName, contact.domain);
 
-    // 6. Check outreach mode (auto vs review)
+    // 5b. Get sending domain (round-robin rotation)
+    const sendingDomain = await getNextSendingDomain();
+
+    // 5c. Add unsubscribe footer
+    const unsubLink = generateUnsubscribeUrl(contact.email);
+    const bodyWithUnsub = emailContent.body + `\n\n---\nPour ne plus recevoir nos emails : ${unsubLink}`;
+
+    // 6. Check ISP rate limit
+    if (!(await canSendToIsp(contact.email))) {
+      log.debug({ email: contact.email }, "ISP rate limit reached — skipping for now.");
+      return { status: "error", error: "ISP rate limit" };
+    }
+
+    // 7. Check outreach mode (auto vs review)
     const autoSend = await shouldSendImmediately();
 
-    // 7. Try to send
+    // 8. Try to send
     let mailwizzMessageId: string | null = null;
     let sentAt: Date | null = null;
     let emailStatus: string = "draft";
@@ -94,20 +110,26 @@ export async function enrollBroadcastRecipient(
       try {
         const emailEngine = getEmailEngineClient();
         if (emailEngine.isConfigured()) {
-          // Send via Email Engine (PowerMTA)
           const result = await emailEngine.sendEmail({
             toEmail: contact.email,
             toName: contactName || undefined,
-            subject: email.subject,
-            body: email.body,
+            subject: emailContent.subject,
+            body: bodyWithUnsub,
             language,
             category: contactType,
-            tags: [`broadcast`, `campaign:${campaignId}`, `type:${contactType}`, `lang:${language}`],
+            tags: [`broadcast`, `campaign:${campaignId}`, `type:${contactType}`, `lang:${language}`, `domain:${sendingDomain.domain}`],
+            metadata: {
+              from_email: sendingDomain.fromEmail,
+              from_name: sendingDomain.fromName,
+              reply_to: sendingDomain.replyTo,
+              sending_domain: sendingDomain.domain,
+            },
           });
           if (result.success) {
             emailStatus = "sent";
             sentAt = new Date();
             mailwizzMessageId = result.campaignId ? String(result.campaignId) : null;
+            await recordSendToIsp(contact.email);
           }
         }
 
@@ -116,20 +138,20 @@ export async function enrollBroadcastRecipient(
           const { MailWizzClient } = await import("../outreach/mailwizzClient.js");
           const mailwizzConfig = await import("../../config/mailwizz.js");
           const mw = new MailWizzClient(mailwizzConfig.mailwizzConfig.apiUrl, mailwizzConfig.mailwizzConfig.apiKey);
-          const senderSettings = await loadSenderSettings();
           const result = await mw.sendTransactionalEmail({
             toEmail: contact.email,
             toName: contactName || "",
-            fromEmail: senderSettings.fromEmail,
-            fromName: senderSettings.fromName,
-            replyTo: senderSettings.replyTo,
-            subject: email.subject,
-            body: textToHtml(email.body),
+            fromEmail: sendingDomain.fromEmail,
+            fromName: sendingDomain.fromName,
+            replyTo: sendingDomain.replyTo,
+            subject: emailContent.subject,
+            body: textToHtml(bodyWithUnsub),
           });
           if (result.messageId) {
             emailStatus = "sent";
             sentAt = new Date();
             mailwizzMessageId = result.messageId;
+            await recordSendToIsp(contact.email);
           }
         }
       } catch (err) {
@@ -160,8 +182,8 @@ export async function enrollBroadcastRecipient(
         contactId: contact.contactId,
         campaignId,
         stepNumber: 0,
-        subject: email.subject,
-        body: email.body,
+        subject: emailContent.subject,
+        body: bodyWithUnsub,
         language,
         generatedBy: "ai",
         status: emailStatus,
@@ -189,7 +211,7 @@ export async function enrollBroadcastRecipient(
         enrollmentId: enrollment.id,
         eventType: emailStatus === "sent" ? "broadcast_sent" : "broadcast_draft",
         eventSource: "broadcast",
-        data: { campaignId, subject: email.subject, language, contactType } as unknown as Prisma.InputJsonValue,
+        data: { campaignId, subject: emailContent.subject, language, contactType, sendingDomain: sendingDomain.domain } as unknown as Prisma.InputJsonValue,
       },
     });
 
