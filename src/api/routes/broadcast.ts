@@ -772,4 +772,91 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
       return reply.send({ message: "Manual recipient removed" });
     },
   );
+
+  // ───── GET /:id/replies ─── List replies for a broadcast campaign ──────
+  app.get(
+    "/:id/replies",
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+        Querystring: { page?: string; limit?: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const id = parseInt(request.params.id);
+      const page = Math.max(1, parseInt(request.query.page || "1"));
+      const limit = Math.min(100, Math.max(1, parseInt(request.query.limit || "25")));
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
+      // Find enrollments that were stopped due to reply, or have reply events
+      const [replyEvents, total] = await Promise.all([
+        prisma.event.findMany({
+          where: {
+            eventType: { in: ["reply_received", "REPLY_RECEIVED", "prospect_replied"] },
+            enrollment: { campaignId: id },
+          },
+          include: {
+            contact: { select: { email: true, firstName: true, lastName: true, sourceContactType: true } },
+            prospect: { select: { domain: true, language: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        prisma.event.count({
+          where: {
+            eventType: { in: ["reply_received", "REPLY_RECEIVED", "prospect_replied"] },
+            enrollment: { campaignId: id },
+          },
+        }),
+      ]);
+
+      // Also get stopped enrollments (reply/unsub/bounce)
+      const stoppedEnrollments = await prisma.enrollment.findMany({
+        where: {
+          campaignId: id,
+          status: "stopped",
+          stoppedReason: { not: null },
+        },
+        include: {
+          contact: { select: { email: true, firstName: true, lastName: true, sourceContactType: true } },
+          prospect: { select: { domain: true, language: true } },
+        },
+        orderBy: { completedAt: "desc" },
+      });
+
+      return reply.send({
+        data: {
+          replies: replyEvents.map((e) => ({
+            id: e.id,
+            email: e.contact?.email,
+            name: [e.contact?.firstName, e.contact?.lastName].filter(Boolean).join(" ") || null,
+            type: e.contact?.sourceContactType,
+            domain: e.prospect?.domain,
+            language: e.prospect?.language,
+            eventType: e.eventType,
+            date: e.createdAt,
+            data: e.data,
+          })),
+          stoppedEnrollments: stoppedEnrollments.map((en) => ({
+            id: en.id,
+            email: en.contact?.email,
+            name: [en.contact?.firstName, en.contact?.lastName].filter(Boolean).join(" ") || null,
+            type: en.contact?.sourceContactType,
+            domain: en.prospect?.domain,
+            reason: en.stoppedReason,
+            stoppedAt: en.completedAt,
+            step: en.currentStep,
+          })),
+          totalReplies: total,
+          totalStopped: stoppedEnrollments.length,
+        },
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+      });
+    },
+  );
 }

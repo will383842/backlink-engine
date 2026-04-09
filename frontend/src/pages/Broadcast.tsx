@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Pencil,
   X,
+  MessageCircle,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -503,7 +504,7 @@ function StatPill({ icon, value, label, color }: { icon: React.ReactNode; value:
   );
 }
 
-type DetailTab = "stats" | "variations" | "contacts" | "exclusions" | "manual";
+type DetailTab = "stats" | "variations" | "contacts" | "exclusions" | "manual" | "replies";
 
 const DETAIL_TABS: { key: DetailTab; label: string }[] = [
   { key: "stats", label: "Stats" },
@@ -511,6 +512,7 @@ const DETAIL_TABS: { key: DetailTab; label: string }[] = [
   { key: "contacts", label: "Contacts" },
   { key: "exclusions", label: "Exclusions" },
   { key: "manual", label: "Manuel" },
+  { key: "replies", label: "Reponses" },
 ];
 
 function CampaignDetail({ campaignId }: { campaignId: number }) {
@@ -538,6 +540,7 @@ function CampaignDetail({ campaignId }: { campaignId: number }) {
       {tab === "contacts" && <ContactsTab campaignId={campaignId} />}
       {tab === "exclusions" && <ExclusionsTab campaignId={campaignId} />}
       {tab === "manual" && <ManualTab campaignId={campaignId} />}
+      {tab === "replies" && <RepliesTab campaignId={campaignId} />}
     </div>
   );
 }
@@ -1171,6 +1174,157 @@ function ManualTab({ campaignId }: { campaignId: number }) {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Replies Tab ----
+interface ReplyEvent {
+  id: number;
+  email: string;
+  name?: string;
+  type?: string;
+  domain?: string;
+  language?: string;
+  eventType: string;
+  date: string;
+}
+interface StoppedEnrollment {
+  id: number;
+  email: string;
+  name?: string;
+  type?: string;
+  domain?: string;
+  reason: string;
+  stoppedAt?: string;
+  step: number;
+}
+
+const REASON_LABELS: Record<string, { label: string; color: string }> = {
+  reply_received: { label: "Repondu", color: "bg-emerald-100 text-emerald-700" },
+  bounce_received: { label: "Bounce", color: "bg-red-100 text-red-700" },
+  unsubscribed: { label: "Desinscrit", color: "bg-amber-100 text-amber-700" },
+};
+
+function RepliesTab({ campaignId }: { campaignId: number }) {
+  const { data, isLoading } = useQuery<{
+    replies: ReplyEvent[];
+    stoppedEnrollments: StoppedEnrollment[];
+    totalReplies: number;
+    totalStopped: number;
+  }>({
+    queryKey: ["broadcast-replies", campaignId],
+    queryFn: async () => {
+      const res = await api.get(`/broadcast/${campaignId}/replies`);
+      return res.data.data;
+    },
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-4">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  const replies = data?.replies ?? [];
+  const stopped = data?.stoppedEnrollments ?? [];
+  const hasData = replies.length > 0 || stopped.length > 0;
+
+  if (!hasData) {
+    return (
+      <div className="text-center py-8">
+        <MessageCircle size={32} className="mx-auto text-surface-300 mb-2" />
+        <p className="text-sm text-surface-400">Aucune reponse pour le moment</p>
+        <p className="text-xs text-surface-300 mt-1">Les reponses apparaitront ici automatiquement</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-center">
+          <p className="text-2xl font-bold text-emerald-700">{replies.length}</p>
+          <p className="text-xs text-emerald-600">Reponses</p>
+        </div>
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-center">
+          <p className="text-2xl font-bold text-amber-700">{stopped.filter(s => s.reason === "unsubscribed").length}</p>
+          <p className="text-xs text-amber-600">Desinscrits</p>
+        </div>
+        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-center">
+          <p className="text-2xl font-bold text-red-700">{stopped.filter(s => s.reason === "bounce_received").length}</p>
+          <p className="text-xs text-red-600">Bounces</p>
+        </div>
+      </div>
+
+      {/* Replies list */}
+      {replies.length > 0 && (
+        <div className="rounded-lg bg-white overflow-hidden">
+          <h5 className="px-3 py-2 text-sm font-semibold text-surface-700 border-b border-surface-100">Reponses recues</h5>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-surface-100 text-left text-xs text-surface-500">
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Nom</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Domaine</th>
+                <th className="px-3 py-2">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {replies.map((r) => (
+                <tr key={r.id} className="border-b border-surface-100">
+                  <td className="px-3 py-2 text-surface-700 truncate max-w-[200px]">{r.email || "-"}</td>
+                  <td className="px-3 py-2 text-surface-600">{r.name || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500">{r.type || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500">{r.domain || "-"}</td>
+                  <td className="px-3 py-2 text-surface-500">{format(new Date(r.date), "dd/MM/yyyy HH:mm")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Stopped enrollments */}
+      {stopped.length > 0 && (
+        <div className="rounded-lg bg-white overflow-hidden">
+          <h5 className="px-3 py-2 text-sm font-semibold text-surface-700 border-b border-surface-100">Sequences stoppees</h5>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-surface-100 text-left text-xs text-surface-500">
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Nom</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Raison</th>
+                <th className="px-3 py-2">Step</th>
+                <th className="px-3 py-2">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stopped.map((s) => {
+                const reason = REASON_LABELS[s.reason] ?? { label: s.reason, color: "bg-surface-100 text-surface-600" };
+                return (
+                  <tr key={s.id} className="border-b border-surface-100">
+                    <td className="px-3 py-2 text-surface-700 truncate max-w-[200px]">{s.email || "-"}</td>
+                    <td className="px-3 py-2 text-surface-600">{s.name || "-"}</td>
+                    <td className="px-3 py-2 text-surface-500">{s.type || "-"}</td>
+                    <td className="px-3 py-2">
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${reason.color}`}>{reason.label}</span>
+                    </td>
+                    <td className="px-3 py-2 text-surface-500">Step {s.step + 1}</td>
+                    <td className="px-3 py-2 text-surface-500">{s.stoppedAt ? format(new Date(s.stoppedAt), "dd/MM/yyyy") : "-"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
