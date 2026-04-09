@@ -605,7 +605,6 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
           where: { campaignId: id },
           include: {
             contact: {
-              select: { email: true, firstName: true, lastName: true, sourceContactType: true },
               include: { prospect: { select: { language: true, domain: true } } },
             },
           },
