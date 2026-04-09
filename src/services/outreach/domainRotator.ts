@@ -19,12 +19,15 @@ export interface SendingDomain {
   active: boolean;
 }
 
+const REPLY_TO = process.env.REPLY_TO_EMAIL || "replies@life-expat.com";
+const FROM_NAME = process.env.FROM_NAME || "SOS Expat";
+
 const DEFAULT_DOMAINS: SendingDomain[] = [
-  { domain: "hub-travelers.com", fromEmail: "contact@hub-travelers.com", fromName: "Life Expat", replyTo: "contact@hub-travelers.com", active: true },
-  { domain: "plane-liberty.com", fromEmail: "contact@plane-liberty.com", fromName: "Life Expat", replyTo: "contact@plane-liberty.com", active: true },
-  { domain: "providers-expat.com", fromEmail: "contact@providers-expat.com", fromName: "Life Expat", replyTo: "contact@providers-expat.com", active: true },
-  { domain: "emilia-mullerd.com", fromEmail: "contact@emilia-mullerd.com", fromName: "Life Expat", replyTo: "contact@emilia-mullerd.com", active: true },
-  { domain: "planevilain.com", fromEmail: "contact@planevilain.com", fromName: "Life Expat", replyTo: "contact@planevilain.com", active: true },
+  { domain: "hub-travelers.com", fromEmail: "contact@hub-travelers.com", fromName: FROM_NAME, replyTo: REPLY_TO, active: true },
+  { domain: "plane-liberty.com", fromEmail: "contact@plane-liberty.com", fromName: FROM_NAME, replyTo: REPLY_TO, active: true },
+  { domain: "providers-expat.com", fromEmail: "contact@providers-expat.com", fromName: FROM_NAME, replyTo: REPLY_TO, active: true },
+  { domain: "emilia-mullerd.com", fromEmail: "contact@emilia-mullerd.com", fromName: FROM_NAME, replyTo: REPLY_TO, active: true },
+  { domain: "planevilain.com", fromEmail: "contact@planevilain.com", fromName: FROM_NAME, replyTo: REPLY_TO, active: true },
 ];
 
 // ---------------------------------------------------------------------------

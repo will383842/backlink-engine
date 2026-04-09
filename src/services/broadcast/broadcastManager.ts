@@ -4,6 +4,7 @@ import { createChildLogger } from "../../utils/logger.js";
 import { isInSuppressionList } from "../suppression/suppressionManager.js";
 import { shouldSendImmediately } from "../outreach/outreachMode.js";
 import { getEmailEngineClient } from "../outreach/emailEngineClient.js";
+import { sendViaSMTP } from "../outreach/smtpSender.js";
 import { getNextSendingDomain } from "../outreach/domainRotator.js";
 import { canSendToIsp, recordSendToIsp } from "../outreach/ispThrottler.js";
 import { generateUnsubscribeUrl } from "../../api/routes/unsubscribe.js";
@@ -108,32 +109,47 @@ export async function enrollBroadcastRecipient(
 
     if (autoSend) {
       try {
-        const emailEngine = getEmailEngineClient();
-        if (emailEngine.isConfigured()) {
-          const result = await emailEngine.sendEmail({
-            toEmail: contact.email,
-            toName: contactName || undefined,
-            subject: emailContent.subject,
-            body: bodyWithUnsub,
-            language,
-            category: contactType,
-            tags: [`broadcast`, `campaign:${campaignId}`, `type:${contactType}`, `lang:${language}`, `domain:${sendingDomain.domain}`],
-            metadata: {
-              from_email: sendingDomain.fromEmail,
-              from_name: sendingDomain.fromName,
-              reply_to: sendingDomain.replyTo,
-              sending_domain: sendingDomain.domain,
-            },
-          });
-          if (result.success) {
-            emailStatus = "sent";
-            sentAt = new Date();
-            mailwizzMessageId = result.campaignId ? String(result.campaignId) : null;
-            await recordSendToIsp(contact.email);
+        // Primary: Direct SMTP via Postfix → OpenDKIM → PowerMTA
+        const smtpResult = await sendViaSMTP({
+          toEmail: contact.email,
+          toName: contactName || undefined,
+          fromEmail: sendingDomain.fromEmail,
+          fromName: sendingDomain.fromName,
+          replyTo: sendingDomain.replyTo,
+          subject: emailContent.subject,
+          bodyText: bodyWithUnsub,
+        });
+
+        if (smtpResult.success) {
+          emailStatus = "sent";
+          sentAt = new Date();
+          mailwizzMessageId = smtpResult.messageId ?? null;
+          await recordSendToIsp(contact.email);
+        }
+
+        // Fallback 1: Email Engine API (if configured)
+        if (emailStatus !== "sent") {
+          const emailEngine = getEmailEngineClient();
+          if (emailEngine.isConfigured()) {
+            const result = await emailEngine.sendEmail({
+              toEmail: contact.email,
+              toName: contactName || undefined,
+              subject: emailContent.subject,
+              body: bodyWithUnsub,
+              language,
+              category: contactType,
+              tags: [`broadcast`, `campaign:${campaignId}`, `type:${contactType}`, `lang:${language}`],
+            });
+            if (result.success) {
+              emailStatus = "sent";
+              sentAt = new Date();
+              mailwizzMessageId = result.campaignId ? String(result.campaignId) : null;
+              await recordSendToIsp(contact.email);
+            }
           }
         }
 
-        // Fallback: MailWizz transactional
+        // Fallback 2: MailWizz transactional API
         if (emailStatus !== "sent") {
           const { MailWizzClient } = await import("../outreach/mailwizzClient.js");
           const mailwizzConfig = await import("../../config/mailwizz.js");

@@ -260,19 +260,32 @@ try {
   }
   logger.info("LLM client initialised.");
 
-  // Verify Email-Engine connectivity (primary email sender)
+  // Verify SMTP connectivity (primary email sender: Postfix → OpenDKIM → PowerMTA)
+  try {
+    const { checkSmtpHealth } = await import("./services/outreach/smtpSender.js");
+    const smtpOk = await checkSmtpHealth();
+    if (smtpOk) {
+      logger.info("✅ SMTP connected (Postfix → OpenDKIM → PowerMTA) — emails will be sent via SMTP.");
+    } else {
+      logger.warn("⚠️  SMTP not reachable — will fallback to Email-Engine API or MailWizz.");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Could not verify SMTP connectivity.");
+  }
+
+  // Verify Email-Engine connectivity (fallback)
   try {
     const { getEmailEngineClient } = await import("./services/outreach/emailEngineClient.js");
     const emailEngine = getEmailEngineClient();
     if (emailEngine.isConfigured()) {
       const health = await emailEngine.healthCheck();
       if (health.ok) {
-        logger.info("✅ Email-Engine API connected — emails will be sent via PowerMTA.");
+        logger.info("✅ Email-Engine API connected (fallback).");
       } else {
-        logger.warn({ error: health.error }, "⚠️  Email-Engine API not reachable — will fallback to MailWizz.");
+        logger.warn({ error: health.error }, "⚠️  Email-Engine API not reachable.");
       }
     } else {
-      logger.info("Email-Engine not configured (EMAIL_ENGINE_API_URL not set) — using MailWizz only.");
+      logger.info("Email-Engine not configured — SMTP is primary.");
     }
   } catch (err) {
     logger.warn({ err }, "Could not verify Email-Engine connectivity.");
