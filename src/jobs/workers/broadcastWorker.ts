@@ -12,6 +12,7 @@ import {
   getBroadcastRemainingToday,
   advanceAllWarmups,
 } from "../../services/broadcast/warmupScheduler.js";
+import { advanceBroadcastEnrollments } from "../../services/broadcast/broadcastSequenceAdvancer.js";
 
 const log = createChildLogger("broadcast-worker");
 
@@ -27,7 +28,11 @@ interface AdvanceWarmupData {
   type: "advance-warmup";
 }
 
-type BroadcastJobData = ProcessBroadcastData | AdvanceWarmupData;
+interface AdvanceBroadcastSequenceData {
+  type: "advance-broadcast-sequence";
+}
+
+type BroadcastJobData = ProcessBroadcastData | AdvanceWarmupData | AdvanceBroadcastSequenceData;
 
 // ---------------------------------------------------------------------------
 // Main processor
@@ -39,6 +44,13 @@ async function processBroadcastJob(job: Job<BroadcastJobData>): Promise<void> {
   if (type === "advance-warmup") {
     log.info("Advancing warmup days for all active broadcast campaigns...");
     await advanceAllWarmups();
+    return;
+  }
+
+  if (type === "advance-broadcast-sequence") {
+    log.info("Advancing broadcast enrollments through sequences...");
+    const summary = await advanceBroadcastEnrollments();
+    log.info(summary, "Broadcast sequence advancement complete.");
     return;
   }
 

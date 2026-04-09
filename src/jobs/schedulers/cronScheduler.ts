@@ -245,7 +245,26 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: broadcast processing (every 10 min).");
 
   // -----------------------------------------------------------------------
-  // 12. Broadcast warmup: advance warmup day at 00:05 UTC daily
+  // 12. Broadcast sequence: advance enrollments through multi-step sequences
+  // -----------------------------------------------------------------------
+  await broadcastQueue.upsertJobScheduler(
+    "broadcast-sequence-advance",
+    {
+      pattern: "*/10 * * * *", // every 10 minutes
+    },
+    {
+      name: "advance-broadcast-sequence",
+      data: { type: "advance-broadcast-sequence" },
+      opts: {
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 200 },
+      },
+    }
+  );
+  log.info("Scheduled: broadcast sequence advance (every 10 min).");
+
+  // -----------------------------------------------------------------------
+  // 13. Broadcast warmup: advance warmup day at 00:05 UTC daily (was #12)
   // -----------------------------------------------------------------------
   await broadcastQueue.upsertJobScheduler(
     "broadcast-warmup-advance",
@@ -264,7 +283,7 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: broadcast warmup advance (daily 00:05 UTC).");
 
   // -----------------------------------------------------------------------
-  // 13. Daily broadcast report: every day at 21:00 UTC
+  // 14. Daily broadcast report: every day at 21:00 UTC
   // -----------------------------------------------------------------------
   await reportingQueue.upsertJobScheduler(
     "reporting-daily-broadcast",

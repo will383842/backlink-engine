@@ -177,6 +177,15 @@ export async function enrollBroadcastRecipient(
     }
 
     // 8. Create enrollment + sent email in transaction
+    // If campaign has multi-step sequence, keep enrollment active for follow-ups
+    const seqConfig = campaign.sequenceConfig as { steps: { stepNumber: number; delayDays: number; sourceEmail?: { subject: string; body: string } }[] } | null;
+    const hasMultiStep = seqConfig?.steps && seqConfig.steps.length > 1;
+    let nextSendAt: Date | null = null;
+    if (hasMultiStep && emailStatus === "sent" && seqConfig!.steps.length > 1) {
+      const nextStep = seqConfig!.steps[1];
+      nextSendAt = new Date(Date.now() + (nextStep?.delayDays ?? 7) * 86_400_000);
+    }
+
     const [enrollment] = await prisma.$transaction([
       prisma.enrollment.create({
         data: {
@@ -184,9 +193,10 @@ export async function enrollBroadcastRecipient(
           campaignId,
           prospectId: contact.prospectId,
           currentStep: 0,
-          status: emailStatus === "sent" ? "completed" : "active",
+          status: hasMultiStep && emailStatus === "sent" ? "active" : (emailStatus === "sent" ? "completed" : "active"),
           enrolledAt: new Date(),
           lastSentAt: sentAt,
+          nextSendAt,
         },
       }),
     ]);

@@ -566,6 +566,16 @@ export const en: TranslationKeys = {
     domain: "Domain",
     pending: "Pending",
     failed: "Failed",
+    multiStep: "Multi-step sequence",
+    multiStepDesc: "Send multiple emails with delays between each step",
+    step: "Step",
+    addStep: "Add step",
+    delayDays: "Delay (days)",
+    stepSubject: "Follow-up subject",
+    stepBody: "Follow-up body",
+    steps: "steps",
+    progressByStep: "Progress by step",
+    emailsSent: "sent",
   },
 
   mcSync: {

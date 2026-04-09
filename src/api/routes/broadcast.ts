@@ -40,11 +40,12 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
           targetSourceContactTypes: string[];
           warmupSchedule?: number[];
           stopOnBounce?: boolean;
+          sequenceConfig?: { steps: { stepNumber: number; delayDays: number; sourceEmail?: { subject: string; body: string } }[] };
         };
       }>,
       reply: FastifyReply,
     ) => {
-      const { name, language, brief, sourceEmail, targetSourceContactTypes, warmupSchedule, stopOnBounce } = request.body;
+      const { name, language, brief, sourceEmail, targetSourceContactTypes, warmupSchedule, stopOnBounce, sequenceConfig } = request.body;
 
       if (!name || !sourceEmail?.subject || !sourceEmail?.body) {
         return reply.status(400).send({ error: "name, sourceEmail.subject, and sourceEmail.body are required" });
@@ -63,8 +64,9 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
           sourceEmail,
           targetSourceContactTypes,
           warmupSchedule: warmupSchedule || [5, 10, 20, 40, 75, 150, 300, 500],
+          sequenceConfig: sequenceConfig || null,
           stopOnBounce: stopOnBounce ?? true,
-          stopOnReply: false,
+          stopOnReply: sequenceConfig ? true : false,
           stopOnUnsub: true,
           isActive: false, // Must be explicitly started
         },
@@ -139,12 +141,13 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
           targetSourceContactTypes?: string[];
           warmupSchedule?: number[];
           language?: string;
+          sequenceConfig?: { steps: { stepNumber: number; delayDays: number; sourceEmail?: { subject: string; body: string } }[] } | null;
         };
       }>,
       reply: FastifyReply,
     ) => {
       const id = parseInt(request.params.id);
-      const { name, brief, sourceEmail, targetSourceContactTypes, warmupSchedule, language } = request.body;
+      const { name, brief, sourceEmail, targetSourceContactTypes, warmupSchedule, language, sequenceConfig } = request.body;
 
       const campaign = await prisma.campaign.findUnique({ where: { id } });
       if (!campaign || campaign.campaignType !== "broadcast") {
@@ -158,6 +161,7 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
       if (targetSourceContactTypes !== undefined) data.targetSourceContactTypes = targetSourceContactTypes;
       if (warmupSchedule !== undefined) data.warmupSchedule = warmupSchedule;
       if (language !== undefined) data.language = language;
+      if (sequenceConfig !== undefined) data.sequenceConfig = sequenceConfig;
 
       const updated = await prisma.campaign.update({ where: { id }, data });
 
@@ -243,12 +247,21 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
 
         const eligible = await countEligibleContacts(id);
 
+        // By step (for multi-step sequences)
+        const byStep = await prisma.sentEmail.groupBy({
+          by: ["stepNumber"],
+          where: { campaignId: id },
+          _count: { _all: true },
+          orderBy: { stepNumber: "asc" },
+        });
+
         return {
           ...campaign,
           eligibleRemaining: eligible,
           byLanguage: byLanguage.map((l) => ({ language: l.language, count: l._count._all })),
           byType: byType.map((t) => ({ type: t.type, count: Number(t.count) })),
           byStatus: byStatus.reduce((acc, s) => { acc[s.status] = s._count._all; return acc; }, {} as Record<string, number>),
+          byStep: byStep.map((s) => ({ step: s.stepNumber, count: s._count._all })),
         };
       });
 

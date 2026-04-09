@@ -17,6 +17,7 @@ import {
   Plus,
   RefreshCw,
   Pencil,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
@@ -46,6 +47,7 @@ interface BroadcastCampaign {
   totalComplained: number;
   isActive: boolean;
   createdAt: string;
+  sequenceConfig?: { steps: { stepNumber: number; delayDays: number; sourceEmail?: { subject: string; body: string } }[] } | null;
   // Detail fields
   eligibleContacts?: number;
   dailyLimit?: number;
@@ -67,6 +69,7 @@ interface BroadcastStats {
   byLanguage: { language: string; count: number }[];
   byType: { type: string; count: number }[];
   byStatus: Record<string, number>;
+  byStep?: { stepNumber: number; count: number }[];
 }
 
 const CONTACT_TYPES = [
@@ -117,6 +120,8 @@ export default function Broadcast() {
   const [formLanguage, setFormLanguage] = useState("fr");
   const [formTypes, setFormTypes] = useState<string[]>([]);
   const [formWarmup, setFormWarmup] = useState<string>("conservative");
+  const [multiStep, setMultiStep] = useState(false);
+  const [formSteps, setFormSteps] = useState<{ delayDays: number; subject: string; body: string }[]>([]);
 
   // Queries
   const { data: campaigns, isLoading } = useQuery<BroadcastCampaign[]>({
@@ -132,6 +137,16 @@ export default function Broadcast() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const schedule = WARMUP_PRESETS[formWarmup as keyof typeof WARMUP_PRESETS]?.schedule ?? WARMUP_PRESETS.conservative.schedule;
+      const sequenceConfig = multiStep && formSteps.length > 0 ? {
+        steps: [
+          { stepNumber: 0, delayDays: 0 },
+          ...formSteps.map((s, i) => ({
+            stepNumber: i + 1,
+            delayDays: s.delayDays,
+            sourceEmail: { subject: s.subject, body: s.body },
+          })),
+        ],
+      } : undefined;
       return api.post("/broadcast", {
         name: formName,
         language: formLanguage,
@@ -139,13 +154,14 @@ export default function Broadcast() {
         sourceEmail: { subject: formSubject, body: formBody },
         targetSourceContactTypes: formTypes,
         warmupSchedule: schedule,
+        ...(sequenceConfig && { sequenceConfig }),
       });
     },
     onSuccess: () => {
       toast.success(t("broadcast.created"));
       queryClient.invalidateQueries({ queryKey: ["broadcast-campaigns"] });
       setShowForm(false);
-      setFormName(""); setFormBrief(""); setFormSubject(""); setFormBody(""); setFormTypes([]);
+      setFormName(""); setFormBrief(""); setFormSubject(""); setFormBody(""); setFormTypes([]); setMultiStep(false); setFormSteps([]);
     },
     onError: () => toast.error(t("broadcast.createError")),
   });
@@ -281,6 +297,74 @@ export default function Broadcast() {
             />
           </div>
 
+          {/* Sequence multi-step */}
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium text-surface-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={multiStep}
+                onChange={(e) => setMultiStep(e.target.checked)}
+                className="rounded border-surface-300"
+              />
+              Sequence multi-step
+            </label>
+          </div>
+
+          {multiStep && (
+            <div className="rounded-lg border border-surface-200 bg-surface-50 p-3 space-y-3">
+              <div className="rounded-lg bg-white border border-surface-100 p-3">
+                <p className="text-xs font-semibold text-surface-600">Step 1 — Jour 0</p>
+                <p className="text-xs text-surface-400 mt-0.5">Utilise le sujet et corps saisis ci-dessus</p>
+              </div>
+
+              {formSteps.map((step, idx) => (
+                <div key={idx} className="rounded-lg bg-white border border-surface-100 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-surface-600">Step {idx + 2}</p>
+                    <button
+                      onClick={() => setFormSteps((prev) => prev.filter((_, i) => i !== idx))}
+                      className="rounded p-1 text-red-400 hover:bg-red-50"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-surface-500 whitespace-nowrap">Delai (jours)</label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={step.delayDays}
+                      onChange={(e) => setFormSteps((prev) => prev.map((s, i) => i === idx ? { ...s, delayDays: Number(e.target.value) } : s))}
+                      className="w-20 rounded-lg border border-surface-300 px-2 py-1 text-sm"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    value={step.subject}
+                    onChange={(e) => setFormSteps((prev) => prev.map((s, i) => i === idx ? { ...s, subject: e.target.value } : s))}
+                    className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm"
+                    placeholder="Objet du follow-up"
+                  />
+                  <textarea
+                    value={step.body}
+                    onChange={(e) => setFormSteps((prev) => prev.map((s, i) => i === idx ? { ...s, body: e.target.value } : s))}
+                    rows={4}
+                    className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm font-mono"
+                    placeholder="Corps du follow-up"
+                  />
+                </div>
+              ))}
+
+              <button
+                onClick={() => setFormSteps((prev) => [...prev, { delayDays: 7, subject: "", body: "" }])}
+                className="flex items-center gap-1 rounded-lg border border-dashed border-surface-300 px-3 py-1.5 text-xs font-medium text-surface-500 hover:bg-surface-100 transition-colors"
+              >
+                <Plus size={14} />
+                Ajouter un step
+              </button>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-2">{t("broadcast.targetTypes")}</label>
             <div className="flex flex-wrap gap-2">
@@ -353,6 +437,13 @@ export default function Broadcast() {
                 <Clock size={14} className="mx-auto mb-0.5" />
                 J{campaign.currentWarmupDay + 1}
               </div>
+
+              {/* Sequence badge */}
+              {campaign.sequenceConfig && campaign.sequenceConfig.steps && campaign.sequenceConfig.steps.length > 1 && (
+                <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">
+                  {campaign.sequenceConfig.steps.length} steps
+                </span>
+              )}
 
               {/* Actions */}
               <div className="flex items-center gap-1">
@@ -510,6 +601,27 @@ function StatsTab({ campaignId }: { campaignId: number }) {
           ))}
         </div>
       </div>
+
+      {stats.byStep && stats.byStep.length > 1 && (
+        <div className="rounded-lg bg-white p-3">
+          <h5 className="text-sm font-semibold text-surface-700 mb-2">Progression par step</h5>
+          <div className="space-y-1.5">
+            {stats.byStep.map((s) => {
+              const maxCount = Math.max(...stats.byStep!.map((x) => x.count), 1);
+              const pct = (s.count / maxCount) * 100;
+              return (
+                <div key={s.stepNumber} className="flex items-center gap-3">
+                  <span className="text-xs text-surface-500 w-14 shrink-0">Step {s.stepNumber + 1}</span>
+                  <div className="flex-1 h-2 rounded-full bg-surface-200">
+                    <div className="h-2 rounded-full bg-purple-400" style={{ width: `${pct}%` }} />
+                  </div>
+                  <span className="text-xs font-medium text-surface-700 w-24 text-right">{s.count} envoyes</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {stats.byLanguage.length > 0 && (

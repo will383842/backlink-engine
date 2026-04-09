@@ -564,6 +564,16 @@ export const fr = {
     domain: "Domaine",
     pending: "En attente",
     failed: "Echoue",
+    multiStep: "Sequence multi-step",
+    multiStepDesc: "Envoyer plusieurs emails avec delais entre chaque step",
+    step: "Step",
+    addStep: "Ajouter un step",
+    delayDays: "Delai (jours)",
+    stepSubject: "Objet du follow-up",
+    stepBody: "Corps du follow-up",
+    steps: "steps",
+    progressByStep: "Progression par step",
+    emailsSent: "envoyes",
   },
 
   mcSync: {

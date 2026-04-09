@@ -69,14 +69,18 @@ const FALLBACK_TEMPLATES: Record<string, GeneratedEmail[]> = {
 
 /**
  * Get the Redis cache key for a campaign's variations.
+ * Step 0 uses the original key format for backwards compatibility.
  */
-function cacheKey(campaignId: number, language: string, contactType: string): string {
+function cacheKey(campaignId: number, language: string, contactType: string, step?: number): string {
+  if (step && step > 0) {
+    return `broadcast:${campaignId}:variations:step${step}:${language}:${contactType}`;
+  }
   return `broadcast:${campaignId}:variations:${language}:${contactType}`;
 }
 
 /**
  * Get or generate variations for a campaign + language + contactType combo.
- * Caches in Redis for 7 days.
+ * Caches in Redis for 7 days. Supports multi-step via optional step parameter.
  */
 export async function getVariations(
   campaignId: number,
@@ -84,8 +88,9 @@ export async function getVariations(
   contactType: string,
   sourceEmail: { subject: string; body: string },
   brief: string,
+  step?: number,
 ): Promise<GeneratedEmail[]> {
-  const key = cacheKey(campaignId, language, contactType);
+  const key = cacheKey(campaignId, language, contactType, step);
 
   // Try cache first
   try {
