@@ -260,7 +260,7 @@ export async function getEligibleContacts(
   const targetTypes = (campaign.targetSourceContactTypes as string[]) ?? [];
 
   const typeFilter = targetTypes.length > 0
-    ? Prisma.sql`AND (c."sourceContactType" = ANY(${targetTypes}) OR p."sourceContactType" = ANY(${targetTypes}))`
+    ? Prisma.sql`AND c."sourceContactType" = ANY(${targetTypes})`
     : Prisma.empty;
 
   const contacts = await prisma.$queryRaw<EligibleContact[]>`
@@ -310,7 +310,7 @@ export async function countEligibleContacts(campaignId: number): Promise<number>
   const targetTypes = (campaign.targetSourceContactTypes as string[]) ?? [];
 
   const typeFilter = targetTypes.length > 0
-    ? Prisma.sql`AND (c."sourceContactType" = ANY(${targetTypes}) OR p."sourceContactType" = ANY(${targetTypes}))`
+    ? Prisma.sql`AND c."sourceContactType" = ANY(${targetTypes})`
     : Prisma.empty;
 
   const result = await prisma.$queryRaw<[{ count: bigint }]>`
@@ -353,7 +353,7 @@ export async function getEligibleContactsPaginated(
   const targetTypes = (campaign.targetSourceContactTypes as string[]) ?? [];
 
   const typeFilter = targetTypes.length > 0
-    ? Prisma.sql`AND (c."sourceContactType" = ANY(${targetTypes}) OR p."sourceContactType" = ANY(${targetTypes}))`
+    ? Prisma.sql`AND c."sourceContactType" = ANY(${targetTypes})`
     : Prisma.empty;
 
   const specificTypeFilter = sourceContactType
