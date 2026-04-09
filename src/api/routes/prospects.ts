@@ -167,7 +167,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           skip,
           take,
           include: {
-            contacts: { select: { id: true, email: true, name: true, emailStatus: true } },
+            contacts: { select: { id: true, email: true, name: true, firstName: true, lastName: true, emailStatus: true, sourceContactType: true } },
             tags: { include: { tag: true } },
             _count: { select: { backlinks: true, events: true, enrollments: true } },
           },

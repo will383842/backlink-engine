@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Search, ChevronLeft, ChevronRight, Users, Mail, FileText, Globe } from "lucide-react";
-import { format } from "date-fns";
 import api from "@/lib/api";
 import type { Prospect, ProspectStatus, PaginatedResponse, Tag } from "@/types";
 import { useTranslation } from "@/i18n";
@@ -37,6 +36,38 @@ function getCountryFlag(code: string): string {
     return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
   } catch { return code; }
 }
+
+const COUNTRY_NAMES: Record<string, string> = {
+  FR: "France", US: "Etats-Unis", DE: "Allemagne", ES: "Espagne", IT: "Italie",
+  PT: "Portugal", NL: "Pays-Bas", BE: "Belgique", CH: "Suisse", GB: "Royaume-Uni",
+  CA: "Canada", BR: "Bresil", MX: "Mexique", AR: "Argentine", CL: "Chili",
+  CO: "Colombie", PE: "Perou", JP: "Japon", KR: "Coree du Sud", CN: "Chine",
+  TH: "Thailande", VN: "Vietnam", IN: "Inde", AU: "Australie", NZ: "Nlle-Zelande",
+  MA: "Maroc", TN: "Tunisie", SN: "Senegal", CI: "Cote d'Ivoire", CM: "Cameroun",
+  AE: "Emirats", SA: "Arabie S.", IL: "Israel", TR: "Turquie", RU: "Russie",
+  PL: "Pologne", CZ: "Tchequie", RO: "Roumanie", HU: "Hongrie", GR: "Grece",
+  SE: "Suede", NO: "Norvege", DK: "Danemark", FI: "Finlande", IE: "Irlande",
+  AT: "Autriche", LU: "Luxembourg", SK: "Slovaquie", SI: "Slovenie", HR: "Croatie",
+  PH: "Philippines", SG: "Singapour", MY: "Malaisie", ID: "Indonesie",
+  VE: "Venezuela", EC: "Equateur", UY: "Uruguay", PY: "Paraguay",
+  MU: "Maurice", RE: "Reunion", NC: "Nlle-Caledonie", PF: "Polynesie Fr.",
+};
+
+const LANG_NAMES: Record<string, string> = {
+  fr: "Francais", en: "Anglais", es: "Espagnol", de: "Allemand", pt: "Portugais",
+  it: "Italien", nl: "Neerlandais", ar: "Arabe", zh: "Chinois", ja: "Japonais",
+  ko: "Coreen", ru: "Russe", pl: "Polonais", tr: "Turc", vi: "Vietnamien",
+  th: "Thai", hi: "Hindi", sv: "Suedois", da: "Danois", no: "Norvegien",
+  fi: "Finnois", el: "Grec", cs: "Tcheque", ro: "Roumain", hu: "Hongrois",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  NEW: "Nouveau", ENRICHING: "Enrichissement", READY_TO_CONTACT: "Pret",
+  CONTACTED_EMAIL: "Contacte", CONTACTED_MANUAL: "Contacte (form)",
+  FOLLOWUP_DUE: "Relance", REPLIED: "A repondu", NEGOTIATING: "Negociation",
+  WON: "Gagne", LINK_PENDING: "Lien en attente", LINK_VERIFIED: "Lien verifie",
+  LINK_LOST: "Lien perdu", LOST: "Perdu", DO_NOT_CONTACT: "Ne pas contacter",
+};
 
 const STATUS_OPTIONS: ProspectStatus[] = [
   "NEW",
@@ -417,107 +448,120 @@ export default function Prospects() {
           <table className="w-full text-left text-sm">
             <thead className="border-b border-surface-200 bg-surface-50">
               <tr>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  {t("prospects.domain")}
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  {t("prospects.status")}
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  {t("prospects.score")}
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">{t("prospects.da")}</th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  {t("prospects.country")}
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  {t("prospects.language")}
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  {t("prospects.tier")}
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  {t("prospects.source")}
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  🏷️ Tags
-                </th>
-                <th className="px-4 py-3 font-medium text-surface-600">
-                  {t("prospects.contacted")}
-                </th>
+                <th className="px-4 py-3 font-medium text-surface-600">Site</th>
+                <th className="px-4 py-3 font-medium text-surface-600">Type</th>
+                <th className="px-4 py-3 font-medium text-surface-600">Statut</th>
+                <th className="px-4 py-3 font-medium text-surface-600">Contact</th>
+                <th className="px-4 py-3 font-medium text-surface-600">Pays</th>
+                <th className="px-4 py-3 font-medium text-surface-600">Langue</th>
+                <th className="px-4 py-3 font-medium text-surface-600 text-center">Score</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center">
+                  <td colSpan={7} className="px-4 py-12 text-center">
                     <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
                   </td>
                 </tr>
               ) : !data?.data.length ? (
                 <tr>
-                  <td
-                    colSpan={10}
-                    className="px-4 py-12 text-center text-surface-500"
-                  >
+                  <td colSpan={7} className="px-4 py-12 text-center text-surface-500">
                     {t("prospects.noProspectsFound")}
                   </td>
                 </tr>
               ) : (
-                data.data.map((p) => (
+                data.data.map((p) => {
+                  const contact = p.contacts?.[0] as any;
+                  const sct = contact?.sourceContactType ?? (p as any).sourceContactType;
+                  const sctCfg = sct ? SOURCE_TYPE_CONFIG[sct] : null;
+
+                  return (
                   <tr
                     key={p.id}
                     onClick={() => navigate(`/prospects/${p.id}`)}
-                    className="cursor-pointer transition-colors hover:bg-surface-50"
+                    className="cursor-pointer transition-colors hover:bg-surface-50 group"
                   >
-                    <td className="px-4 py-3 font-medium text-surface-900">
-                      {p.domain}
-                    </td>
+                    {/* Site (domain + link) */}
                     <td className="px-4 py-3">
-                      <span
-                        className={`badge ${STATUS_COLORS[p.status] ?? "bg-surface-100 text-surface-700"}`}
-                      >
-                        {p.status.replace(/_/g, " ")}
+                      <div className="font-medium text-surface-900">{p.domain}</div>
+                      {p.contacts && p.contacts.length > 0 && p.contacts[0].name && (
+                        <div className="text-xs text-surface-400 mt-0.5">{contact?.firstName ?? contact?.name}</div>
+                      )}
+                    </td>
+
+                    {/* Type (MC source type) */}
+                    <td className="px-4 py-3">
+                      {sctCfg ? (
+                        <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium ${sctCfg.color}`}>
+                          {sctCfg.emoji} {sctCfg.label}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-surface-400">{(CATEGORY_CONFIG[p.category] ?? { label: p.category }).label}</span>
+                      )}
+                    </td>
+
+                    {/* Statut */}
+                    <td className="px-4 py-3">
+                      <span className={`badge text-xs ${STATUS_COLORS[p.status] ?? "bg-surface-100 text-surface-700"}`}>
+                        {STATUS_LABELS[p.status] ?? p.status.replace(/_/g, " ")}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{p.score}</td>
-                    <td className="px-4 py-3">{p.mozDa ?? "-"}</td>
-                    <td className="px-4 py-3">{p.country ?? "-"}</td>
-                    <td className="px-4 py-3">{p.language ?? "-"}</td>
+
+                    {/* Contact (email + form) */}
                     <td className="px-4 py-3">
-                      {p.tier ? `T${p.tier}` : "-"}
-                    </td>
-                    <td className="px-4 py-3 text-xs">{p.source}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {p.tags && p.tags.length > 0 ? (
-                          p.tags.slice(0, 3).map((pt) => (
-                            <span
-                              key={pt.tagId}
-                              className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium text-white"
-                              style={{ backgroundColor: pt.tag.color }}
-                              title={pt.tag.description || pt.tag.label}
-                            >
-                              {pt.tag.label}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-xs text-surface-400">-</span>
+                      <div className="space-y-1">
+                        {contact?.email && (
+                          <div className="flex items-center gap-1.5">
+                            <Mail size={12} className={contact.emailStatus === "verified" ? "text-emerald-500" : contact.emailStatus === "invalid" ? "text-red-400" : "text-surface-400"} />
+                            <span className="text-xs text-surface-600 truncate max-w-[180px]">{contact.email}</span>
+                          </div>
                         )}
-                        {p.tags && p.tags.length > 3 && (
-                          <span className="text-xs text-surface-500">
-                            +{p.tags.length - 3}
-                          </span>
+                        {p.contactFormUrl && (
+                          <div className="flex items-center gap-1.5">
+                            <FileText size={12} className="text-blue-500" />
+                            <span className="text-xs text-blue-600 truncate max-w-[180px]">Formulaire</span>
+                          </div>
+                        )}
+                        {!contact?.email && !p.contactFormUrl && (
+                          <span className="text-xs text-surface-300">Aucun</span>
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-surface-500">
-                      {p.lastContactedAt
-                        ? format(new Date(p.lastContactedAt), "dd MMM yyyy")
-                        : "-"}
+
+                    {/* Pays */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {p.country ? (
+                        <span className="text-xs text-surface-600">
+                          {getCountryFlag(p.country)} {COUNTRY_NAMES[p.country] ?? p.country}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-surface-300">-</span>
+                      )}
+                    </td>
+
+                    {/* Langue */}
+                    <td className="px-4 py-3">
+                      {p.language ? (
+                        <span className="text-xs text-surface-600">{LANG_NAMES[p.language] ?? p.language}</span>
+                      ) : (
+                        <span className="text-xs text-surface-300">-</span>
+                      )}
+                    </td>
+
+                    {/* Score */}
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${
+                        p.score >= 7 ? "bg-emerald-100 text-emerald-700" :
+                        p.score >= 4 ? "bg-amber-100 text-amber-700" :
+                        "bg-surface-100 text-surface-500"
+                      }`}>
+                        {p.score}
+                      </span>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
