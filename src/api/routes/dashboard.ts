@@ -362,6 +362,130 @@ export default async function dashboardRoutes(app: FastifyInstance): Promise<voi
     },
   );
 
+  // ───── GET /mission-control-sync ─── MC webhook sync overview ─────
+  app.get(
+    "/mission-control-sync",
+    async (_request: FastifyRequest, reply: FastifyReply) => {
+      const data = await getCached(
+        "dashboard:mc-sync",
+        60,
+        async () => {
+          const now = new Date();
+          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const startOfWeek = new Date(startOfDay);
+          startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+
+          // Check webhook health: last MC-synced prospect created
+          // MC webhook creates prospects with source="csv_import" + sourceContactType set
+          const lastMCProspect = await prisma.prospect.findFirst({
+            where: { source: "csv_import", sourceContactType: { not: null } },
+            orderBy: { createdAt: "desc" },
+            select: { createdAt: true },
+          });
+
+          // Count contacts received via MC webhook
+          const [totalFromMC, todayFromMC, weekFromMC] = await Promise.all([
+            prisma.prospect.count({ where: { source: "csv_import", sourceContactType: { not: null } } }),
+            prisma.prospect.count({
+              where: {
+                source: "csv_import",
+                sourceContactType: { not: null },
+                createdAt: { gte: startOfDay },
+              },
+            }),
+            prisma.prospect.count({
+              where: {
+                source: "csv_import",
+                sourceContactType: { not: null },
+                createdAt: { gte: startOfWeek },
+              },
+            }),
+          ]);
+
+          // Distribution by sourceContactType (original MC type)
+          const typeDistribution = await prisma.prospect.groupBy({
+            by: ["sourceContactType"],
+            where: { source: "csv_import", sourceContactType: { not: null } },
+            _count: { _all: true },
+            orderBy: { _count: { sourceContactType: "desc" } },
+          });
+
+          // Distribution by mapped category
+          const categoryDistribution = await prisma.prospect.groupBy({
+            by: ["category"],
+            where: { source: "csv_import", sourceContactType: { not: null } },
+            _count: { _all: true },
+            orderBy: { _count: { category: "desc" } },
+          });
+
+          // Enrichment status of MC contacts
+          const enrichmentStatus = await prisma.prospect.groupBy({
+            by: ["status"],
+            where: { source: "csv_import", sourceContactType: { not: null } },
+            _count: { _all: true },
+          });
+
+          // Last 20 contacts received via MC
+          const recentContacts = await prisma.prospect.findMany({
+            where: { source: "csv_import", sourceContactType: { not: null } },
+            orderBy: { createdAt: "desc" },
+            take: 20,
+            select: {
+              id: true,
+              domain: true,
+              sourceContactType: true,
+              category: true,
+              language: true,
+              country: true,
+              status: true,
+              score: true,
+              createdAt: true,
+              contacts: {
+                select: { email: true, firstName: true, lastName: true },
+                take: 1,
+              },
+            },
+          });
+
+          // Webhook health status
+          const webhookHealthy = lastMCProspect
+            ? (now.getTime() - new Date(lastMCProspect.createdAt).getTime()) < 7 * 24 * 60 * 60 * 1000 // active within 7 days
+            : false;
+
+          return {
+            webhook: {
+              healthy: webhookHealthy,
+              lastEventAt: lastMCProspect?.createdAt ?? null,
+            },
+            counts: {
+              total: totalFromMC,
+              today: todayFromMC,
+              thisWeek: weekFromMC,
+            },
+            typeDistribution: typeDistribution.map((t) => ({
+              type: t.sourceContactType,
+              count: t._count._all,
+            })),
+            categoryDistribution: categoryDistribution.map((c) => ({
+              category: c.category,
+              count: c._count._all,
+            })),
+            enrichmentStatus: enrichmentStatus.reduce(
+              (acc, e) => {
+                acc[e.status] = e._count._all;
+                return acc;
+              },
+              {} as Record<string, number>,
+            ),
+            recentContacts,
+          };
+        },
+      );
+
+      return reply.send({ data });
+    },
+  );
+
   // ───── GET /campaigns ─── Campaign performance statistics ───────
   app.get(
     "/campaigns",

@@ -19,6 +19,7 @@ import {
   LogOut,
   RefreshCcw,
   FileText,
+  Satellite,
 } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { to: "/form-outreach", labelKey: "nav.formOutreach", icon: <FileText size={20} /> },
   { to: "/sent-emails", labelKey: "nav.sentEmails", icon: <Send size={20} /> },
   { to: "/ab-testing", labelKey: "nav.abTesting", icon: <SquareSplitVertical size={20} /> },
+  { to: "/mc-sync", labelKey: "nav.mcSync", icon: <Satellite size={20} /> },
   { to: "/recontact", labelKey: "nav.recontact", icon: <RefreshCcw size={20} /> },
   { to: "/suppression", labelKey: "nav.suppression", icon: <ShieldOff size={20} /> },
   { to: "/settings", labelKey: "nav.settings", icon: <Settings size={20} /> },
@@ -59,6 +61,7 @@ const pageTitleKeys: Record<string, string> = {
   "/form-outreach": "pageTitles.formOutreach",
   "/sent-emails": "pageTitles.sentEmails",
   "/ab-testing": "pageTitles.abTesting",
+  "/mc-sync": "pageTitles.mcSync",
   "/recontact": "pageTitles.recontact",
   "/suppression": "pageTitles.suppression",
   "/settings": "pageTitles.settings",
