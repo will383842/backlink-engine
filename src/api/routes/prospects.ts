@@ -1301,12 +1301,14 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         _count: { _all: true },
         orderBy: { _count: { category: "desc" } },
       }),
-      // By MC source contact type (from contacts table)
+      // By MC source contact type (count emails, not prospects)
       prisma.$queryRaw<{ type: string; count: bigint }[]>`
-        SELECT c."sourceContactType" as type, COUNT(DISTINCT p.id) as count
-        FROM prospects p
-        JOIN contacts c ON c."prospectId" = p.id
+        SELECT c."sourceContactType" as type, COUNT(*) as count
+        FROM contacts c
         WHERE c."sourceContactType" IS NOT NULL
+          AND c."sourceContactType" != 'unknown'
+          AND c."optedOut" = false
+          AND c."emailStatus" NOT IN ('invalid')
         GROUP BY c."sourceContactType"
         ORDER BY count DESC
       `,
