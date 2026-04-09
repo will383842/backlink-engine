@@ -337,6 +337,26 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
             request.log.warn({ event }, "Unknown MailWizz webhook event type");
         }
 
+        // Update campaign-level counters (for broadcast stats + health monitoring)
+        const mwEventToCampaignField: Record<string, string> = {
+          open: "totalOpened",
+          click: "totalClicked",
+          bounce: "totalBounced",
+          complaint: "totalComplained",
+          subscribe: "", // no counter for subscribe
+        };
+        const campaignField = mwEventToCampaignField[event];
+        if (campaignField) {
+          // Find the campaign via enrollment
+          const enrollmentForCounter = await findEnrollmentByMailwizz(subscriber_uid, list_uid);
+          if (enrollmentForCounter) {
+            await prisma.campaign.update({
+              where: { id: enrollmentForCounter.campaignId },
+              data: { [campaignField]: { increment: 1 } },
+            }).catch(() => {}); // Non-critical
+          }
+        }
+
         return reply.status(200).send({ status: "ok", event });
       } catch (err) {
         request.log.error({ err, event, subscriber_uid }, "Error processing MailWizz webhook");
@@ -731,10 +751,10 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
         return reply.status(200).send({ status: "ok", skipped: true });
       }
 
-      // Find contact and latest sent email
+      // Find contact and latest sent email (include both active AND completed enrollments for broadcast)
       const contact = await prisma.contact.findUnique({
         where: { emailNormalized },
-        include: { enrollments: { where: { status: "active" }, take: 1 } },
+        include: { enrollments: { orderBy: { enrolledAt: "desc" }, take: 1 } },
       });
 
       if (!contact) {
@@ -847,6 +867,24 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
             data: request.body as unknown as Prisma.InputJsonValue,
           },
         });
+
+        // Update campaign-level counters (for broadcast stats + health monitoring)
+        if (latestSent?.campaignId) {
+          const counterField: Record<string, string> = {
+            delivered: "totalDelivered",
+            opened: "totalOpened",
+            clicked: "totalClicked",
+            bounced: "totalBounced",
+            complained: "totalComplained",
+          };
+          const field = counterField[event];
+          if (field) {
+            await prisma.campaign.update({
+              where: { id: latestSent.campaignId },
+              data: { [field]: { increment: 1 } },
+            }).catch(() => {}); // Non-critical, don't fail the webhook
+          }
+        }
       } catch (err) {
         request.log.error({ err, event, email: emailNormalized }, "Error processing email-engine webhook");
       }

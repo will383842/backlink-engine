@@ -172,6 +172,11 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
     ) => {
       const id = parseInt(request.params.id);
 
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
+
       await prisma.$transaction([
         prisma.sentEmail.deleteMany({ where: { campaignId: id } }),
         prisma.enrollment.deleteMany({ where: { campaignId: id } }),
@@ -341,6 +346,11 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
       reply: FastifyReply,
     ) => {
       const id = parseInt(request.params.id);
+
+      const campaign = await prisma.campaign.findUnique({ where: { id } });
+      if (!campaign || campaign.campaignType !== "broadcast") {
+        return reply.status(404).send({ error: "Broadcast campaign not found" });
+      }
 
       await prisma.campaign.update({
         where: { id },

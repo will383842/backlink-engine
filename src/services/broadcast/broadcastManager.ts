@@ -1,10 +1,10 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { isInSuppressionList } from "../suppression/suppressionManager.js";
 import { shouldSendImmediately } from "../outreach/outreachMode.js";
 import { getEmailEngineClient } from "../outreach/emailEngineClient.js";
 import { getVariations, pickAndPersonalize } from "./variationCache.js";
-import type { Prisma } from "@prisma/client";
 
 const log = createChildLogger("broadcast-manager");
 
@@ -220,7 +220,11 @@ export async function getEligibleContacts(
 
   const targetTypes = (campaign.targetSourceContactTypes as string[]) ?? [];
 
-  const contacts = await prisma.$queryRawUnsafe<EligibleContact[]>(`
+  const typeFilter = targetTypes.length > 0
+    ? Prisma.sql`AND (c."sourceContactType" = ANY(${targetTypes}) OR p."sourceContactType" = ANY(${targetTypes}))`
+    : Prisma.empty;
+
+  const contacts = await prisma.$queryRaw<EligibleContact[]>`
     SELECT
       c.id AS "contactId",
       c.email,
@@ -236,7 +240,7 @@ export async function getEligibleContacts(
     JOIN prospects p ON c."prospectId" = p.id
     WHERE c."optedOut" = false
       AND c."emailStatus" NOT IN ('invalid')
-      ${targetTypes.length > 0 ? `AND (c."sourceContactType" IN (${targetTypes.map(t => `'${t}'`).join(",")}) OR p."sourceContactType" IN (${targetTypes.map(t => `'${t}'`).join(",")}))` : ""}
+      ${typeFilter}
       AND c.id NOT IN (
         SELECT "contactId" FROM enrollments WHERE "campaignId" = ${campaignId}
       )
@@ -245,7 +249,7 @@ export async function getEligibleContacts(
       )
     ORDER BY c."createdAt" ASC
     LIMIT ${limit}
-  `);
+  `;
 
   return contacts;
 }
@@ -263,20 +267,24 @@ export async function countEligibleContacts(campaignId: number): Promise<number>
 
   const targetTypes = (campaign.targetSourceContactTypes as string[]) ?? [];
 
-  const result = await prisma.$queryRawUnsafe<[{ count: bigint }]>(`
+  const typeFilter = targetTypes.length > 0
+    ? Prisma.sql`AND (c."sourceContactType" = ANY(${targetTypes}) OR p."sourceContactType" = ANY(${targetTypes}))`
+    : Prisma.empty;
+
+  const result = await prisma.$queryRaw<[{ count: bigint }]>`
     SELECT COUNT(*) as count
     FROM contacts c
     JOIN prospects p ON c."prospectId" = p.id
     WHERE c."optedOut" = false
       AND c."emailStatus" NOT IN ('invalid')
-      ${targetTypes.length > 0 ? `AND (c."sourceContactType" IN (${targetTypes.map(t => `'${t}'`).join(",")}) OR p."sourceContactType" IN (${targetTypes.map(t => `'${t}'`).join(",")}))` : ""}
+      ${typeFilter}
       AND c.id NOT IN (
         SELECT "contactId" FROM enrollments WHERE "campaignId" = ${campaignId}
       )
       AND c."emailNormalized" NOT IN (
         SELECT "emailNormalized" FROM suppression_entries
       )
-  `);
+  `;
 
   return Number(result[0]?.count ?? 0);
 }

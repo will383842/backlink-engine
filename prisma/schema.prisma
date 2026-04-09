@@ -424,7 +424,7 @@ model SentEmail {
   // Statuses: draft (pending review), approved (ready to send), rejected (will not send),
   //           sent, delivered, opened, clicked, bounced, complained, failed
   status          String   @default("sent")
-  sentAt          DateTime @default(now())
+  sentAt          DateTime?
   deliveredAt     DateTime?
   firstOpenedAt   DateTime?
   openCount       Int      @default(0)

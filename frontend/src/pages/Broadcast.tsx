@@ -492,10 +492,10 @@ function CampaignDetail({ campaignId }: { campaignId: number }) {
           <div className="rounded-lg bg-white p-3">
             <h5 className="text-sm font-semibold text-surface-700 mb-2">{t("broadcast.byType")}</h5>
             <div className="space-y-1">
-              {stats.byType.map((t) => (
-                <div key={t.type} className="flex items-center justify-between text-sm">
-                  <span className="text-surface-600">{t.type || "other"}</span>
-                  <span className="font-medium text-surface-800">{t.count}</span>
+              {stats.byType.map((item) => (
+                <div key={item.type} className="flex items-center justify-between text-sm">
+                  <span className="text-surface-600">{item.type || "other"}</span>
+                  <span className="font-medium text-surface-800">{item.count}</span>
                 </div>
               ))}
             </div>

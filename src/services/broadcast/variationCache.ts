@@ -70,6 +70,9 @@ export function pickAndPersonalize(
   contactName: string | null,
   domain: string | null,
 ): GeneratedEmail {
+  if (!variations.length) {
+    return { subject: "Partnership proposal", body: "Hello,\n\nWe would love to discuss a collaboration.\n\nBest regards" };
+  }
   const idx = Math.floor(Math.random() * variations.length);
   const variation = variations[idx];
 
