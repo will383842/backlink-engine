@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Radio,
   Play,
   Pause,
   Trash2,
@@ -186,12 +185,8 @@ export default function Broadcast() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Radio size={24} className="text-brand-500" />
-          <h2 className="text-xl font-bold text-surface-900">{t("broadcast.title")}</h2>
-        </div>
+      {/* Action bar */}
+      <div className="flex items-center justify-end">
         <button
           onClick={() => setShowForm(!showForm)}
           className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
