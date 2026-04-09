@@ -396,19 +396,24 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
       const variations = await getVariations(id, lang, type, sourceEmail, campaign.brief || "");
       const personalized = pickAndPersonalize(variations, contactName || "Test", "test-domain.com");
 
-      // Try to send
+      // Try to send via SMTP (primary)
       try {
-        const { getEmailEngineClient } = await import("../../services/outreach/emailEngineClient.js");
-        const emailEngine = getEmailEngineClient();
+        const { sendViaSMTP } = await import("../../services/outreach/smtpSender.js");
+        const { getNextSendingDomain } = await import("../../services/outreach/domainRotator.js");
+        const domain = await getNextSendingDomain();
 
-        if (emailEngine.isConfigured()) {
-          await emailEngine.sendEmail({
-            toEmail: email,
-            toName: contactName || "Test",
-            subject: `[TEST] ${personalized.subject}`,
-            body: personalized.body,
-            tags: ["broadcast-test", `campaign:${id}`],
-          });
+        const result = await sendViaSMTP({
+          toEmail: email,
+          toName: contactName || "Test",
+          fromEmail: domain.fromEmail,
+          fromName: domain.fromName,
+          replyTo: domain.replyTo,
+          subject: `[TEST] ${personalized.subject}`,
+          bodyText: personalized.body,
+        });
+
+        if (!result.success) {
+          throw new Error(result.error || "SMTP send failed");
         }
       } catch (err) {
         return reply.status(500).send({
