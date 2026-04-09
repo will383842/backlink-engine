@@ -177,6 +177,11 @@ enum PartnerConversionType {
   call
 }
 
+enum CampaignType {
+  outreach
+  broadcast
+}
+
 enum VerificationTier {
   T1 // daily
   T2 // weekly
@@ -316,19 +321,33 @@ model Contact {
 model Campaign {
   id              Int               @id @default(autoincrement())
   name            String
+  campaignType    CampaignType      @default(outreach)
   language        String            @db.VarChar(10)
   targetTier      Int?
   targetCountry   String?
   targetCategory  ProspectCategory?
   mailwizzListUid String?
-  sequenceConfig  Json
+  sequenceConfig  Json?
   stopOnReply     Boolean           @default(true)
   stopOnUnsub     Boolean           @default(true)
   stopOnBounce    Boolean           @default(true)
   abTestEnabled   Boolean           @default(false)
+  // ── Broadcast-specific fields ──
+  brief                    String?  @db.Text
+  sourceEmail              Json?
+  targetSourceContactTypes Json?
+  warmupSchedule           Json?
+  currentWarmupDay         Int      @default(0)
+  // ── Counters (used by both modes, essential for broadcast stats) ──
   totalEnrolled   Int               @default(0)
   totalReplied    Int               @default(0)
   totalWon        Int               @default(0)
+  totalSent       Int               @default(0)
+  totalDelivered  Int               @default(0)
+  totalOpened     Int               @default(0)
+  totalClicked    Int               @default(0)
+  totalBounced    Int               @default(0)
+  totalComplained Int               @default(0)
   isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
 
@@ -339,6 +358,7 @@ model Campaign {
   @@index([isActive])
   @@index([language])
   @@index([isActive, language])
+  @@index([campaignType, isActive])
   @@map("campaigns")
 }
 

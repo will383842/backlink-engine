@@ -7,6 +7,7 @@ import {
   reportingQueue,
   sequenceQueue,
   crawlingQueue,
+  broadcastQueue,
 } from "../queue.js";
 import { createChildLogger } from "../../utils/logger.js";
 
@@ -223,6 +224,44 @@ export async function setupCronJobs(): Promise<void> {
     }
   );
   log.info("Scheduled: weekly report (Sunday 20:00 UTC).");
+
+  // -----------------------------------------------------------------------
+  // 11. Broadcast: process active campaigns every 10 minutes
+  // -----------------------------------------------------------------------
+  await broadcastQueue.upsertJobScheduler(
+    "broadcast-process",
+    {
+      pattern: "*/10 * * * *", // every 10 minutes
+    },
+    {
+      name: "process-broadcast",
+      data: { type: "process-broadcast" },
+      opts: {
+        removeOnComplete: { count: 100 },
+        removeOnFail: { count: 200 },
+      },
+    }
+  );
+  log.info("Scheduled: broadcast processing (every 10 min).");
+
+  // -----------------------------------------------------------------------
+  // 12. Broadcast warmup: advance warmup day at 00:05 UTC daily
+  // -----------------------------------------------------------------------
+  await broadcastQueue.upsertJobScheduler(
+    "broadcast-warmup-advance",
+    {
+      pattern: "5 0 * * *", // daily at 00:05 UTC
+    },
+    {
+      name: "advance-warmup",
+      data: { type: "advance-warmup" },
+      opts: {
+        removeOnComplete: { count: 30 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  );
+  log.info("Scheduled: broadcast warmup advance (daily 00:05 UTC).");
 
   log.info("All cron jobs scheduled successfully.");
 }

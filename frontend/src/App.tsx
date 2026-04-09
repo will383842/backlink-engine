@@ -19,6 +19,7 @@ import SentEmails from "./pages/SentEmails";
 import AbTestResults from "./pages/AbTestResults";
 import FormOutreach from "./pages/FormOutreach";
 import MissionControlSync from "./pages/MissionControlSync";
+import Broadcast from "./pages/Broadcast";
 
 function isAuthenticated(): boolean {
   return !!localStorage.getItem("bl_token");
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="suppression" element={<Suppression />} />
           <Route path="settings" element={<Settings />} />
           <Route path="reports" element={<Reports />} />
+          <Route path="broadcast" element={<Broadcast />} />
           <Route path="mc-sync" element={<MissionControlSync />} />
           <Route path="recontact" element={<RecontactSuggestions />} />
         </Route>

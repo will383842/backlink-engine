@@ -105,3 +105,16 @@ export interface GeneratedEmail {
   subject: string;
   body: string;
 }
+
+// ---------------------------------------------------------------------------
+// Broadcast email generation (variations)
+// ---------------------------------------------------------------------------
+
+export interface GenerateBroadcastVariationsInput {
+  sourceSubject: string;
+  sourceBody: string;
+  brief: string;
+  language: string;
+  contactType: string;
+  count: number;
+}

@@ -11,8 +11,9 @@ import {
   AB_VARIANT_A_INSTRUCTIONS,
   AB_VARIANT_B_INSTRUCTIONS,
 } from "./prompts/generateOutreachEmail.js";
+import { GENERATE_BROADCAST_VARIATIONS_PROMPT } from "./prompts/generateBroadcastVariations.js";
 import { CONFIDENCE_THRESHOLD } from "../config/constants.js";
-import type { CategoryResult, PersonalizationInput, ThematicResult, OpportunityResult, GeneratedEmail, GenerateEmailInput } from "./types.js";
+import type { CategoryResult, PersonalizationInput, ThematicResult, OpportunityResult, GeneratedEmail, GenerateEmailInput, GenerateBroadcastVariationsInput } from "./types.js";
 
 const log = createChildLogger("llm-client");
 
@@ -455,6 +456,89 @@ export class LlmClient {
     } catch (err) {
       log.error({ err }, "Failed to detect language, falling back to 'en'.");
       return "en";
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Broadcast email variations (batch generation)
+  // -----------------------------------------------------------------------
+
+  async generateBroadcastVariations(
+    input: GenerateBroadcastVariationsInput,
+  ): Promise<GeneratedEmail[]> {
+    if (!this.enabled) {
+      return Array.from({ length: input.count }, (_, i) => ({
+        subject: `${input.sourceSubject} (v${i + 1})`,
+        body: input.sourceBody,
+      }));
+    }
+
+    log.debug(
+      { lang: input.language, type: input.contactType, count: input.count },
+      "Generating broadcast variations...",
+    );
+
+    try {
+      const userLines = [
+        `sourceSubject: ${input.sourceSubject}`,
+        `sourceBody: ${input.sourceBody}`,
+        `brief: ${input.brief}`,
+        `language: ${input.language}`,
+        `contactType: ${input.contactType}`,
+        `count: ${input.count}`,
+      ].join("\n\n");
+
+      const systemPrompt = GENERATE_BROADCAST_VARIATIONS_PROMPT.replace(
+        "{count}",
+        String(input.count),
+      );
+
+      let raw: string;
+
+      if (this.claudeApiKey) {
+        raw = await callClaude(
+          this.claudeApiKey,
+          this.claudeModel,
+          systemPrompt,
+          [{ role: "user", content: userLines }],
+          4096,
+        );
+        log.debug({ model: this.claudeModel, count: input.count }, "Broadcast variations generated via Claude.");
+      } else {
+        const completion = await this.client.chat.completions.create({
+          model: this.model,
+          max_tokens: 4096,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userLines },
+          ],
+        });
+        raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
+        log.debug({ model: this.model, count: input.count }, "Broadcast variations generated via GPT fallback.");
+      }
+
+      const jsonStr = raw
+        .replace(/^```(?:json)?\s*/, "")
+        .replace(/\s*```$/, "")
+        .trim();
+
+      const parsed = JSON.parse(jsonStr) as GeneratedEmail[];
+
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error("LLM returned empty or non-array response");
+      }
+
+      log.info(
+        { lang: input.language, type: input.contactType, generated: parsed.length },
+        "Broadcast variations generated.",
+      );
+      return parsed;
+    } catch (err) {
+      log.error({ err, lang: input.language, type: input.contactType }, "Failed to generate broadcast variations, using fallback.");
+      return Array.from({ length: input.count }, (_, i) => ({
+        subject: `${input.sourceSubject} (v${i + 1})`,
+        body: input.sourceBody,
+      }));
     }
   }
 }

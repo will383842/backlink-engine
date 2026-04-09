@@ -33,6 +33,7 @@ import tagsRoutes from "./api/routes/tags.js";
 import crawlingRoutes from "./api/routes/crawling.js";
 import targetPagesRoutes from "./api/routes/targetPages.js";
 import sentEmailsRoutes from "./api/routes/sentEmails.js";
+import broadcastRoutes from "./api/routes/broadcast.js";
 import { registerJwt } from "./api/middleware/auth.js";
 import { resetLlmClient } from "./llm/index.js";
 
@@ -49,6 +50,7 @@ import { startVerificationWorker } from "./jobs/workers/verificationWorker.js";
 import { startReportingWorker } from "./jobs/workers/reportingWorker.js";
 import { startSequenceWorker } from "./jobs/workers/sequenceWorker.js";
 import { startCrawlingWorker } from "./jobs/workers/crawlingWorker.js";
+import { startBroadcastWorker } from "./jobs/workers/broadcastWorker.js";
 
 // ---------------------------------------------------------------------------
 // Fastify instance
@@ -182,6 +184,7 @@ await app.register(reportsRoutes, { prefix: "/api/reports" });
 await app.register(crawlingRoutes, { prefix: "/api/crawl-sources" });
 await app.register(targetPagesRoutes, { prefix: "/api/target-pages" });
 await app.register(sentEmailsRoutes, { prefix: "/api/sent-emails" });
+await app.register(broadcastRoutes, { prefix: "/api/broadcast" });
 
 // Health check
 app.get("/api/health", async () => {
@@ -309,6 +312,7 @@ try {
   startReportingWorker();
   startSequenceWorker();
   startCrawlingWorker();
+  startBroadcastWorker();
   logger.info("All BullMQ workers started.");
 
   await app.listen({ port: PORT, host: HOST });

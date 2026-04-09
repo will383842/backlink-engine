@@ -17,6 +17,7 @@ export const QUEUE_NAMES = {
   REPORTING: "reporting",
   SEQUENCE: "sequence",
   CRAWLING: "crawling",
+  BROADCAST: "broadcast",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,7 @@ export let verificationQueue: Queue;
 export let reportingQueue: Queue;
 export let sequenceQueue: Queue;
 export let crawlingQueue: Queue;
+export let broadcastQueue: Queue;
 
 // ---------------------------------------------------------------------------
 // Common default job options
@@ -119,6 +121,14 @@ export function setupQueues(): void {
     },
   });
 
+  broadcastQueue = new Queue(QUEUE_NAMES.BROADCAST, {
+    connection,
+    defaultJobOptions: {
+      ...DEFAULT_JOB_OPTIONS,
+      attempts: 2,
+    },
+  });
+
   log.info("All BullMQ queues initialised.");
 }
 
@@ -137,6 +147,7 @@ export async function closeQueues(): Promise<void> {
     reportingQueue?.close(),
     sequenceQueue?.close(),
     crawlingQueue?.close(),
+    broadcastQueue?.close(),
   ]);
   log.info("All BullMQ queues closed.");
 }
