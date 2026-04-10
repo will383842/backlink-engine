@@ -727,6 +727,16 @@ function VariationsTab({ campaignId }: { campaignId: number }) {
   const selected = activeType ?? types[0] ?? null;
   const filtered = variations.filter((v) => v.contactType === selected);
 
+  if (types.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <RefreshCw size={32} className="mx-auto text-surface-300 mb-2" />
+        <p className="text-sm text-surface-400">Aucune variation generee</p>
+        <p className="text-xs text-surface-300 mt-1">Envoyez un test-send pour generer les variations, ou elles seront generees automatiquement au lancement</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       {types.length > 0 && (
@@ -832,7 +842,7 @@ function VariationsTab({ campaignId }: { campaignId: number }) {
 
 // ---- Contacts Tab ----
 interface EligibleContact {
-  id: number;
+  contactId: number;
   email: string;
   firstName?: string;
   lastName?: string;
@@ -846,13 +856,13 @@ function ContactsTab({ campaignId }: { campaignId: number }) {
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState("");
 
-  const { data, isLoading } = useQuery<{ contacts: EligibleContact[]; total: number }>({
+  const { data, isLoading } = useQuery<{ contacts: EligibleContact[]; total: number; totalPages: number }>({
     queryKey: ["broadcast-contacts", campaignId, page, filter],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: "25" });
       if (filter) params.set("sourceContactType", filter);
       const res = await api.get(`/broadcast/${campaignId}/eligible-contacts?${params}`);
-      return res.data.data;
+      return { contacts: res.data.data, total: res.data.pagination.total, totalPages: res.data.pagination.totalPages };
     },
   });
 
@@ -907,7 +917,7 @@ function ContactsTab({ campaignId }: { campaignId: number }) {
             </thead>
             <tbody>
               {contacts.map((c) => (
-                <tr key={c.id} className="border-b border-surface-100">
+                <tr key={c.contactId} className="border-b border-surface-100">
                   <td className="px-3 py-2 text-surface-700 truncate max-w-[200px]">{c.email}</td>
                   <td className="px-3 py-2 text-surface-600">{[c.firstName, c.lastName].filter(Boolean).join(" ") || "-"}</td>
                   <td className="px-3 py-2 text-surface-500">{c.sourceContactType || "-"}</td>
@@ -915,7 +925,7 @@ function ContactsTab({ campaignId }: { campaignId: number }) {
                   <td className="px-3 py-2 text-surface-500 truncate max-w-[140px]">{c.domain || "-"}</td>
                   <td className="px-3 py-2">
                     <button
-                      onClick={() => excludeMutation.mutate(c.id)}
+                      onClick={() => excludeMutation.mutate(c.contactId)}
                       className="rounded px-2 py-0.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100"
                     >
                       Exclure
