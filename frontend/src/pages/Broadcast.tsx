@@ -966,10 +966,11 @@ interface Exclusion {
   id: number;
   contactId: number;
   email: string;
-  name?: string;
-  contactType?: string;
+  firstName?: string;
+  lastName?: string;
+  sourceContactType?: string;
   reason?: string;
-  createdAt: string;
+  excludedAt: string;
 }
 
 function ExclusionsTab({ campaignId }: { campaignId: number }) {
@@ -1022,10 +1023,10 @@ function ExclusionsTab({ campaignId }: { campaignId: number }) {
           {exclusions.map((ex) => (
             <tr key={ex.id} className="border-b border-surface-100">
               <td className="px-3 py-2 text-surface-700 truncate max-w-[200px]">{ex.email}</td>
-              <td className="px-3 py-2 text-surface-600">{ex.name || "-"}</td>
-              <td className="px-3 py-2 text-surface-500">{ex.contactType || "-"}</td>
+              <td className="px-3 py-2 text-surface-600">{[ex.firstName, ex.lastName].filter(Boolean).join(" ") || "-"}</td>
+              <td className="px-3 py-2 text-surface-500">{ex.sourceContactType || "-"}</td>
               <td className="px-3 py-2 text-surface-500">{ex.reason || "-"}</td>
-              <td className="px-3 py-2 text-surface-500">{format(new Date(ex.createdAt), "dd/MM/yyyy")}</td>
+              <td className="px-3 py-2 text-surface-500">{ex.excludedAt ? format(new Date(ex.excludedAt), "dd/MM/yyyy") : "-"}</td>
               <td className="px-3 py-2">
                 <button
                   onClick={() => reincludeMutation.mutate(ex.contactId)}
