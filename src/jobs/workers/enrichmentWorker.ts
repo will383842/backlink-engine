@@ -44,10 +44,43 @@ const GOOGLE_SAFE_BROWSING_API_KEY = process.env.GOOGLE_SAFE_BROWSING_API_KEY ??
  * Query the Open PageRank API for a domain's PageRank score.
  * @see https://www.domcop.com/openpagerank/documentation
  */
+/**
+ * Heuristic-based PageRank fallback when no API key is configured.
+ * Returns a pseudo-PageRank (0-10 scale) based on domain characteristics.
+ */
+function heuristicPageRank(domain: string): number {
+  let score = 3; // Base neutral score
+
+  // TLD-based adjustments
+  const tld = domain.split(".").pop()?.toLowerCase() || "";
+  if (["gov", "edu", "mil", "int"].includes(tld)) score += 4; // Official = high trust
+  else if (["org", "ngo"].includes(tld)) score += 1.5;
+  else if (["com", "net"].includes(tld)) score += 0.5;
+
+  // Subdomain penalty (subdomains usually have lower authority than root)
+  const parts = domain.split(".").length;
+  if (parts > 2) score -= 0.5;
+
+  // Famous domain bonus (hardcoded shortcuts for top media/universities)
+  const famousDomains = [
+    "bfmtv.com", "lemonde.fr", "lefigaro.fr", "nytimes.com", "theguardian.com",
+    "bbc.com", "cnn.com", "reuters.com", "bloomberg.com", "economist.com",
+    "wsj.com", "forbes.com", "wikipedia.org",
+  ];
+  if (famousDomains.some((f) => domain.endsWith(f))) score += 3;
+
+  // Domain length penalty (very long = likely low quality)
+  const domainBase = domain.split(".")[0] || "";
+  if (domainBase.length > 20) score -= 1;
+  if (domainBase.length < 4) score += 0.5;
+
+  return Math.max(0, Math.min(10, score));
+}
+
 async function fetchOpenPageRank(domain: string): Promise<number | null> {
+  // Fallback to heuristic if no API key (silent — no log spam)
   if (!OPEN_PAGERANK_API_KEY) {
-    log.warn("OPEN_PAGERANK_API_KEY not set, skipping PageRank lookup.");
-    return null;
+    return heuristicPageRank(domain);
   }
 
   try {
@@ -58,7 +91,7 @@ async function fetchOpenPageRank(domain: string): Promise<number | null> {
 
     if (!res.ok) {
       log.warn({ status: res.status, domain }, "Open PageRank API error.");
-      return null;
+      return heuristicPageRank(domain);
     }
 
     const body = (await res.json()) as {
@@ -76,10 +109,10 @@ async function fetchOpenPageRank(domain: string): Promise<number | null> {
       return entry.page_rank_decimal;
     }
 
-    return null;
+    return heuristicPageRank(domain);
   } catch (err) {
     log.error({ err, domain }, "Failed to fetch Open PageRank.");
-    return null;
+    return heuristicPageRank(domain);
   }
 }
 

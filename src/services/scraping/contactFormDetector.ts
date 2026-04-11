@@ -77,6 +77,44 @@ export interface ContactFormDetectionResult {
 // Core Functions
 // ─────────────────────────────────────────────────────────────
 
+// Realistic browser headers — improves scraping success rate vs anti-bot walls
+const BROWSER_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
+  "Accept-Encoding": "gzip, deflate, br",
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+  "Sec-Ch-Ua": '"Chromium";v="131", "Not_A Brand";v="24"',
+  "Sec-Ch-Ua-Mobile": "?0",
+  "Sec-Ch-Ua-Platform": '"Windows"',
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
+  "Upgrade-Insecure-Requests": "1",
+};
+
+// Common contact page paths to try directly (in order of likelihood)
+const CONTACT_PATHS = [
+  "/contact",
+  "/contact-us",
+  "/contact.html",
+  "/contact.php",
+  "/nous-contacter",
+  "/fr/contact",
+  "/en/contact",
+  "/kontakt",
+  "/contacto",
+  "/contato",
+  "/impressum",
+  "/about",
+  "/about-us",
+  "/a-propos",
+  "/about/contact",
+];
+
 /**
  * Detect if a page has a contact form
  */
@@ -86,17 +124,13 @@ export async function detectContactForm(
   try {
     log.debug({ url }, "Starting contact form detection");
 
-    // 1. Fetch HTML
+    // 1. Fetch HTML with realistic browser fingerprint
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     const response = await proxyFetch(url, {
       signal: controller.signal,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
+      headers: BROWSER_HEADERS,
     });
 
     clearTimeout(timeoutId);
@@ -194,28 +228,65 @@ export async function detectContactForm(
 }
 
 /**
- * Try to find contact form URL from homepage
+ * Try to find contact form URL from homepage.
+ * Strategy:
+ *   1. Try common direct URLs (/contact, /contact-us, /nous-contacter, etc.)
+ *   2. If none work, fall back to scanning homepage HTML for contact links
  */
 export async function findContactFormUrl(homepageUrl: string): Promise<string | null> {
+  // Strategy 1: try direct common paths (fast, no HTML parsing needed)
+  const baseUrl = new URL(homepageUrl).origin;
+  for (const path of CONTACT_PATHS) {
+    try {
+      const testUrl = `${baseUrl}${path}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await proxyFetch(testUrl, {
+        method: "HEAD",
+        signal: controller.signal,
+        headers: BROWSER_HEADERS,
+        redirect: "follow",
+      });
+      clearTimeout(timeoutId);
+      if (res.ok && res.status < 400) {
+        log.debug({ homepageUrl, testUrl }, "Direct contact path found");
+        return testUrl;
+      }
+    } catch {
+      // Next path
+    }
+  }
+
+  // Strategy 2: scan homepage for links containing contact-like patterns
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     const response = await proxyFetch(homepageUrl, {
-      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: controller.signal,
+      headers: BROWSER_HEADERS,
     });
+    clearTimeout(timeoutId);
 
     if (!response.ok) return null;
 
     const html = await response.text();
     const $ = load(html);
 
-    // Look for contact page links
-    const contactLinks = $('a[href*="contact"], a[href*="kontakt"], a[href*="contacto"]');
+    // Look for contact page links (wider patterns)
+    const contactLinks = $(
+      'a[href*="contact" i], a[href*="kontakt" i], a[href*="contacto" i], a[href*="nous-contacter" i], a[href*="about" i], a[href*="impressum" i]',
+    );
 
     for (let i = 0; i < contactLinks.length; i++) {
       const href = $(contactLinks[i]).attr("href");
-      if (href) {
-        const absoluteUrl = new URL(href, homepageUrl).href;
-        log.debug({ homepageUrl, contactUrl: absoluteUrl }, "Found contact page link");
-        return absoluteUrl;
+      if (href && !href.startsWith("mailto:") && !href.startsWith("tel:")) {
+        try {
+          const absoluteUrl = new URL(href, homepageUrl).href;
+          log.debug({ homepageUrl, contactUrl: absoluteUrl }, "Found contact page link");
+          return absoluteUrl;
+        } catch {
+          // Invalid URL, skip
+        }
       }
     }
 
