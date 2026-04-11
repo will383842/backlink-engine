@@ -5,6 +5,19 @@ import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { LinkableAsset } from "@/types";
 import { useTranslation } from "@/i18n";
+import Pagination from "@/components/ui/Pagination";
+
+const PAGE_SIZE = 50;
+
+interface AssetsResponse {
+  data: LinkableAsset[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
 
 interface AssetForm {
   title: string;
@@ -26,14 +39,20 @@ export default function Assets() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<AssetForm>(emptyForm);
+  const [page, setPage] = useState(1);
 
-  const { data: assets, isLoading } = useQuery<LinkableAsset[]>({
-    queryKey: ["assets"],
+  const { data, isLoading } = useQuery<AssetsResponse>({
+    queryKey: ["assets", page],
     queryFn: async () => {
-      const res = await api.get("/assets");
-      return res.data?.data ?? res.data;
+      const res = await api.get("/assets", {
+        params: { page: String(page), limit: String(PAGE_SIZE) },
+      });
+      return res.data;
     },
   });
+
+  const assets = data?.data ?? [];
+  const pagination = data?.pagination;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -273,6 +292,16 @@ export default function Assets() {
           </table>
         </div>
       </div>
+
+      {pagination && (
+        <Pagination
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
+          pageSize={pagination.limit}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   );
 }

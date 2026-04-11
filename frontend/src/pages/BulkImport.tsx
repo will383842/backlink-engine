@@ -10,7 +10,12 @@ import {
   Info,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import Papa from "papaparse";
 import api from "@/lib/api";
+
+// Hard cap to protect the browser from multi-million-line pastes. The backend
+// has its own dedup + bulk endpoint caps; this is just the UI guard rail.
+const MAX_ROWS = 10_000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -140,74 +145,86 @@ export default function BulkImport() {
     if (file) handleFileSelect(file);
   }
 
-  // --- CSV parsing ---
+  // --- CSV parsing (papaparse, handles quoted fields + embedded commas) ---
   function parseCSV(content: string): ParsedRow[] {
-    const lines = content
-      .trim()
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const trimmed = content.trim();
+    if (!trimmed) return [];
 
-    if (lines.length === 0) return [];
-
-    const first = lines[0]!;
-    // Auto-detect separator: prefer ; if present, else ,
-    const separator = first.includes(";") && !first.includes(",") ? ";" : ",";
-    const split = (line: string) => line.split(separator).map((c) => c.trim());
-
-    // Detect if first line is a header (contains "url" word)
-    const firstCols = split(first).map((c) => c.toLowerCase());
+    // Peek at first line to decide separator + header detection.
+    const firstLine = trimmed.split(/\r?\n/)[0] ?? "";
+    const separator = firstLine.includes(";") && !firstLine.includes(",") ? ";" : ",";
+    const firstCols = firstLine
+      .split(separator)
+      .map((c) => c.replace(/^"|"$/g, "").trim().toLowerCase());
     const hasHeader = firstCols.includes("url");
 
-    let columns: string[];
-    let dataLines: string[];
+    const result = Papa.parse<Record<string, string>>(trimmed, {
+      header: hasHeader,
+      delimiter: separator,
+      skipEmptyLines: true,
+      transformHeader: (h) => h.trim().toLowerCase(),
+      transform: (value) => value.trim(),
+    });
 
-    if (hasHeader) {
-      columns = firstCols;
-      dataLines = lines.slice(1);
-    } else {
-      // No header: assume single column is URL, or multi-column legacy (url;email;name;notes)
-      const colCount = split(first).length;
-      if (colCount === 1) columns = ["url"];
-      else if (colCount >= 4) columns = ["url", "email", "name", "notes"];
-      else if (colCount === 3) columns = ["url", "email", "name"];
-      else if (colCount === 2) columns = ["url", "email"];
-      else columns = ["url"];
-      dataLines = lines;
+    if (result.errors.length > 0) {
+      const firstErr = result.errors[0];
+      if (firstErr) {
+        console.warn("CSV parse warnings:", result.errors.slice(0, 3));
+      }
     }
 
-    const idx = (key: string) => columns.indexOf(key);
-    const urlIdx = idx("url");
-    if (urlIdx === -1) return [];
+    const pick = (row: Record<string, string>, key: string): string | undefined => {
+      const v = row[key];
+      return v && v.length > 0 ? v : undefined;
+    };
 
     const rows: ParsedRow[] = [];
-    for (const line of dataLines) {
-      const cols = split(line);
-      const url = cols[urlIdx];
-      if (!url) continue;
-      rows.push({
-        url,
-        email: idx("email") >= 0 ? cols[idx("email")] || undefined : undefined,
-        name: idx("name") >= 0 ? cols[idx("name")] || undefined : undefined,
-        firstName:
-          idx("firstname") >= 0 ? cols[idx("firstname")] || undefined : undefined,
-        lastName:
-          idx("lastname") >= 0 ? cols[idx("lastname")] || undefined : undefined,
-        language:
-          idx("language") >= 0 ? cols[idx("language")] || undefined : undefined,
-        country:
-          idx("country") >= 0 ? cols[idx("country")] || undefined : undefined,
-        category:
-          idx("category") >= 0 ? cols[idx("category")] || undefined : undefined,
-        sourceContactType:
-          idx("sourcecontacttype") >= 0
-            ? cols[idx("sourcecontacttype")] || undefined
-            : undefined,
-        phone: idx("phone") >= 0 ? cols[idx("phone")] || undefined : undefined,
-        notes: idx("notes") >= 0 ? cols[idx("notes")] || undefined : undefined,
-        _raw: line,
+
+    if (hasHeader) {
+      for (const row of result.data) {
+        if (!row || typeof row !== "object") continue;
+        const url = pick(row, "url");
+        if (!url) continue;
+        rows.push({
+          url,
+          email: pick(row, "email"),
+          name: pick(row, "name"),
+          firstName: pick(row, "firstname"),
+          lastName: pick(row, "lastname"),
+          language: pick(row, "language"),
+          country: pick(row, "country"),
+          category: pick(row, "category"),
+          sourceContactType: pick(row, "sourcecontacttype"),
+          phone: pick(row, "phone"),
+          notes: pick(row, "notes"),
+          _raw: Object.values(row).join(separator),
+        });
+        if (rows.length >= MAX_ROWS) break;
+      }
+    } else {
+      // No header: re-parse as plain array rows and map positionally.
+      const arrResult = Papa.parse<string[]>(trimmed, {
+        header: false,
+        delimiter: separator,
+        skipEmptyLines: true,
       });
+      for (const cols of arrResult.data) {
+        if (!Array.isArray(cols) || cols.length === 0) continue;
+        const rawCols = cols.map((c) => String(c).trim());
+        const url = rawCols[0];
+        if (!url) continue;
+        const colCount = rawCols.length;
+        rows.push({
+          url,
+          email: colCount >= 2 ? rawCols[1] || undefined : undefined,
+          name: colCount >= 3 ? rawCols[2] || undefined : undefined,
+          notes: colCount >= 4 ? rawCols[3] || undefined : undefined,
+          _raw: rawCols.join(separator),
+        });
+        if (rows.length >= MAX_ROWS) break;
+      }
     }
+
     return rows;
   }
 
@@ -222,6 +239,13 @@ export default function BulkImport() {
     if (rows.length === 0) {
       toast.error("Aucune ligne valide trouvee (colonne 'url' requise)");
       return;
+    }
+
+    if (rows.length >= MAX_ROWS) {
+      toast(
+        `Limite atteinte : ${MAX_ROWS.toLocaleString()} lignes importées max. Les lignes supplémentaires ont été ignorées.`,
+        { icon: "⚠️", duration: 6000 }
+      );
     }
 
     setParsed(rows);

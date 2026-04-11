@@ -123,6 +123,9 @@ export const fr = {
     backlinksWon: "Backlinks gagnes",
     added: "Ajoutes",
     failedToLoad: "Impossible de charger les donnees du tableau de bord. Veuillez reessayer.",
+    emailPerformance: "Performance des emails",
+    viewAllEmails: "Voir tous les emails",
+    seeDetails: "Voir les details →",
   },
 
   prospects: {

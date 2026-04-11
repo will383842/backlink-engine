@@ -6,6 +6,19 @@ import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { SuppressionEntry } from "@/types";
 import { useTranslation } from "@/i18n";
+import Pagination from "@/components/ui/Pagination";
+
+const PAGE_SIZE = 50;
+
+interface SuppressionResponse {
+  data: SuppressionEntry[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
 
 export default function Suppression() {
   const queryClient = useQueryClient();
@@ -13,14 +26,20 @@ export default function Suppression() {
   const [showForm, setShowForm] = useState(false);
   const [email, setEmail] = useState("");
   const [reason, setReason] = useState("");
+  const [page, setPage] = useState(1);
 
-  const { data: entries, isLoading } = useQuery<SuppressionEntry[]>({
-    queryKey: ["suppression"],
+  const { data, isLoading } = useQuery<SuppressionResponse>({
+    queryKey: ["suppression", page],
     queryFn: async () => {
-      const res = await api.get("/suppression");
-      return res.data?.data ?? res.data;
+      const res = await api.get("/suppression", {
+        params: { page: String(page), limit: String(PAGE_SIZE) },
+      });
+      return res.data;
     },
   });
+
+  const entries = data?.data ?? [];
+  const pagination = data?.pagination;
 
   const addMutation = useMutation({
     mutationFn: async () => {
@@ -210,6 +229,16 @@ export default function Suppression() {
           </table>
         </div>
       </div>
+
+      {pagination && (
+        <Pagination
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
+          pageSize={pagination.limit}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   );
 }

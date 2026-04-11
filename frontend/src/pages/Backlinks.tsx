@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCcw } from "lucide-react";
 import { format } from "date-fns";
@@ -6,6 +6,19 @@ import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Backlink, LinkType } from "@/types";
 import { useTranslation } from "@/i18n";
+import Pagination from "@/components/ui/Pagination";
+
+const PAGE_SIZE = 50;
+
+interface BacklinksResponse {
+  data: Backlink[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
 
 const LINK_TYPE_COLORS: Record<LinkType, string> = {
   dofollow: "bg-emerald-100 text-emerald-700",
@@ -19,17 +32,29 @@ export default function Backlinks() {
   const { t } = useTranslation();
   const [filterLive, setFilterLive] = useState<string>("");
   const [filterType, setFilterType] = useState<string>("");
+  const [page, setPage] = useState<number>(1);
 
-  const { data: backlinks, isLoading } = useQuery<Backlink[]>({
-    queryKey: ["backlinks", filterLive, filterType],
+  // Reset to page 1 whenever the filters change.
+  useEffect(() => {
+    setPage(1);
+  }, [filterLive, filterType]);
+
+  const { data, isLoading } = useQuery<BacklinksResponse>({
+    queryKey: ["backlinks", filterLive, filterType, page],
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = {
+        page: String(page),
+        limit: String(PAGE_SIZE),
+      };
       if (filterLive) params.isLive = filterLive;
       if (filterType) params.linkType = filterType;
       const res = await api.get("/backlinks", { params });
-      return res.data?.data ?? res.data;
+      return res.data;
     },
   });
+
+  const backlinks = data?.data ?? [];
+  const pagination = data?.pagination;
 
   const verifyAllMutation = useMutation({
     mutationFn: async () => {
@@ -119,7 +144,7 @@ export default function Backlinks() {
                     <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
                   </td>
                 </tr>
-              ) : !backlinks?.length ? (
+              ) : !backlinks.length ? (
                 <tr>
                   <td
                     colSpan={7}
@@ -173,6 +198,16 @@ export default function Backlinks() {
           </table>
         </div>
       </div>
+
+      {pagination && (
+        <Pagination
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
+          pageSize={pagination.limit}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   );
 }

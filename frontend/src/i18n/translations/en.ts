@@ -125,6 +125,9 @@ export const en: TranslationKeys = {
     backlinksWon: "Backlinks Won",
     added: "Added",
     failedToLoad: "Failed to load dashboard data. Please try again.",
+    emailPerformance: "Email Performance",
+    viewAllEmails: "View All Emails",
+    seeDetails: "See details →",
   },
 
   prospects: {

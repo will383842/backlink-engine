@@ -298,39 +298,47 @@ export default function Dashboard() {
         <section>
           <div className="mb-3 flex items-center gap-2">
             <Mail size={20} className="text-indigo-500" />
-            <h3 className="text-lg font-semibold text-surface-900">Email Performance</h3>
+            <h3 className="text-lg font-semibold text-surface-900">
+              {t("dashboard.emailPerformance")}
+            </h3>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-xl border bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 text-sm text-surface-500">
                 <Mail size={16} />
-                <span>Total Sent</span>
+                <span>{t("sentEmails.totalSent")}</span>
               </div>
               <p className="mt-1 text-2xl font-bold text-surface-900">{emailStats.totalSent}</p>
             </div>
             <div className="rounded-xl border bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 text-sm text-surface-500">
                 <Eye size={16} />
-                <span>Open Rate</span>
+                <span>{t("sentEmails.openRate")}</span>
               </div>
               <p className="mt-1 text-2xl font-bold text-emerald-600">{emailStats.openRate}</p>
-              <p className="text-xs text-surface-400">{emailStats.totalOpened} opened</p>
+              <p className="text-xs text-surface-400">
+                {emailStats.totalOpened} {t("sentEmails.opened")}
+              </p>
             </div>
             <div className="rounded-xl border bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 text-sm text-surface-500">
                 <MousePointer size={16} />
-                <span>Click Rate</span>
+                <span>{t("sentEmails.clickRate")}</span>
               </div>
               <p className="mt-1 text-2xl font-bold text-blue-600">{emailStats.clickRate}</p>
-              <p className="text-xs text-surface-400">{emailStats.totalClicked} clicked</p>
+              <p className="text-xs text-surface-400">
+                {emailStats.totalClicked} {t("sentEmails.clicked")}
+              </p>
             </div>
             <div className="rounded-xl border bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 text-sm text-surface-500">
                 <AlertCircle size={16} />
-                <span>Bounce Rate</span>
+                <span>{t("sentEmails.bounceRate")}</span>
               </div>
               <p className="mt-1 text-2xl font-bold text-red-600">{emailStats.bounceRate}</p>
-              <p className="text-xs text-surface-400">{emailStats.totalBounced} bounced</p>
+              <p className="text-xs text-surface-400">
+                {emailStats.totalBounced} {t("sentEmails.bounced")}
+              </p>
             </div>
             <div
               className="cursor-pointer rounded-xl border bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
@@ -338,9 +346,11 @@ export default function Dashboard() {
             >
               <div className="flex items-center gap-2 text-sm text-surface-500">
                 <MessageSquare size={16} />
-                <span>View All Emails</span>
+                <span>{t("dashboard.viewAllEmails")}</span>
               </div>
-              <p className="mt-1 text-sm font-medium text-brand-600">See details &rarr;</p>
+              <p className="mt-1 text-sm font-medium text-brand-600">
+                {t("dashboard.seeDetails")}
+              </p>
             </div>
           </div>
         </section>
