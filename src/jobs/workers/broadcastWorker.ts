@@ -68,7 +68,7 @@ async function processBroadcastJob(job: Job<BroadcastJobData>): Promise<void> {
 async function processActiveBroadcasts(): Promise<void> {
   const campaigns = await prisma.campaign.findMany({
     where: { campaignType: "broadcast", isActive: true },
-    select: { id: true, name: true },
+    select: { id: true, name: true, sourceEmail: true, language: true, brief: true },
   });
 
   if (campaigns.length === 0) {

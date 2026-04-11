@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import api from "@/lib/api";
 import {
   LayoutDashboard,
   Users,
@@ -110,6 +112,7 @@ const pageTitleKeys: Record<string, string> = {
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const { t } = useTranslation();
 
@@ -120,8 +123,14 @@ export default function Layout() {
 
   const currentTitle = titleKey ? t(titleKey) : "";
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // Server-side logout best-effort; still clear local state
+    }
     localStorage.removeItem("bl_token");
+    queryClient.clear();
     navigate("/login");
   }
 

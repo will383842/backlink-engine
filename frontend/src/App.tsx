@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Layout from "./components/Layout";
+import { useCurrentUser } from "./hooks/useCurrentUser";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Prospects from "./pages/Prospects";
@@ -23,14 +24,27 @@ import Broadcast from "./pages/Broadcast";
 import Campaigns from "./pages/Campaigns";
 import CampaignsHub from "./pages/CampaignsHub";
 
-function isAuthenticated(): boolean {
-  return !!localStorage.getItem("bl_token");
-}
-
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  if (!isAuthenticated()) {
+  const hasToken = !!localStorage.getItem("bl_token");
+  // Validate session against the backend. Query is disabled when no token is
+  // present so we don't issue pointless 401s from the login screen. On 401,
+  // the axios interceptor already clears the token and redirects; on other
+  // errors (network, 500) we render children optimistically so transient
+  // backend issues don't log the user out.
+  const { isLoading } = useCurrentUser({ enabled: hasToken });
+
+  if (!hasToken) {
     return <Navigate to="/login" replace />;
   }
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-50">
+        <div className="text-sm text-surface-500">Loading...</div>
+      </div>
+    );
+  }
+
   return <>{children}</>;
 }
 

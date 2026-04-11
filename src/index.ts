@@ -5,6 +5,7 @@ import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import session from "@fastify/session";
 import rateLimit from "@fastify/rate-limit";
+import helmet from "@fastify/helmet";
 import { logger } from "./utils/logger.js";
 import { prisma, disconnectDatabase } from "./config/database.js";
 import { redis, disconnectRedis } from "./config/redis.js";
@@ -67,16 +68,38 @@ const app = Fastify({
 
 // ---- Plugins -------------------------------------------------------------
 
-// CORS configuration (flexible but secure)
+// Strict env-var validation in production — fail fast on misconfig
+const isProduction = process.env.NODE_ENV === "production";
 const corsOrigin = process.env.CORS_ORIGIN;
+const sessionSecret = process.env.SESSION_SECRET;
+const jwtSecret = process.env.JWT_SECRET;
 
-// Warn if CORS is not configured in production
-if (!corsOrigin && process.env.NODE_ENV === "production") {
-  log.warn(
-    "⚠️  CORS_ORIGIN not set in production - allowing all origins. " +
-    "Set CORS_ORIGIN='https://yourdomain.com' for better security."
-  );
+if (isProduction) {
+  const missing: string[] = [];
+  if (!corsOrigin) missing.push("CORS_ORIGIN");
+  if (!sessionSecret) missing.push("SESSION_SECRET");
+  if (!jwtSecret) missing.push("JWT_SECRET");
+  if (missing.length > 0) {
+    log.fatal({ missing }, "Refusing to start: missing required env vars in production");
+    throw new Error(`Missing required env vars in production: ${missing.join(", ")}`);
+  }
 }
+
+await app.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  crossOriginResourcePolicy: { policy: "same-origin" },
+});
 
 await app.register(cors, {
   origin: corsOrigin
@@ -89,7 +112,7 @@ await app.register(cors, {
           callback(new Error("Not allowed by CORS"), false);
         }
       }
-    : true, // Allow all origins if not configured (with warning above)
+    : true, // dev only — in prod we throw above if missing
   credentials: true,
 });
 
@@ -105,13 +128,13 @@ await app.register(cookie);
 // Session management with simple in-memory store (Redis store requires connect-redis)
 // For production Redis store, install @fastify/session-redis-store
 await app.register(session, {
-  secret: process.env.SESSION_SECRET || "backlink-engine-secret-change-in-production",
+  secret: sessionSecret || "backlink-engine-dev-secret-do-not-use-in-prod",
   cookieName: "sessionId",
   cookie: {
-    secure: false, // Set to true when HTTPS is configured
+    secure: isProduction,
     httpOnly: true,
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
-    sameSite: "lax",
+    sameSite: isProduction ? "strict" : "lax",
   },
   saveUninitialized: false,
 });

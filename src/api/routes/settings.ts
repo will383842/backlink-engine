@@ -17,6 +17,38 @@ import type { OutreachMode } from "../../services/outreach/outreachMode.js";
 export default async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticateUser);
 
+  // Mask known-sensitive fields before returning settings to the client.
+  // Keeps generic endpoints safe when new secrets are added.
+  const SENSITIVE_FIELDS = new Set([
+    "apiKey",
+    "apikey",
+    "api_key",
+    "botToken",
+    "bot_token",
+    "password",
+    "secret",
+    "token",
+    "privateKey",
+    "private_key",
+    "smtpPassword",
+    "smtp_password",
+  ]);
+
+  function maskSensitive(value: unknown): unknown {
+    if (value === null || value === undefined) return value;
+    if (Array.isArray(value)) return value.map(maskSensitive);
+    if (typeof value !== "object") return value;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_FIELDS.has(k) && v && typeof v === "string") {
+        out[k] = "***";
+      } else {
+        out[k] = maskSensitive(v);
+      }
+    }
+    return out;
+  }
+
   // ───── GET / ─── List all settings ──────────────────────────
   app.get("/", async (request, reply) => {
     const settings = await prisma.appSetting.findMany({
@@ -25,7 +57,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
 
     const data: Record<string, unknown> = {};
     for (const setting of settings) {
-      data[setting.key] = setting.value;
+      data[setting.key] = maskSensitive(setting.value);
     }
 
     return reply.send({ data });
@@ -47,7 +79,9 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       });
     }
 
-    return reply.send({ data: { key: setting.key, value: setting.value } });
+    return reply.send({
+      data: { key: setting.key, value: maskSensitive(setting.value) },
+    });
   });
 
   // ───── PUT /:key ─── Update or create a setting ─────────────
@@ -74,16 +108,48 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       const { key } = request.params;
       const { value } = request.body;
 
-      // Upsert the setting
+      // Merge sensitive fields from existing stored value when incoming is "***"
+      // (frontend re-sends masked placeholder when user didn't edit the secret)
+      const existing = await prisma.appSetting.findUnique({ where: { key } });
+      const mergedValue = mergePreservingSecrets(existing?.value, value);
+
       const setting = await prisma.appSetting.upsert({
         where: { key },
-        create: { key, value: value as any },
-        update: { value: value as any },
+        create: { key, value: mergedValue as any },
+        update: { value: mergedValue as any },
       });
 
-      return reply.send({ data: { key: setting.key, value: setting.value } });
+      return reply.send({
+        data: { key: setting.key, value: maskSensitive(setting.value) },
+      });
     },
   );
+
+  // Helper: when a sensitive field comes in as "***", keep the existing value.
+  function mergePreservingSecrets(existing: unknown, incoming: unknown): unknown {
+    if (
+      incoming === null ||
+      incoming === undefined ||
+      typeof incoming !== "object" ||
+      Array.isArray(incoming)
+    ) {
+      return incoming;
+    }
+    const existingObj =
+      existing && typeof existing === "object" && !Array.isArray(existing)
+        ? (existing as Record<string, unknown>)
+        : {};
+    const incomingObj = incoming as Record<string, unknown>;
+    const out: Record<string, unknown> = { ...incomingObj };
+    for (const [k, v] of Object.entries(incomingObj)) {
+      if (SENSITIVE_FIELDS.has(k) && v === "***") {
+        out[k] = existingObj[k];
+      } else if (v && typeof v === "object") {
+        out[k] = mergePreservingSecrets(existingObj[k], v);
+      }
+    }
+    return out;
+  }
 
   // ───── GET /mailwizz ─── Get MailWizz configuration ──────────
   app.get("/mailwizz", async (request, reply) => {

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { useTranslation } from "@/i18n";
@@ -7,6 +8,7 @@ import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 export default function Login() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,6 +28,8 @@ export default function Login() {
         password,
       });
       localStorage.setItem("bl_token", data.token);
+      // Clear any React Query cache from a previous session on this device
+      queryClient.clear();
       toast.success(t("auth.loggedInSuccess"));
       navigate("/", { replace: true });
     } catch {

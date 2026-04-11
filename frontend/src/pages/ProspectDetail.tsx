@@ -24,7 +24,7 @@ import { format } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { Prospect, Backlink, Tag } from "@/types";
-import EnrollPreview from "./EnrollPreview";
+import EnrollPreview from "@/components/prospects/EnrollPreview";
 import ProspectNotes from "@/components/ProspectNotes";
 import { useTranslation } from "@/i18n";
 
