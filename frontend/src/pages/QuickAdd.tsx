@@ -27,6 +27,7 @@ export default function QuickAdd() {
   const [phone, setPhone] = useState("");
   const [phoneCountryCode, setPhoneCountryCode] = useState("+33");
   const [category, setCategory] = useState<string>("blogger");
+  const [sourceContactType, setSourceContactType] = useState<string>("");
   const [language, setLanguage] = useState<string>("fr");
   const [country, setCountry] = useState<string>("FR");
   const [tier, setTier] = useState<number>(1);
@@ -72,6 +73,7 @@ export default function QuickAdd() {
         phone: phone.trim() || null,
         phoneCountryCode: phone.trim() ? phoneCountryCode : null,
         category,
+        sourceContactType: sourceContactType || null,
         language,
         country,
         tier,
@@ -89,6 +91,7 @@ export default function QuickAdd() {
       setPhone("");
       setPhoneCountryCode("+33");
       setCategory("blogger");
+      setSourceContactType("");
       setLanguage("fr");
       setCountry("FR");
       setTier(1);
@@ -224,26 +227,55 @@ export default function QuickAdd() {
           </div>
         </div>
 
-        {/* Category */}
-        <div>
-          <label className="mb-1 block text-sm font-medium text-surface-700">
-            Catégorie
-          </label>
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="input-field"
-          >
-            <option value="blogger">🖊️ Blogger (Blog voyage/expat)</option>
-            <option value="media">📰 Media (Presse, média en ligne)</option>
-            <option value="influencer">⭐ Influencer (Instagram/TikTok/YouTube)</option>
-            <option value="association">🤝 Association (Association d'expatriés)</option>
-            <option value="corporate">💼 Corporate (Entreprise B2B)</option>
-            <option value="partner">🤝 Partner (Partenaire stratégique)</option>
-            <option value="agency">🏢 Agency (Agence)</option>
-            <option value="ecommerce">🛒 E-commerce</option>
-            <option value="other">🔹 Autre</option>
-          </select>
+        {/* Category + Source contact type */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700">
+              Catégorie (site)
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="input-field"
+            >
+              <option value="blogger">🖊️ Blogger</option>
+              <option value="media">📰 Media / Presse</option>
+              <option value="influencer">⭐ Influencer</option>
+              <option value="association">🤝 Association</option>
+              <option value="corporate">💼 Corporate</option>
+              <option value="partner">🤝 Partner</option>
+              <option value="agency">🏢 Agency</option>
+              <option value="ecommerce">🛒 E-commerce</option>
+              <option value="other">🔹 Autre</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700">
+              Type de contact (personne)
+            </label>
+            <select
+              value={sourceContactType}
+              onChange={(e) => setSourceContactType(e.target.value)}
+              className="input-field"
+            >
+              <option value="">— Non spécifié —</option>
+              <option value="presse">📰 Presse / Journaliste</option>
+              <option value="blog">✍️ Blog</option>
+              <option value="influenceur">⭐ Influenceur</option>
+              <option value="youtubeur">📺 YouTubeur</option>
+              <option value="instagrammeur">📷 Instagrammeur</option>
+              <option value="tiktokeur">🎵 TikTokeur</option>
+              <option value="podcast_radio">🎙️ Podcast / Radio</option>
+              <option value="consulat">🏛️ Consulat</option>
+              <option value="avocat">⚖️ Avocat</option>
+              <option value="association">🤝 Association</option>
+              <option value="alliance_francaise">🇫🇷 Alliance Française</option>
+              <option value="ufe">🌍 UFE</option>
+              <option value="communaute_expat">👥 Communauté expat</option>
+              <option value="ecole">🏫 École</option>
+              <option value="unknown">❔ Inconnu</option>
+            </select>
+          </div>
         </div>
 
         {/* Language & Country */}

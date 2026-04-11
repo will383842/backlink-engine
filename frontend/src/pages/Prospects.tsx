@@ -1,7 +1,19 @@
 import { useState, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
-import { Search, ChevronLeft, ChevronRight, Users, Mail, FileText, Globe } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  Mail,
+  FileText,
+  Globe,
+  PenLine,
+  Upload as UploadIcon,
+  Bug as SpiderIcon,
+  ArrowUpDown,
+} from "lucide-react";
 import api from "@/lib/api";
 import type { Prospect, ProspectStatus, PaginatedResponse, Tag } from "@/types";
 import { useTranslation } from "@/i18n";
@@ -118,10 +130,52 @@ interface Filters {
   tagId: string;
 }
 
+// Source badge config — used in the main table to visually distinguish origins
+const SOURCE_BADGE_CONFIG: Record<
+  string,
+  { label: string; icon: React.ReactNode; color: string }
+> = {
+  manual: {
+    label: "Manuel",
+    icon: <PenLine size={10} />,
+    color: "bg-brand-50 text-brand-700 border-brand-200",
+  },
+  csv_import: {
+    label: "CSV / MC",
+    icon: <UploadIcon size={10} />,
+    color: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  scraper: {
+    label: "Scraper",
+    icon: <SpiderIcon size={10} />,
+    color: "bg-purple-50 text-purple-700 border-purple-200",
+  },
+};
+
+type SortKey = "createdAt" | "score" | "domain" | "lastContactedAt";
+type SortDir = "asc" | "desc";
+
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "createdAt:desc", label: "Plus récents d'abord" },
+  { value: "createdAt:asc", label: "Plus anciens d'abord" },
+  { value: "score:desc", label: "Meilleur score d'abord" },
+  { value: "score:asc", label: "Pire score d'abord" },
+  { value: "domain:asc", label: "Domaine A→Z" },
+  { value: "domain:desc", label: "Domaine Z→A" },
+  { value: "lastContactedAt:desc", label: "Dernier contact récent" },
+];
+
 export default function Prospects() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
+
+  // Sort state — persisted in URL ?sort=score:desc
+  const initialSortRaw = searchParams.get("sort") || "createdAt:desc";
+  const [sortBy, setSortBy] = useState<string>(initialSortRaw);
+  const [sortField, sortDir] = sortBy.split(":") as [SortKey, SortDir];
+
   const [filters, setFilters] = useState<Filters>({
     status: "",
     country: "",
@@ -185,8 +239,19 @@ export default function Prospects() {
     staleTime: 60_000,
   });
 
+  // Sync sort to URL
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (sortBy && sortBy !== "createdAt:desc") {
+      params.set("sort", sortBy);
+    } else {
+      params.delete("sort");
+    }
+    setSearchParams(params, { replace: true });
+  }, [sortBy]);
+
   const { data, isLoading } = useQuery<PaginatedResponse<Prospect>>({
-    queryKey: ["prospects", page, { ...filters, search: debouncedSearch }],
+    queryKey: ["prospects", page, sortBy, { ...filters, search: debouncedSearch }],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 25 };
       if (filters.status) params.status = filters.status;
@@ -199,6 +264,8 @@ export default function Prospects() {
       if (filters.scoreMax) params.scoreMax = filters.scoreMax;
       if (debouncedSearch) params.search = debouncedSearch;
       if (filters.tagId) params.tagId = filters.tagId;
+      if (sortField) params.sortBy = sortField;
+      if (sortDir) params.sortDir = sortDir;
       const res = await api.get("/prospects", { params });
       return res.data;
     },
@@ -439,6 +506,28 @@ export default function Prospects() {
             min={0}
             max={100}
           />
+
+          {/* Sort selector */}
+          <div className="relative sm:col-span-2 lg:col-span-2">
+            <ArrowUpDown
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400"
+            />
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                setPage(1);
+              }}
+              className="input-field pl-9"
+            >
+              {SORT_OPTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -452,6 +541,7 @@ export default function Prospects() {
                 <th className="px-4 py-3 font-medium text-surface-600">Type</th>
                 <th className="px-4 py-3 font-medium text-surface-600">Statut</th>
                 <th className="px-4 py-3 font-medium text-surface-600">Contact</th>
+                <th className="px-4 py-3 font-medium text-surface-600">Origine</th>
                 <th className="px-4 py-3 font-medium text-surface-600">Pays</th>
                 <th className="px-4 py-3 font-medium text-surface-600">Langue</th>
                 <th className="px-4 py-3 font-medium text-surface-600 text-center">Score</th>
@@ -466,7 +556,7 @@ export default function Prospects() {
                 </tr>
               ) : !data?.data.length ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-surface-500">
+                  <td colSpan={8} className="px-4 py-12 text-center text-surface-500">
                     {t("prospects.noProspectsFound")}
                   </td>
                 </tr>
@@ -475,6 +565,7 @@ export default function Prospects() {
                   const contact = p.contacts?.[0] as any;
                   const sct = contact?.sourceContactType ?? (p as any).sourceContactType;
                   const sctCfg = sct ? SOURCE_TYPE_CONFIG[sct] : null;
+                  const sourceCfg = SOURCE_BADGE_CONFIG[(p as any).source] ?? null;
 
                   return (
                   <tr
@@ -527,6 +618,18 @@ export default function Prospects() {
                           <span className="text-xs text-surface-300">Aucun</span>
                         )}
                       </div>
+                    </td>
+
+                    {/* Origine (source) */}
+                    <td className="px-4 py-3">
+                      {sourceCfg ? (
+                        <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${sourceCfg.color}`}>
+                          {sourceCfg.icon}
+                          {sourceCfg.label}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-surface-300">—</span>
+                      )}
                     </td>
 
                     {/* Pays */}

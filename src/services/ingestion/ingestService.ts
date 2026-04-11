@@ -131,12 +131,16 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
     // 4. Create prospect, source URL, and optionally a contact in a transaction
     const result = await prisma.$transaction(async (tx) => {
       // Create the prospect
+      // NOTE: sourceContactType is stored on contacts.sourceContactType as canonical
+      // source of truth. We only write to prospect-level when NO email is provided
+      // (fallback for prospects without contacts). This avoids duplication.
       const prospect = await tx.prospect.create({
         data: {
           domain,
           source: data.source,
           category: (data.category || "blogger") as any,
-          sourceContactType: data.sourceContactType || null,
+          // Write sourceContactType at prospect level only if no contact will be created
+          sourceContactType: !data.email ? (data.sourceContactType || null) : null,
           language: (language !== "unknown" ? language : null) as any,
           country: country || null,
           contactFormUrl: data.contactFormUrl,

@@ -110,7 +110,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
   });
 
   // ───── GET / ─── List prospects with filters ─────────────
-  app.get<{ Querystring: ListProspectsQuery }>(
+  app.get<{ Querystring: ListProspectsQuery & { sortBy?: string; sortDir?: string } }>(
     "/",
     {
       schema: {
@@ -129,13 +129,37 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
             tagId: { type: "string" },
             page: { type: "string", default: "1" },
             limit: { type: "string", default: "50" },
+            sortBy: {
+              type: "string",
+              enum: ["createdAt", "score", "domain", "lastContactedAt"],
+              default: "createdAt",
+            },
+            sortDir: {
+              type: "string",
+              enum: ["asc", "desc"],
+              default: "desc",
+            },
           },
         },
       },
     },
     async (request, reply) => {
-      const { status, country, language, category, sourceContactType, tier, score, source, search, tagId, page, limit } =
-        request.query;
+      const {
+        status,
+        country,
+        language,
+        category,
+        sourceContactType,
+        tier,
+        score,
+        source,
+        search,
+        tagId,
+        page,
+        limit,
+        sortBy,
+        sortDir,
+      } = request.query;
 
       const take = Math.min(parseInt(limit ?? "50", 10) || 50, 200);
       const skip = ((parseInt(page ?? "1", 10) || 1) - 1) * take;
@@ -160,10 +184,16 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         };
       }
 
+      // Build dynamic orderBy
+      const validSortFields = new Set(["createdAt", "score", "domain", "lastContactedAt"]);
+      const orderField = validSortFields.has(sortBy ?? "") ? sortBy! : "createdAt";
+      const orderDirection: "asc" | "desc" = sortDir === "asc" ? "asc" : "desc";
+      const orderBy: Record<string, "asc" | "desc"> = { [orderField]: orderDirection };
+
       const [prospects, total] = await Promise.all([
         prisma.prospect.findMany({
           where,
-          orderBy: { createdAt: "desc" },
+          orderBy,
           skip,
           take,
           include: {
@@ -240,19 +270,32 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
             url: { type: "string" }, // Removed strict URI format validation
             email: { type: "string" }, // Removed strict email format validation
             name: { type: "string" },
+            contactName: { type: "string" },
+            firstName: { type: "string" },
+            lastName: { type: "string" },
             contactFormUrl: { type: "string" },
             phone: { type: "string" },
             phoneCountryCode: { type: "string", maxLength: 5 },
             notes: { type: "string" },
+            tier: { type: "number", minimum: 1, maximum: 3 },
             language: { type: "string", enum: ["fr", "en", "de", "es", "pt", "ru", "ar", "zh", "hi"] },
             country: { type: "string", minLength: 2, maxLength: 2 },
             category: { type: "string", enum: ["blogger", "association", "partner", "influencer", "media", "agency", "corporate", "ecommerce", "other"] },
+            sourceContactType: { type: "string", maxLength: 30 },
           },
         },
       },
     },
     async (request, reply) => {
-      const { url, email, name, firstName, lastName, contactFormUrl, phone, phoneCountryCode, notes, language, country, category } = request.body;
+      const body = request.body as CreateProspectBody & {
+        contactName?: string;
+        sourceContactType?: string;
+      };
+      const { url, email, contactFormUrl, phone, phoneCountryCode, notes, language, country, category, sourceContactType } = body;
+      // Accept either `name` or legacy `contactName` field from UI
+      const name = body.name ?? body.contactName;
+      const firstName = body.firstName;
+      const lastName = body.lastName;
 
       // Normalize URL before processing
       const normalizedUrl = normalizeUrl(url);
@@ -278,6 +321,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         language,
         country,
         category: category ?? "blogger",
+        sourceContactType: sourceContactType || undefined,
         source: "manual",
         meta: { userId: request.user.id },
       });
