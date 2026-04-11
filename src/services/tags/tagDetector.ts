@@ -194,6 +194,105 @@ const TAG_RULES: TagRule[] = [
       return hasInternational || isMultiLang;
     },
   },
+
+  // ═══════════════════════════════════════════════════════════
+  // CONTACTABILITY (4 tags mutually exclusive — each prospect gets exactly one)
+  // ═══════════════════════════════════════════════════════════
+  {
+    tagName: "has_email",
+    category: "other",
+    detect: (_, __, metadata) =>
+      metadata?.hasValidEmail === true && metadata?.hasForm !== true,
+  },
+  {
+    tagName: "form_only",
+    category: "other",
+    detect: (_, __, metadata) =>
+      metadata?.hasForm === true && metadata?.hasValidEmail !== true,
+  },
+  {
+    tagName: "email_and_form",
+    category: "other",
+    detect: (_, __, metadata) =>
+      metadata?.hasValidEmail === true && metadata?.hasForm === true,
+  },
+  {
+    tagName: "unreachable",
+    category: "other",
+    detect: (_, __, metadata) =>
+      metadata?.hasValidEmail !== true && metadata?.hasForm !== true,
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // CATEGORY FALLBACK (1 tag per Prospect enum category — ensures 100% tagging)
+  // ═══════════════════════════════════════════════════════════
+  {
+    tagName: "cat_blogger",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "blogger",
+  },
+  {
+    tagName: "cat_media",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "media",
+  },
+  {
+    tagName: "cat_influencer",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "influencer",
+  },
+  {
+    tagName: "cat_association",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "association",
+  },
+  {
+    tagName: "cat_corporate",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "corporate",
+  },
+  {
+    tagName: "cat_partner",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "partner",
+  },
+  {
+    tagName: "cat_agency",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "agency",
+  },
+  {
+    tagName: "cat_ecommerce",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "ecommerce",
+  },
+  {
+    tagName: "cat_other",
+    category: "type",
+    detect: (_, __, metadata) => metadata?.category === "other",
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // QUALITY FALLBACK (mid/low) — complements existing "premium" (tier 1) and "high_authority" (score 80+)
+  // ═══════════════════════════════════════════════════════════
+  {
+    tagName: "mid_quality",
+    category: "quality",
+    detect: (_, __, metadata) => {
+      if (metadata?.tier === 2) return true;
+      if (typeof metadata?.score === "number" && metadata.score >= 30 && metadata.score < 80) return true;
+      return false;
+    },
+  },
+  {
+    tagName: "low_quality",
+    category: "quality",
+    detect: (_, __, metadata) => {
+      if (metadata?.tier === 3 || metadata?.tier === 4) return true;
+      if (typeof metadata?.score === "number" && metadata.score > 0 && metadata.score < 30) return true;
+      return false;
+    },
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -213,6 +312,8 @@ export async function detectAndAssignTags(
     score?: number;
     country?: string;
     hasVerifiedEmail?: boolean;
+    hasValidEmail?: boolean;
+    hasForm?: boolean;
   }
 ): Promise<string[]> {
   const assignedTags: string[] = [];
@@ -340,7 +441,7 @@ function getTagColor(category: string): string {
     quality: "#F59E0B",   // Amber
     geography: "#8B5CF6", // Purple
     source: "#6B7280",    // Gray
-    other: "#6B7280",
+    other: "#EF4444",     // Red — also used for contactability tags
   };
   return colors[category] || "#6B7280";
 }

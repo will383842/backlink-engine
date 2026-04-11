@@ -110,7 +110,13 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
   });
 
   // ───── GET / ─── List prospects with filters ─────────────
-  app.get<{ Querystring: ListProspectsQuery & { sortBy?: string; sortDir?: string } }>(
+  app.get<{
+    Querystring: ListProspectsQuery & {
+      sortBy?: string;
+      sortDir?: string;
+      contactable?: string;
+    };
+  }>(
     "/",
     {
       schema: {
@@ -139,6 +145,11 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
               enum: ["asc", "desc"],
               default: "desc",
             },
+            contactable: {
+              type: "string",
+              enum: ["true", "false", "all"],
+              default: "all",
+            },
           },
         },
       },
@@ -159,6 +170,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         limit,
         sortBy,
         sortDir,
+        contactable,
       } = request.query;
 
       const take = Math.min(parseInt(limit ?? "50", 10) || 50, 200);
@@ -182,6 +194,28 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
             tagId: parseInt(tagId, 10),
           },
         };
+      }
+
+      // Contactability filter: keep only prospects with a valid email or a contact form
+      if (contactable === "true") {
+        where["OR"] = [
+          {
+            contacts: {
+              some: { emailStatus: { in: ["verified", "risky"] } },
+            },
+          },
+          { contactFormUrl: { not: null } },
+        ];
+      } else if (contactable === "false") {
+        // Unreachable: neither valid email nor contact form
+        where["AND"] = [
+          {
+            contacts: {
+              none: { emailStatus: { in: ["verified", "risky"] } },
+            },
+          },
+          { contactFormUrl: null },
+        ];
       }
 
       // Build dynamic orderBy
@@ -1412,9 +1446,23 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       }),
     ]);
 
+    // Compute aggregated contactability counts from the contactMethod breakdown
+    const methodMap = new Map<string, number>();
+    for (const e of contactMethod) {
+      methodMap.set(e.method, Number(e.count));
+    }
+    const total = byCategory.reduce((s, e) => s + e._count._all, 0);
+    const contactable =
+      (methodMap.get("email_only") ?? 0) +
+      (methodMap.get("email_and_form") ?? 0) +
+      (methodMap.get("form_only") ?? 0);
+    const unreachable = methodMap.get("none") ?? 0;
+
     return reply.send({
       data: {
-        total: byCategory.reduce((s, e) => s + e._count._all, 0),
+        total,
+        contactable,
+        unreachable,
         byCategory: byCategory.map((e) => ({ category: e.category, count: e._count._all })),
         bySourceType: bySourceType.map((e) => ({ type: e.type, count: Number(e.count) })),
         byStatus: byStatus.map((e) => ({ status: e.status, count: e._count._all })),

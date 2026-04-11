@@ -13,6 +13,8 @@ import {
   Upload as UploadIcon,
   Bug as SpiderIcon,
   ArrowUpDown,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import api from "@/lib/api";
 import type { Prospect, ProspectStatus, PaginatedResponse, Tag } from "@/types";
@@ -176,6 +178,11 @@ export default function Prospects() {
   const [sortBy, setSortBy] = useState<string>(initialSortRaw);
   const [sortField, sortDir] = sortBy.split(":") as [SortKey, SortDir];
 
+  // Contactable-only filter — default true (unreachable prospects hidden unless opted in)
+  const [contactableOnly, setContactableOnly] = useState<boolean>(
+    searchParams.get("contactable") !== "false"
+  );
+
   const [filters, setFilters] = useState<Filters>({
     status: "",
     country: "",
@@ -228,6 +235,8 @@ export default function Prospects() {
       const res = await api.get("/prospects/stats-by-type");
       return res.data?.data as {
         total: number;
+        contactable?: number;
+        unreachable?: number;
         byCategory: { category: string; count: number }[];
         bySourceType: { type: string; count: number }[];
         byStatus: { status: string; count: number }[];
@@ -239,7 +248,7 @@ export default function Prospects() {
     staleTime: 60_000,
   });
 
-  // Sync sort to URL
+  // Sync sort + contactable to URL
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
     if (sortBy && sortBy !== "createdAt:desc") {
@@ -247,11 +256,22 @@ export default function Prospects() {
     } else {
       params.delete("sort");
     }
+    if (!contactableOnly) {
+      params.set("contactable", "false");
+    } else {
+      params.delete("contactable");
+    }
     setSearchParams(params, { replace: true });
-  }, [sortBy]);
+  }, [sortBy, contactableOnly]);
 
   const { data, isLoading } = useQuery<PaginatedResponse<Prospect>>({
-    queryKey: ["prospects", page, sortBy, { ...filters, search: debouncedSearch }],
+    queryKey: [
+      "prospects",
+      page,
+      sortBy,
+      contactableOnly,
+      { ...filters, search: debouncedSearch },
+    ],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, limit: 25 };
       if (filters.status) params.status = filters.status;
@@ -266,6 +286,7 @@ export default function Prospects() {
       if (filters.tagId) params.tagId = filters.tagId;
       if (sortField) params.sortBy = sortField;
       if (sortDir) params.sortDir = sortDir;
+      params.contactable = contactableOnly ? "true" : "all";
       const res = await api.get("/prospects", { params });
       return res.data;
     },
@@ -276,12 +297,50 @@ export default function Prospects() {
       {/* Stats Header */}
       {statsData && (
         <div className="space-y-4">
-          {/* Total + Contact Method */}
-          <div className="grid gap-3 sm:grid-cols-4">
+          {/* Top row: Total / Contactables / Unreachable */}
+          <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border bg-white p-4 shadow-sm">
-              <div className="flex items-center gap-2 text-sm text-surface-500"><Users size={16} /> Total</div>
-              <p className="mt-1 text-2xl font-bold text-surface-900">{statsData.total}</p>
+              <div className="flex items-center gap-2 text-sm text-surface-500">
+                <Users size={16} /> Total base
+              </div>
+              <p className="mt-1 text-2xl font-bold text-surface-900">
+                {statsData.total.toLocaleString()}
+              </p>
             </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-sm text-emerald-700">
+                <CheckCircle2 size={16} /> Contactables
+              </div>
+              <p className="mt-1 text-2xl font-bold text-emerald-700">
+                {(statsData.contactable ?? 0).toLocaleString()}
+                <span className="ml-2 text-sm font-normal text-emerald-600">
+                  (
+                  {statsData.total > 0
+                    ? Math.round(((statsData.contactable ?? 0) / statsData.total) * 100)
+                    : 0}
+                  %)
+                </span>
+              </p>
+            </div>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm">
+              <div className="flex items-center gap-2 text-sm text-red-700">
+                <XCircle size={16} /> Unreachable
+              </div>
+              <p className="mt-1 text-2xl font-bold text-red-700">
+                {(statsData.unreachable ?? 0).toLocaleString()}
+                <span className="ml-2 text-sm font-normal text-red-600">
+                  (
+                  {statsData.total > 0
+                    ? Math.round(((statsData.unreachable ?? 0) / statsData.total) * 100)
+                    : 0}
+                  %)
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Contact method breakdown (detail row) */}
+          <div className="grid gap-3 sm:grid-cols-4">
             {statsData.byContactMethod.map((m) => {
               const cfg: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
                 email_only: { label: "Email", icon: <Mail size={16} />, color: "text-emerald-600" },
@@ -400,7 +459,35 @@ export default function Prospects() {
       )}
 
       {/* Filters */}
-      <div className="card">
+      <div className="card space-y-3">
+        {/* Contactable toggle — prominent at the top */}
+        <label
+          className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+            contactableOnly
+              ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              : "border-surface-300 bg-white text-surface-600 hover:bg-surface-50"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={contactableOnly}
+            onChange={(e) => {
+              setContactableOnly(e.target.checked);
+              setPage(1);
+            }}
+            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500"
+          />
+          {contactableOnly ? (
+            <>
+              <CheckCircle2 size={16} /> Contactables uniquement (recommandé)
+            </>
+          ) : (
+            <>
+              <XCircle size={16} /> Afficher TOUS les prospects (y compris unreachable)
+            </>
+          )}
+        </label>
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* Search */}
           <div className="relative sm:col-span-2 lg:col-span-4">
