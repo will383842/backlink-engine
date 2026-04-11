@@ -145,15 +145,6 @@ await registerJwt(app);
 // ---- Global error handler -------------------------------------------------
 
 app.setErrorHandler((error: Error & { statusCode?: number; code?: string }, request, reply) => {
-  // Handle parseIdParam 400 errors
-  if (error.statusCode === 400) {
-    return reply.status(400).send({
-      statusCode: 400,
-      error: "Bad Request",
-      message: error.message,
-    });
-  }
-
   // Prisma P2002: unique constraint violation → 409 Conflict
   if (error.code === "P2002") {
     return reply.status(409).send({
@@ -169,6 +160,29 @@ app.setErrorHandler((error: Error & { statusCode?: number; code?: string }, requ
       statusCode: 404,
       error: "Not Found",
       message: "The requested record was not found",
+    });
+  }
+
+  // Any error carrying an explicit HTTP status code (rate-limit 429,
+  // validation 400, auth 401, etc.) — forward it unchanged instead of
+  // masquerading as 500.
+  if (typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 600) {
+    const name =
+      error.statusCode === 400
+        ? "Bad Request"
+        : error.statusCode === 401
+          ? "Unauthorized"
+          : error.statusCode === 403
+            ? "Forbidden"
+            : error.statusCode === 404
+              ? "Not Found"
+              : error.statusCode === 429
+                ? "Too Many Requests"
+                : "Error";
+    return reply.status(error.statusCode).send({
+      statusCode: error.statusCode,
+      error: name,
+      message: error.message,
     });
   }
 
