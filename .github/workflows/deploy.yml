@@ -52,6 +52,15 @@ jobs:
             docker compose down --remove-orphans 2>/dev/null || true
             docker compose up -d --build
 
-            # Wait for health check
+            # Wait for the app container to be up before extracting the frontend dist
             sleep 10
+
+            # Sync freshly-built frontend dist from the container into the host
+            # nginx static directory (nginx serves /opt/backlink-engine/frontend-static).
+            if [ -d /opt/backlink-engine/frontend-static ]; then
+              rm -rf /opt/backlink-engine/frontend-static/*
+              docker cp bl-app:/app/frontend/dist/. /opt/backlink-engine/frontend-static/
+              echo "✅ Frontend static files synced to host."
+            fi
+
             curl -sf http://localhost:3000/api/health && echo "✅ Deploy complete!" || echo "⚠️ Health check failed"
