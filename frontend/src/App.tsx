@@ -1,28 +1,41 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Layout from "./components/Layout";
 import { useCurrentUser } from "./hooks/useCurrentUser";
+import Spinner from "./components/ui/Spinner";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import Prospects from "./pages/Prospects";
-import ProspectDetail from "./pages/ProspectDetail";
-import QuickAdd from "./pages/QuickAdd";
-import BulkImport from "./pages/BulkImport";
-import MessageTemplates from "./pages/MessageTemplates";
-import Backlinks from "./pages/Backlinks";
-import Assets from "./pages/Assets";
-import Replies from "./pages/Replies";
-import Suppression from "./pages/Suppression";
-import Settings from "./pages/Settings";
-import Reports from "./pages/Reports";
-import RecontactSuggestions from "./pages/RecontactSuggestions";
-import SentEmails from "./pages/SentEmails";
-import AbTestResults from "./pages/AbTestResults";
-import FormOutreach from "./pages/FormOutreach";
-import MissionControlSync from "./pages/MissionControlSync";
-import Broadcast from "./pages/Broadcast";
-import Campaigns from "./pages/Campaigns";
-import CampaignsHub from "./pages/CampaignsHub";
+
+// Lazy-loaded pages — kept out of the initial bundle to speed up first paint.
+// Login + Dashboard stay eager (most common entry points).
+const Prospects = lazy(() => import("./pages/Prospects"));
+const ProspectDetail = lazy(() => import("./pages/ProspectDetail"));
+const QuickAdd = lazy(() => import("./pages/QuickAdd"));
+const BulkImport = lazy(() => import("./pages/BulkImport"));
+const MessageTemplates = lazy(() => import("./pages/MessageTemplates"));
+const Backlinks = lazy(() => import("./pages/Backlinks"));
+const Assets = lazy(() => import("./pages/Assets"));
+const Replies = lazy(() => import("./pages/Replies"));
+const Suppression = lazy(() => import("./pages/Suppression"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Reports = lazy(() => import("./pages/Reports"));
+const RecontactSuggestions = lazy(() => import("./pages/RecontactSuggestions"));
+const SentEmails = lazy(() => import("./pages/SentEmails"));
+const AbTestResults = lazy(() => import("./pages/AbTestResults"));
+const FormOutreach = lazy(() => import("./pages/FormOutreach"));
+const MissionControlSync = lazy(() => import("./pages/MissionControlSync"));
+const Broadcast = lazy(() => import("./pages/Broadcast"));
+const Campaigns = lazy(() => import("./pages/Campaigns"));
+const CampaignsHub = lazy(() => import("./pages/CampaignsHub"));
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <Spinner size="lg" label="Loading..." />
+    </div>
+  );
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // Auth state lives entirely in the httpOnly session cookie — we trust the
@@ -32,7 +45,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-50">
-        <div className="text-sm text-surface-500">Loading...</div>
+        <Spinner size="lg" label="Loading..." />
       </div>
     );
   }
@@ -71,7 +84,9 @@ export default function App() {
         <Route
           element={
             <ProtectedRoute>
-              <Layout />
+              <Suspense fallback={<PageFallback />}>
+                <Layout />
+              </Suspense>
             </ProtectedRoute>
           }
         >
