@@ -6,7 +6,7 @@ import {
   PlusCircle,
   Upload,
   MessageSquare,
-  Link,
+  Link as LinkIcon,
   Package,
   Mail,
   Send,
@@ -20,7 +20,7 @@ import {
   RefreshCcw,
   FileText,
   Satellite,
-  Radio,
+  Megaphone,
 } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -31,24 +31,60 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
-const navItems: NavItem[] = [
-  { to: "/", labelKey: "nav.dashboard", icon: <LayoutDashboard size={20} /> },
-  { to: "/prospects", labelKey: "nav.prospects", icon: <Users size={20} /> },
-  { to: "/quick-add", labelKey: "nav.quickAdd", icon: <PlusCircle size={20} /> },
-  { to: "/import", labelKey: "nav.bulkImport", icon: <Upload size={20} /> },
-  { to: "/message-templates", labelKey: "nav.messageTemplates", icon: <MessageSquare size={20} /> },
-  { to: "/backlinks", labelKey: "nav.backlinks", icon: <Link size={20} /> },
-  { to: "/assets", labelKey: "nav.assets", icon: <Package size={20} /> },
-  { to: "/replies", labelKey: "nav.replies", icon: <Mail size={20} /> },
-  { to: "/form-outreach", labelKey: "nav.formOutreach", icon: <FileText size={20} /> },
-  { to: "/sent-emails", labelKey: "nav.sentEmails", icon: <Send size={20} /> },
-  { to: "/ab-testing", labelKey: "nav.abTesting", icon: <SquareSplitVertical size={20} /> },
-  { to: "/broadcast", labelKey: "nav.broadcast", icon: <Radio size={20} /> },
-  { to: "/mc-sync", labelKey: "nav.mcSync", icon: <Satellite size={20} /> },
-  { to: "/recontact", labelKey: "nav.recontact", icon: <RefreshCcw size={20} /> },
-  { to: "/suppression", labelKey: "nav.suppression", icon: <ShieldOff size={20} /> },
-  { to: "/settings", labelKey: "nav.settings", icon: <Settings size={20} /> },
-  { to: "/reports", labelKey: "nav.reports", icon: <BarChart3 size={20} /> },
+interface NavSection {
+  labelKey: string;
+  items: NavItem[];
+}
+
+// Grouped sidebar — each section represents a workflow area
+const navSections: NavSection[] = [
+  {
+    labelKey: "nav.section.overview",
+    items: [
+      { to: "/", labelKey: "nav.dashboard", icon: <LayoutDashboard size={18} /> },
+      { to: "/reports", labelKey: "nav.reports", icon: <BarChart3 size={18} /> },
+    ],
+  },
+  {
+    labelKey: "nav.section.prospects",
+    items: [
+      { to: "/prospects", labelKey: "nav.prospects", icon: <Users size={18} /> },
+      { to: "/quick-add", labelKey: "nav.quickAdd", icon: <PlusCircle size={18} /> },
+      { to: "/import", labelKey: "nav.bulkImport", icon: <Upload size={18} /> },
+    ],
+  },
+  {
+    labelKey: "nav.section.campaigns",
+    items: [
+      { to: "/campaigns", labelKey: "nav.campaigns", icon: <Megaphone size={18} /> },
+      { to: "/message-templates", labelKey: "nav.messageTemplates", icon: <MessageSquare size={18} /> },
+      { to: "/ab-testing", labelKey: "nav.abTesting", icon: <SquareSplitVertical size={18} /> },
+      { to: "/assets", labelKey: "nav.assets", icon: <Package size={18} /> },
+    ],
+  },
+  {
+    labelKey: "nav.section.activity",
+    items: [
+      { to: "/sent-emails", labelKey: "nav.sentEmails", icon: <Send size={18} /> },
+      { to: "/replies", labelKey: "nav.replies", icon: <Mail size={18} /> },
+      { to: "/backlinks", labelKey: "nav.backlinks", icon: <LinkIcon size={18} /> },
+    ],
+  },
+  {
+    labelKey: "nav.section.tools",
+    items: [
+      { to: "/form-outreach", labelKey: "nav.formOutreach", icon: <FileText size={18} /> },
+      { to: "/recontact", labelKey: "nav.recontact", icon: <RefreshCcw size={18} /> },
+      { to: "/suppression", labelKey: "nav.suppression", icon: <ShieldOff size={18} /> },
+      { to: "/mc-sync", labelKey: "nav.mcSync", icon: <Satellite size={18} /> },
+    ],
+  },
+  {
+    labelKey: "nav.section.config",
+    items: [
+      { to: "/settings", labelKey: "nav.settings", icon: <Settings size={18} /> },
+    ],
+  },
 ];
 
 const pageTitleKeys: Record<string, string> = {
@@ -63,7 +99,7 @@ const pageTitleKeys: Record<string, string> = {
   "/form-outreach": "pageTitles.formOutreach",
   "/sent-emails": "pageTitles.sentEmails",
   "/ab-testing": "pageTitles.abTesting",
-  "/broadcast": "pageTitles.broadcast",
+  "/campaigns": "pageTitles.campaigns",
   "/mc-sync": "pageTitles.mcSync",
   "/recontact": "pageTitles.recontact",
   "/suppression": "pageTitles.suppression",
@@ -79,7 +115,8 @@ export default function Layout() {
 
   const titleKey =
     pageTitleKeys[location.pathname] ||
-    (location.pathname.startsWith("/prospects/") ? "pageTitles.prospectDetail" : "");
+    (location.pathname.startsWith("/prospects/") ? "pageTitles.prospectDetail" : "") ||
+    (location.pathname.startsWith("/campaigns/") ? "pageTitles.campaigns" : "");
 
   const currentTitle = titleKey ? t(titleKey) : "";
 
@@ -119,27 +156,36 @@ export default function Layout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          <ul className="space-y-1">
-            {navItems.map((item) => (
-              <li key={item.to}>
-                <NavLink
-                  to={item.to}
-                  end={item.to === "/"}
-                  onClick={() => setSidebarOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-brand-600/20 text-brand-400"
-                        : "text-surface-300 hover:bg-surface-800 hover:text-white"
-                    }`
-                  }
-                >
-                  {item.icon}
-                  {t(item.labelKey)}
-                </NavLink>
-              </li>
+          <div className="space-y-6">
+            {navSections.map((section) => (
+              <div key={section.labelKey}>
+                <h3 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-surface-500">
+                  {t(section.labelKey)}
+                </h3>
+                <ul className="space-y-0.5">
+                  {section.items.map((item) => (
+                    <li key={item.to}>
+                      <NavLink
+                        to={item.to}
+                        end={item.to === "/"}
+                        onClick={() => setSidebarOpen(false)}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                            isActive
+                              ? "bg-brand-600/20 text-brand-400"
+                              : "text-surface-300 hover:bg-surface-800 hover:text-white"
+                          }`
+                        }
+                      >
+                        {item.icon}
+                        {t(item.labelKey)}
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </nav>
 
         <div className="border-t border-surface-700 p-3">

@@ -486,8 +486,9 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
     async (request, reply) => {
       const { csv } = request.body;
 
-      // Parse CSV (simple implementation - supports: url,email,name,language,country,category)
-      const lines = csv.trim().split("\n");
+      // Parse CSV (supports: url,email,name,firstName,lastName,language,country,category,sourceContactType,phone,notes)
+      // Separator: comma or semicolon auto-detected from header line
+      const lines = csv.trim().split(/\r?\n/);
       const header = lines[0];
       if (!header) {
         return reply.status(400).send({
@@ -497,7 +498,11 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         });
       }
 
-      const columns = header.split(",").map((c) => c.trim().toLowerCase());
+      // Auto-detect separator
+      const separator = header.includes(";") && !header.includes(",") ? ";" : ",";
+      const splitRow = (row: string) => row.split(separator).map((c) => c.trim());
+
+      const columns = splitRow(header).map((c) => c.toLowerCase());
       const urlIndex = columns.indexOf("url");
       if (urlIndex === -1) {
         return reply.status(400).send({
@@ -510,25 +515,36 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       // Optional columns
       const emailIndex = columns.indexOf("email");
       const nameIndex = columns.indexOf("name");
+      const firstNameIndex = columns.indexOf("firstname");
+      const lastNameIndex = columns.indexOf("lastname");
       const languageIndex = columns.indexOf("language");
       const countryIndex = columns.indexOf("country");
       const categoryIndex = columns.indexOf("category");
+      const sourceContactTypeIndex = columns.indexOf("sourcecontacttype");
+      const phoneIndex = columns.indexOf("phone");
+      const notesIndex = columns.indexOf("notes");
 
       // Build IngestInput array
       const prospects = [];
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i]!.split(",").map((c) => c.trim());
+        const cols = splitRow(lines[i]!);
         const url = cols[urlIndex];
 
         if (!url) continue;
 
         prospects.push({
           url,
-          email: emailIndex >= 0 ? cols[emailIndex] : undefined,
-          name: nameIndex >= 0 ? cols[nameIndex] : undefined,
-          language: languageIndex >= 0 ? cols[languageIndex] : undefined,
-          country: countryIndex >= 0 ? cols[countryIndex] : undefined,
-          category: categoryIndex >= 0 ? cols[categoryIndex] : undefined,
+          email: emailIndex >= 0 ? cols[emailIndex] || undefined : undefined,
+          name: nameIndex >= 0 ? cols[nameIndex] || undefined : undefined,
+          firstName: firstNameIndex >= 0 ? cols[firstNameIndex] || undefined : undefined,
+          lastName: lastNameIndex >= 0 ? cols[lastNameIndex] || undefined : undefined,
+          language: languageIndex >= 0 ? cols[languageIndex] || undefined : undefined,
+          country: countryIndex >= 0 ? cols[countryIndex] || undefined : undefined,
+          category: categoryIndex >= 0 ? cols[categoryIndex] || undefined : undefined,
+          sourceContactType:
+            sourceContactTypeIndex >= 0 ? cols[sourceContactTypeIndex] || undefined : undefined,
+          phone: phoneIndex >= 0 ? cols[phoneIndex] || undefined : undefined,
+          notes: notesIndex >= 0 ? cols[notesIndex] || undefined : undefined,
           source: "csv_import" as const,
         });
       }

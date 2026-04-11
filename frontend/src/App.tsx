@@ -20,6 +20,8 @@ import AbTestResults from "./pages/AbTestResults";
 import FormOutreach from "./pages/FormOutreach";
 import MissionControlSync from "./pages/MissionControlSync";
 import Broadcast from "./pages/Broadcast";
+import Campaigns from "./pages/Campaigns";
+import CampaignsHub from "./pages/CampaignsHub";
 
 function isAuthenticated(): boolean {
   return !!localStorage.getItem("bl_token");
@@ -70,7 +72,15 @@ export default function App() {
           <Route path="suppression" element={<Suppression />} />
           <Route path="settings" element={<Settings />} />
           <Route path="reports" element={<Reports />} />
-          <Route path="broadcast" element={<Broadcast />} />
+          {/* Unified Campaigns hub (outreach + broadcast) */}
+          <Route path="campaigns" element={<CampaignsHub />} />
+          <Route path="campaigns/outreach" element={<Campaigns />} />
+          <Route path="campaigns/broadcast" element={<Broadcast />} />
+          {/* Legacy redirect: /broadcast → /campaigns?type=broadcast */}
+          <Route
+            path="broadcast"
+            element={<Navigate to="/campaigns?type=broadcast" replace />}
+          />
           <Route path="mc-sync" element={<MissionControlSync />} />
           <Route path="recontact" element={<RecontactSuggestions />} />
         </Route>
