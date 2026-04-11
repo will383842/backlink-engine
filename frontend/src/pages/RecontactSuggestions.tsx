@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCcw } from "lucide-react";
-import { format } from "date-fns";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { ReplyCategory } from "@/types";
 import { useTranslation } from "@/i18n";
+import { useDateFormat } from "@/lib/formatDate";
 
 interface RecontactProspect {
   id: string;
@@ -32,6 +32,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 export default function RecontactSuggestions() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  const { formatDate } = useDateFormat();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const { data: prospects, isLoading } = useQuery<RecontactProspect[]>({
@@ -175,7 +176,7 @@ export default function RecontactSuggestions() {
                       {p.domainAuthority ?? "-"}
                     </td>
                     <td className="px-4 py-3 text-xs text-surface-500">
-                      {format(new Date(p.lastContactedAt), "dd MMM yyyy")}
+                      {formatDate(p.lastContactedAt, "dd MMM yyyy")}
                     </td>
                     <td className="px-4 py-3">
                       {p.originalReplyCategory ? (

@@ -17,8 +17,14 @@ import {
   XCircle,
 } from "lucide-react";
 import api from "@/lib/api";
-import type { Prospect, ProspectStatus, PaginatedResponse, Tag } from "@/types";
+import type { Prospect, PaginatedResponse, Tag } from "@/types";
 import { useTranslation } from "@/i18n";
+import {
+  LANGUAGE_NAMES as LANG_NAMES,
+  PROSPECT_STATUS_LABELS as STATUS_LABELS,
+  PROSPECT_STATUS_OPTIONS as STATUS_OPTIONS,
+  PROSPECT_STATUS_COLORS as STATUS_COLORS,
+} from "@/lib/labels";
 
 // ── Type labels & colors ──
 const SOURCE_TYPE_CONFIG: Record<string, { label: string; emoji: string; color: string }> = {
@@ -65,58 +71,6 @@ const COUNTRY_NAMES: Record<string, string> = {
   PH: "Philippines", SG: "Singapour", MY: "Malaisie", ID: "Indonesie",
   VE: "Venezuela", EC: "Equateur", UY: "Uruguay", PY: "Paraguay",
   MU: "Maurice", RE: "Reunion", NC: "Nlle-Caledonie", PF: "Polynesie Fr.",
-};
-
-const LANG_NAMES: Record<string, string> = {
-  fr: "Francais", en: "Anglais", es: "Espagnol", de: "Allemand", pt: "Portugais",
-  it: "Italien", nl: "Neerlandais", ar: "Arabe", zh: "Chinois", ja: "Japonais",
-  ko: "Coreen", ru: "Russe", pl: "Polonais", tr: "Turc", vi: "Vietnamien",
-  th: "Thai", hi: "Hindi", sv: "Suedois", da: "Danois", no: "Norvegien",
-  fi: "Finnois", el: "Grec", cs: "Tcheque", ro: "Roumain", hu: "Hongrois",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  NEW: "Nouveau", ENRICHING: "Enrichissement", READY_TO_CONTACT: "Pret",
-  CONTACTED_EMAIL: "Contacte", CONTACTED_MANUAL: "Contacte (form)",
-  FOLLOWUP_DUE: "Relance", REPLIED: "A repondu", NEGOTIATING: "Negociation",
-  WON: "Gagne", LINK_PENDING: "Lien en attente", LINK_VERIFIED: "Lien verifie",
-  LINK_LOST: "Lien perdu", LOST: "Perdu", DO_NOT_CONTACT: "Ne pas contacter",
-};
-
-const STATUS_OPTIONS: ProspectStatus[] = [
-  "NEW",
-  "ENRICHING",
-  "READY_TO_CONTACT",
-  "CONTACTED_EMAIL",
-  "CONTACTED_MANUAL",
-  "FOLLOWUP_DUE",
-  "REPLIED",
-  "NEGOTIATING",
-  "WON",
-  "LINK_PENDING",
-  "LINK_VERIFIED",
-  "LINK_LOST",
-  "RE_CONTACTED",
-  "LOST",
-  "DO_NOT_CONTACT",
-];
-
-const STATUS_COLORS: Record<string, string> = {
-  NEW: "bg-surface-100 text-surface-700",
-  ENRICHING: "bg-blue-100 text-blue-700",
-  READY_TO_CONTACT: "bg-cyan-100 text-cyan-700",
-  CONTACTED_EMAIL: "bg-indigo-100 text-indigo-700",
-  CONTACTED_MANUAL: "bg-indigo-100 text-indigo-700",
-  FOLLOWUP_DUE: "bg-amber-100 text-amber-700",
-  REPLIED: "bg-purple-100 text-purple-700",
-  NEGOTIATING: "bg-amber-100 text-amber-700",
-  WON: "bg-emerald-100 text-emerald-700",
-  LINK_PENDING: "bg-blue-100 text-blue-700",
-  LINK_VERIFIED: "bg-emerald-100 text-emerald-700",
-  LINK_LOST: "bg-red-100 text-red-700",
-  RE_CONTACTED: "bg-purple-100 text-purple-700",
-  LOST: "bg-red-100 text-red-700",
-  DO_NOT_CONTACT: "bg-surface-800 text-white",
 };
 
 interface Filters {
