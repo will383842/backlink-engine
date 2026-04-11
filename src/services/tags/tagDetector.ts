@@ -17,6 +17,12 @@ interface TagRule {
   detect: (domain: string, content?: string, metadata?: Record<string, unknown>) => boolean;
 }
 
+// Mutually exclusive tag groups — assigning one removes the others from the same group
+const EXCLUSIVE_GROUPS: string[][] = [
+  ["has_email", "form_only", "email_and_form", "unreachable"],
+  ["premium", "high_authority", "mid_quality", "low_quality"],
+];
+
 const TAG_RULES: TagRule[] = [
   // ═══════════════════════════════════════════════════════════
   // TYPE (Type de site)
@@ -179,7 +185,7 @@ const TAG_RULES: TagRule[] = [
         "FR", "DE", "ES", "IT", "UK", "NL", "BE", "CH", "AT", "PT",
         "PL", "SE", "NO", "FI", "DK", "IE", "GR", "CZ", "RO", "HU"
       ];
-      return metadata?.country && europeanCountries.includes(metadata.country as string);
+      return !!metadata?.country && europeanCountries.includes(metadata.country as string);
     },
   },
   {
@@ -319,6 +325,17 @@ export async function detectAndAssignTags(
   const assignedTags: string[] = [];
 
   log.debug({ prospectId, domain }, "Starting tag detection");
+
+  // Remove any pre-existing tags from exclusive groups so only the freshly-detected one remains
+  const exclusiveNames = EXCLUSIVE_GROUPS.flat();
+  if (exclusiveNames.length > 0) {
+    await prisma.prospectTag.deleteMany({
+      where: {
+        prospectId,
+        tag: { name: { in: exclusiveNames } },
+      },
+    });
+  }
 
   for (const rule of TAG_RULES) {
     try {

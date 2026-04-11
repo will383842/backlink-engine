@@ -64,7 +64,7 @@ export default async function broadcastRoutes(app: FastifyInstance): Promise<voi
           sourceEmail,
           targetSourceContactTypes,
           warmupSchedule: warmupSchedule || [5, 10, 20, 40, 75, 150, 300, 500],
-          sequenceConfig: sequenceConfig || null,
+          sequenceConfig: sequenceConfig ?? undefined,
           stopOnBounce: stopOnBounce ?? true,
           stopOnReply: sequenceConfig ? true : false,
           stopOnUnsub: true,

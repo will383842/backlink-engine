@@ -159,7 +159,7 @@ export default async function repliesRoutes(app: FastifyInstance): Promise<void>
       }
 
       // Update the event data with manual action
-      const updatedData = {
+      const updatedData: Record<string, unknown> = {
         ...(event.data as Record<string, unknown>),
         isHandled: true,
         manualAction: action,
@@ -221,7 +221,7 @@ export default async function repliesRoutes(app: FastifyInstance): Promise<void>
       // Update the event with manual handling data
       await prisma.event.update({
         where: { id: eventId },
-        data: { data: updatedData },
+        data: { data: updatedData as any },
       });
 
       // Log a new event for the manual action

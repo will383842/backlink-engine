@@ -39,27 +39,17 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  // Session cookies are httpOnly and same-origin; send them on every request.
+  withCredentials: true,
 });
-
-// Request interceptor: attach JWT from localStorage
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem("bl_token");
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
 
 // Response interceptor: handle 401 -> redirect to /login, toast on other errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      localStorage.removeItem("bl_token");
-      // Only redirect if not already on login page
+      // Only redirect if not already on login page. Session cookie is cleared
+      // server-side on logout; a 401 here means the cookie is missing/expired.
       if (!window.location.pathname.startsWith("/login")) {
         window.location.href = "/login";
       }

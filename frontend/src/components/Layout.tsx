@@ -125,11 +125,12 @@ export default function Layout() {
 
   async function handleLogout() {
     try {
+      // Backend destroys the session cookie. Best-effort — even if this
+      // fails we still clear local state and redirect.
       await api.post("/auth/logout");
     } catch {
-      // Server-side logout best-effort; still clear local state
+      // ignore
     }
-    localStorage.removeItem("bl_token");
     queryClient.clear();
     navigate("/login");
   }

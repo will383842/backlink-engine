@@ -25,17 +25,9 @@ import Campaigns from "./pages/Campaigns";
 import CampaignsHub from "./pages/CampaignsHub";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const hasToken = !!localStorage.getItem("bl_token");
-  // Validate session against the backend. Query is disabled when no token is
-  // present so we don't issue pointless 401s from the login screen. On 401,
-  // the axios interceptor already clears the token and redirects; on other
-  // errors (network, 500) we render children optimistically so transient
-  // backend issues don't log the user out.
-  const { isLoading } = useCurrentUser({ enabled: hasToken });
-
-  if (!hasToken) {
-    return <Navigate to="/login" replace />;
-  }
+  // Auth state lives entirely in the httpOnly session cookie — we trust the
+  // backend via /auth/me. The axios interceptor redirects to /login on 401.
+  const { isLoading, isError, error } = useCurrentUser();
 
   if (isLoading) {
     return (
@@ -43,6 +35,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         <div className="text-sm text-surface-500">Loading...</div>
       </div>
     );
+  }
+
+  // On explicit 401 the axios interceptor has already redirected. Guard here
+  // against any other error path (e.g. query fired before interceptor ran).
+  if (isError) {
+    const status = (error as { response?: { status?: number } } | undefined)
+      ?.response?.status;
+    if (status === 401) {
+      return <Navigate to="/login" replace />;
+    }
+    // Non-401: optimistic render — transient backend issues shouldn't log the
+    // user out. Child components handle their own failures.
   }
 
   return <>{children}</>;

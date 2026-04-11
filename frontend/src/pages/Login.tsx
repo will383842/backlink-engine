@@ -23,11 +23,9 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const { data } = await api.post<{ token: string }>("/auth/login", {
-        email,
-        password,
-      });
-      localStorage.setItem("bl_token", data.token);
+      // Backend sets an httpOnly session cookie on success — we don't store
+      // anything client-side.
+      await api.post("/auth/login", { email, password });
       // Clear any React Query cache from a previous session on this device
       queryClient.clear();
       toast.success(t("auth.loggedInSuccess"));
