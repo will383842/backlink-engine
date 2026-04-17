@@ -13,6 +13,7 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile } from "node:fs/promises";
 import { createChildLogger } from "../../utils/logger.js";
+import net from "node:net";
 
 const execAsync = promisify(exec);
 const log = createChildLogger("vps-health");
@@ -129,7 +130,6 @@ async function checkService(name: string): Promise<ServiceStatus> {
 
 async function tcpProbe(host: string, port: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const net = require("node:net") as typeof import("node:net");
     const sock = new net.Socket();
     const timer = setTimeout(() => {
       sock.destroy();
@@ -207,6 +207,23 @@ function computeOverall(h: HealthResponse): HealthResponse["overall"] {
   return "healthy";
 }
 
+
+async function checkPmtaByLog(): Promise<ServiceStatus> {
+  try {
+    const { stdout } = await execAsync(
+      "stat -c %Y /var/log/pmta/log 2>/dev/null",
+      { timeout: 1500 },
+    );
+    const mtime = parseInt(stdout.trim(), 10);
+    if (!Number.isFinite(mtime)) return "unknown";
+    const ageSec = Math.floor(Date.now() / 1000) - mtime;
+    // PMTA writes "Queue size" every ~60s. If log is older than 5 min → likely dead.
+    return ageSec < 300 ? "active" : "failed";
+  } catch {
+    return "unknown";
+  }
+}
+
 export default async function vpsHealthRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticateUser);
 
@@ -233,8 +250,8 @@ export default async function vpsHealthRoutes(app: FastifyInstance): Promise<voi
       probeServiceViaTCP("dovecot", hostIp, 993).then(
         (s) => ({ name: "dovecot", status: s, label: "Dovecot IMAP (993)" }),
       ),
-      probeServiceViaTCP("pmta", hostIp, 2525).then(
-        (s) => ({ name: "pmta", status: s, label: "PowerMTA relay (2525)" }),
+      checkPmtaByLog().then(
+        (s) => ({ name: "pmta", status: s, label: "PowerMTA (log activity)" }),
       ),
       probeServiceViaTCP("nginx", hostIp, 80).then(
         (s) => ({ name: "nginx", status: s, label: "Nginx (80)" }),

@@ -47,9 +47,12 @@ services:
       - "127.0.0.1:3000:3000"
     env_file:
       - .env
+    volumes:
+      - /var/log/pmta:/var/log/pmta:ro
     environment:
       # DATABASE_URL, REDIS_URL, OPEN_PAGERANK_API_KEY come from .env
       NODE_ENV: production
+      VPS_HOST_IP: "204.168.180.175"
     depends_on:
       postgres:
         condition: service_healthy

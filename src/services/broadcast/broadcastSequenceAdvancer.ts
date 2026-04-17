@@ -143,9 +143,29 @@ export async function advanceBroadcastEnrollments(): Promise<AdvanceResult> {
       const unsubLink = generateUnsubscribeUrl(contact.email);
       const bodyWithUnsub = personalized.body + `\n\n---\nUnsubscribe: ${unsubLink}`;
 
-      // Send via SMTP
+      // REFACTORED: create-before-send for pixel tracking
       const sendingDomain = await getNextSendingDomain();
+
+      // 1. Create SentEmail placeholder BEFORE sending, so we get an id for pixel injection
+      const pendingSe = await prisma.sentEmail.create({
+        data: {
+          enrollmentId: enrollment.id,
+          prospectId: enrollment.prospectId,
+          contactId: enrollment.contactId,
+          campaignId: enrollment.campaignId,
+          stepNumber: nextStepIndex,
+          subject: personalized.subject,
+          body: bodyWithUnsub,
+          language,
+          generatedBy: "ai",
+          status: "queued",
+          fromEmail: sendingDomain.fromEmail,
+        },
+      });
+
+      // 2. Send via SMTP with sentEmailId for tracking pixel
       const smtpResult = await sendViaSMTP({
+        sentEmailId: pendingSe.id,
         toEmail: contact.email,
         toName: contactName || undefined,
         fromEmail: sendingDomain.fromEmail,
@@ -156,6 +176,11 @@ export async function advanceBroadcastEnrollments(): Promise<AdvanceResult> {
       });
 
       if (!smtpResult.success) {
+        // Mark as failed and continue
+        await prisma.sentEmail.update({
+          where: { id: pendingSe.id },
+          data: { status: "failed" },
+        }).catch(() => void 0);
         log.warn({ enrollmentId: enrollment.id, step: nextStepIndex }, "SMTP send failed, skipping.");
         result.skipped++;
         continue;
@@ -169,19 +194,11 @@ export async function advanceBroadcastEnrollments(): Promise<AdvanceResult> {
         nextSendAt = new Date(now.getTime() + nextStep.delayDays * 86_400_000);
       }
 
-      // Persist: SentEmail + enrollment update + campaign counter + event
+      // 3. Update sentEmail + enrollment + campaign + event in a single transaction
       await prisma.$transaction(async (tx) => {
-        await tx.sentEmail.create({
+        await tx.sentEmail.update({
+          where: { id: pendingSe.id },
           data: {
-            enrollmentId: enrollment.id,
-            prospectId: enrollment.prospectId,
-            contactId: enrollment.contactId,
-            campaignId: enrollment.campaignId,
-            stepNumber: nextStepIndex,
-            subject: personalized.subject,
-            body: bodyWithUnsub,
-            language,
-            generatedBy: "ai",
             mailwizzMessageId: smtpResult.messageId ?? null,
             status: "sent",
             sentAt: now,

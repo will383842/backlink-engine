@@ -102,7 +102,40 @@ export async function enrollBroadcastRecipient(
     // 7. Check outreach mode (auto vs review)
     const autoSend = await shouldSendImmediately();
 
-    // 8. Try to send
+    // REFACTORED V2: create-before-send to enable pixel tracking
+    // 8a. Create enrollment first (needed for FK)
+    const seqConfig = campaign.sequenceConfig as { steps: { stepNumber: number; delayDays: number; sourceEmail?: { subject: string; body: string } }[] } | null;
+    const hasMultiStep = seqConfig?.steps && seqConfig.steps.length > 1;
+
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        contactId: contact.contactId,
+        campaignId,
+        prospectId: contact.prospectId,
+        currentStep: 0,
+        status: "active",
+        enrolledAt: new Date(),
+      },
+    });
+
+    // 8b. Create SentEmail placeholder (status=queued for autoSend, draft for review mode)
+    const sentEmail = await prisma.sentEmail.create({
+      data: {
+        enrollmentId: enrollment.id,
+        prospectId: contact.prospectId,
+        contactId: contact.contactId,
+        campaignId,
+        stepNumber: 0,
+        subject: emailContent.subject,
+        body: bodyWithUnsub,
+        language,
+        generatedBy: "ai",
+        status: autoSend ? "queued" : "draft",
+        fromEmail: sendingDomain.fromEmail,
+      },
+    });
+
+    // 8c. Try to send (with sentEmailId for pixel injection)
     let mailwizzMessageId: string | null = null;
     let sentAt: Date | null = null;
     let emailStatus: string = "draft";
@@ -111,6 +144,7 @@ export async function enrollBroadcastRecipient(
       try {
         // Primary: Direct SMTP via Postfix → OpenDKIM → PowerMTA
         const smtpResult = await sendViaSMTP({
+          sentEmailId: sentEmail.id,
           toEmail: contact.email,
           toName: contactName || undefined,
           fromEmail: sendingDomain.fromEmail,
@@ -176,48 +210,26 @@ export async function enrollBroadcastRecipient(
       }
     }
 
-    // 8. Create enrollment + sent email in transaction
-    // If campaign has multi-step sequence, keep enrollment active for follow-ups
-    const seqConfig = campaign.sequenceConfig as { steps: { stepNumber: number; delayDays: number; sourceEmail?: { subject: string; body: string } }[] } | null;
-    const hasMultiStep = seqConfig?.steps && seqConfig.steps.length > 1;
+    // 8d. Update SentEmail with final state (sentAt, status, messageId)
+    await prisma.sentEmail.update({
+      where: { id: sentEmail.id },
+      data: { status: emailStatus, sentAt, mailwizzMessageId },
+    }).catch((err) => log.warn({ err, sentEmailId: sentEmail.id }, "Failed to update sentEmail final state"));
+
+    // 8e. Update enrollment with sent timestamps + next step schedule
     let nextSendAt: Date | null = null;
     if (hasMultiStep && emailStatus === "sent" && seqConfig!.steps.length > 1) {
       const nextStep = seqConfig!.steps[1];
       nextSendAt = new Date(Date.now() + (nextStep?.delayDays ?? 7) * 86_400_000);
     }
-
-    const [enrollment] = await prisma.$transaction([
-      prisma.enrollment.create({
-        data: {
-          contactId: contact.contactId,
-          campaignId,
-          prospectId: contact.prospectId,
-          currentStep: 0,
-          status: hasMultiStep && emailStatus === "sent" ? "active" : (emailStatus === "sent" ? "completed" : "active"),
-          enrolledAt: new Date(),
-          lastSentAt: sentAt,
-          nextSendAt,
-        },
-      }),
-    ]);
-
-    const sentEmail = await prisma.sentEmail.create({
-      data: {
-        enrollmentId: enrollment.id,
-        prospectId: contact.prospectId,
-        contactId: contact.contactId,
-        campaignId,
-        stepNumber: 0,
-        subject: emailContent.subject,
-        body: bodyWithUnsub,
-        language,
-        generatedBy: "ai",
-        status: emailStatus,
-        sentAt,
-        mailwizzMessageId,
-        fromEmail: typeof sendingDomain !== "undefined" ? sendingDomain?.fromEmail ?? null : null,
-      },
-    });
+    const finalEnrollmentStatus =
+      hasMultiStep && emailStatus === "sent" ? "active" :
+      emailStatus === "sent" ? "completed" :
+      "active";
+    await prisma.enrollment.update({
+      where: { id: enrollment.id },
+      data: { status: finalEnrollmentStatus, lastSentAt: sentAt, nextSendAt },
+    }).catch((err) => log.warn({ err, enrollmentId: enrollment.id }, "Failed to update enrollment"));
 
     // 9. Update campaign counters
     if (emailStatus === "sent") {
