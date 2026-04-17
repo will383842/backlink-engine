@@ -414,6 +414,8 @@ model SentEmail {
   contactId       Int
   campaignId      Int
   stepNumber      Int      // 0 = initial, 1+ = follow-ups
+  // Sending inbox (for per-inbox deliverability analytics)
+  fromEmail       String?  @db.VarChar(255)
   // Full email content (as actually sent)
   subject         String
   body            String   @db.Text
@@ -451,6 +453,8 @@ model SentEmail {
   @@index([sentAt])
   @@index([campaignId, stepNumber])
   @@index([campaignId, abVariant])
+  @@index([fromEmail])
+  @@index([fromEmail, sentAt])
   @@map("sent_emails")
 }
 

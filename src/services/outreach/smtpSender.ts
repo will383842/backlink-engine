@@ -35,6 +35,8 @@ function getTransporter(): Transporter {
 // ---------------------------------------------------------------------------
 
 export interface SmtpSendOptions {
+  /** If set, a tracking pixel will be injected in the HTML body pointing to /api/track/open/:sentEmailId.gif */
+  sentEmailId?: number;
   toEmail: string;
   toName?: string;
   fromEmail: string;
@@ -63,12 +65,19 @@ export async function sendViaSMTP(opts: SmtpSendOptions): Promise<SmtpSendResult
     const unsubHeaders = getUnsubscribeHeaders(opts.toEmail, opts.fromEmail.split("@")[1] || "hub-travelers.com");
 
     // Build HTML from text if not provided
-    const html = opts.bodyHtml || opts.bodyText
+    let html = opts.bodyHtml || opts.bodyText
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/\n/g, "<br>")
       .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
+
+    // Inject open-tracking pixel (1x1 gif) if sentEmailId is provided
+    if (opts.sentEmailId && opts.sentEmailId > 0) {
+      const trackingBase = process.env.TRACKING_BASE_URL || "https://backlinks.life-expat.com";
+      const pixelUrl = `${trackingBase}/api/track/open/${opts.sentEmailId}.gif?t=${Date.now()}`;
+      html += `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;" />`;
+    }
 
     const result = await transport.sendMail({
       from: `${opts.fromName} <${opts.fromEmail}>`,

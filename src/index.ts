@@ -29,6 +29,9 @@ import repliesRoutes from "./api/routes/replies.js";
 import reportsRoutes from "./api/routes/reports.js";
 import ingestRoutes from "./api/routes/ingest.js";
 import webhooksRoutes from "./api/routes/webhooks.js";
+import trackingRoutes from "./api/routes/tracking.js";
+import mailboxRoutes from "./api/routes/mailbox.js";
+import vpsHealthRoutes from "./api/routes/vpsHealth.js";
 import authRoutes from "./api/routes/auth.js";
 import tagsRoutes from "./api/routes/tags.js";
 import crawlingRoutes from "./api/routes/crawling.js";
@@ -203,6 +206,7 @@ app.setErrorHandler((error: Error & { statusCode?: number; code?: string }, requ
 // Public (no auth)
 await app.register(authRoutes, { prefix: "/api/auth" });
 await app.register(webhooksRoutes, { prefix: "/api/webhooks" });
+await app.register(trackingRoutes, { prefix: "/api/track" }); // Public: email tracking pixel
 await app.register(ingestRoutes, { prefix: "/api/ingest" });
 await app.register(unsubscribeRoutes, { prefix: "/api" }); // Public: /api/unsubscribe (no auth)
 
@@ -223,6 +227,8 @@ await app.register(reportsRoutes, { prefix: "/api/reports" });
 await app.register(crawlingRoutes, { prefix: "/api/crawl-sources" });
 await app.register(targetPagesRoutes, { prefix: "/api/target-pages" });
 await app.register(sentEmailsRoutes, { prefix: "/api/sent-emails" });
+await app.register(mailboxRoutes, { prefix: "/api/mailbox" });
+await app.register(vpsHealthRoutes, { prefix: "/api/vps-health" });
 await app.register(broadcastRoutes, { prefix: "/api/broadcast" });
 
 // Health check

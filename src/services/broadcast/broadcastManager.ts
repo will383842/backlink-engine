@@ -215,6 +215,7 @@ export async function enrollBroadcastRecipient(
         status: emailStatus,
         sentAt,
         mailwizzMessageId,
+        fromEmail: typeof sendingDomain !== "undefined" ? sendingDomain?.fromEmail ?? null : null,
       },
     });
 

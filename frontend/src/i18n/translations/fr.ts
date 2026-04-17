@@ -62,6 +62,8 @@ export const fr = {
     suppression: "Liste suppression",
     settings: "Parametres",
     reports: "Rapports",
+    mailboxMonitor: "Monitoring boites mail",
+    vpsHealth: "Sante du VPS",
     logout: "Deconnexion",
     section: {
       overview: "Vue d'ensemble",

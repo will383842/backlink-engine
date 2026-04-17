@@ -64,6 +64,8 @@ export const en: TranslationKeys = {
     suppression: "Suppression List",
     settings: "Settings",
     reports: "Reports",
+    mailboxMonitor: "Mailbox Monitor",
+    vpsHealth: "VPS Health",
     logout: "Logout",
     section: {
       overview: "Overview",

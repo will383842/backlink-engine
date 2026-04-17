@@ -2,28 +2,7 @@ import { useState } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import {
-  LayoutDashboard,
-  Users,
-  PlusCircle,
-  Upload,
-  MessageSquare,
-  Link as LinkIcon,
-  Package,
-  Mail,
-  Send,
-  SquareSplitVertical,
-  ShieldOff,
-  Settings,
-  BarChart3,
-  Menu,
-  X,
-  LogOut,
-  RefreshCcw,
-  FileText,
-  Satellite,
-  Megaphone,
-} from "lucide-react";
+import { LayoutDashboard, Users, PlusCircle, Upload, MessageSquare, Link as LinkIcon, Package, Mail, Send, SquareSplitVertical, ShieldOff, Settings, BarChart3, Menu, X, LogOut, RefreshCcw, FileText, Satellite, Megaphone, Activity } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 
@@ -45,6 +24,8 @@ const navSections: NavSection[] = [
     items: [
       { to: "/", labelKey: "nav.dashboard", icon: <LayoutDashboard size={18} /> },
       { to: "/reports", labelKey: "nav.reports", icon: <BarChart3 size={18} /> },
+      { to: "/mailbox-monitor", labelKey: "nav.mailboxMonitor", icon: <Mail size={18} /> },
+      { to: "/vps-health", labelKey: "nav.vpsHealth", icon: <Activity size={18} /> },
     ],
   },
   {
