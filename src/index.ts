@@ -123,6 +123,12 @@ await app.register(rateLimit, {
   max: 100,
   timeWindow: "1 minute",
   redis,
+  // Never rate-limit tracking pixel: email clients behind corporate NAT can
+  // open many emails from the same IP, and Apple MailPrivacyProtection proxies
+  // all opens through a few Apple IPs.
+  allowList: (request) =>
+    request.url.startsWith("/api/track/") ||
+    request.url === "/api/health",
 });
 
 // Cookie support

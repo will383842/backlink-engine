@@ -57,45 +57,31 @@ export default async function trackingRoutes(app: FastifyInstance): Promise<void
           const isBot = isBotUserAgent(ua);
 
           if (!isBot) {
-            // Update atomically. Don't await DB failure: serve the pixel anyway.
-            prisma.sentEmail
-              .update({
-                where: { id },
-                data: {
-                  openCount: { increment: 1 },
-                  firstOpenedAt: { set: new Date() }, // overwritten only if null via the filter below
-                  status: "opened",
-                },
-              })
-              .catch(async () => {
-                // fallback: only set firstOpenedAt if currently null
-                await prisma.sentEmail
-                  .updateMany({
-                    where: { id, firstOpenedAt: null },
-                    data: { firstOpenedAt: new Date() },
-                  })
-                  .catch(() => void 0);
-              });
-
-            // Log Event for history
-            prisma.sentEmail
-              .findUnique({ where: { id }, select: { prospectId: true, contactId: true, enrollmentId: true } })
-              .then((se) => {
-                if (!se) return;
-                return prisma.event.create({
-                  data: {
-                    prospectId: se.prospectId,
-                    contactId: se.contactId,
-                    enrollmentId: se.enrollmentId,
-                    eventType: "email_opened",
-                    eventSource: "tracking_pixel",
-                    data: {
-                      sentEmailId: id,
-                      userAgent: ua ?? null,
-                      ip: request.ip,
-                    },
-                  },
-                });
+            // Atomic single-query update — no exception if row does not exist,
+            // COALESCE keeps first open timestamp if already set.
+            prisma
+              .$executeRaw`UPDATE sent_emails
+                SET "openCount"    = "openCount" + 1,
+                    "firstOpenedAt" = COALESCE("firstOpenedAt", NOW()),
+                    status          = 'opened'
+                WHERE id = ${id}`
+              .then((rowsAffected) => {
+                if (rowsAffected === 0) return;
+                return prisma.sentEmail
+                  .findUnique({ where: { id }, select: { prospectId: true, contactId: true, enrollmentId: true } })
+                  .then((se) => {
+                    if (!se) return;
+                    return prisma.event.create({
+                      data: {
+                        prospectId: se.prospectId,
+                        contactId: se.contactId,
+                        enrollmentId: se.enrollmentId,
+                        eventType: "email_opened",
+                        eventSource: "tracking_pixel",
+                        data: { sentEmailId: id, userAgent: ua ?? null, ip: request.ip },
+                      },
+                    });
+                  });
               })
               .catch(() => void 0);
           } else {
@@ -122,15 +108,12 @@ export default async function trackingRoutes(app: FastifyInstance): Promise<void
       try {
         const id = parseInt(request.params.id, 10);
         if (Number.isFinite(id) && id > 0) {
-          prisma.sentEmail
-            .update({
-              where: { id },
-              data: {
-                clickCount: { increment: 1 },
-                firstClickedAt: { set: new Date() },
-                status: "clicked",
-              },
-            })
+          prisma
+            .$executeRaw`UPDATE sent_emails
+              SET "clickCount"     = "clickCount" + 1,
+                  "firstClickedAt" = COALESCE("firstClickedAt", NOW()),
+                  status           = 'clicked'
+              WHERE id = ${id}`
             .catch(() => void 0);
         }
       } catch {
