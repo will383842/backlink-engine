@@ -320,8 +320,19 @@ function computeReadiness(
   checks.push({
     name: "Warmup délivré à ≥ 95%",
     passed: warmupReliable,
-    weight: 15,
+    weight: 10,
     detail: warmup.totalAll > 0 ? `${warmup.successRate}% de succès` : "Pas assez de données",
+  });
+
+  // 3bis. Volume warmup suffisant (≥ 50 echanges sur 7j = seuil industrie pour cold)
+  const warmupVolume7d =
+    (warmup.last7Days ?? 0) + ((warmup as any).inbound7d ?? 0);
+  const volumeSufficient = warmupVolume7d >= 50;
+  checks.push({
+    name: "Volume warmup suffisant (≥ 50 sur 7j)",
+    passed: volumeSufficient,
+    weight: 15,
+    detail: `${warmupVolume7d} échanges sur 7j (envois + réceptions)`,
   });
 
   // 4. Pas de blacklists
@@ -329,7 +340,7 @@ function computeReadiness(
   checks.push({
     name: "Blacklists clean",
     passed: notBlacklisted,
-    weight: 25,
+    weight: 20,
     detail: notBlacklisted ? `Clean sur ${BLACKLISTS.length} RBL` : `Listed sur ${blacklistListed} RBL ⚠️`,
   });
 
@@ -372,7 +383,18 @@ function computeReadiness(
   // Compute weighted score
   const totalWeight = checks.reduce((s, c) => s + c.weight, 0);
   const earnedWeight = checks.reduce((s, c) => s + (c.passed ? c.weight : 0), 0);
-  const score = Math.round((earnedWeight / totalWeight) * 100);
+  let score = Math.round((earnedWeight / totalWeight) * 100);
+
+  // Cap volume warmup: le score ne peut pas depasser ces seuils selon le volume total
+  // car un warmup trop faible ne garantit pas la reputation, meme si tout le reste est OK
+  const warmupVolTotal =
+    (warmup.last7Days ?? 0) + ((warmup as any).inbound7d ?? 0);
+  if (warmupVolTotal < 50) {
+    score = Math.min(score, 65); // < 50 echanges = jamais "ready"
+  } else if (warmupVolTotal < 100) {
+    score = Math.min(score, 79); // 50-100 = "wait" (jamais "ready")
+  }
+  // >= 100 : pas de cap, score total applicable
 
   let verdict: ReadinessScore["verdict"];
   if (blacklistListed > 0) verdict = "problem";
