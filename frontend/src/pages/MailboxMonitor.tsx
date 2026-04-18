@@ -34,7 +34,8 @@ interface TimelineRow { day: string; fromEmail: string; sent: number; opened: nu
 
 interface WarmupStat {
   fromEmail: string; today: number; last7Days: number; totalAll: number;
-  success: number; failures: number; successRate: number; lastActivity: string | null;
+  success: number; failures: number; failures72h: number; lastFailure: string | null;
+  successRate: number; lastActivity: string | null;
 }
 
 interface WarmupResponse { data: { inboxes: WarmupStat[] } }
@@ -233,7 +234,8 @@ export default function MailboxMonitor() {
                 <th className="px-4 py-2 text-right">Aujourd'hui</th>
                 <th className="px-4 py-2 text-right">7 jours</th>
                 <th className="px-4 py-2 text-right">Succès</th>
-                <th className="px-4 py-2 text-right">Échecs</th>
+                <th className="px-4 py-2 text-right">Échecs (7j)</th>
+                <th className="px-4 py-2 text-right">Échecs (72h)</th>
                 <th className="px-4 py-2 text-right">Taux</th>
                 <th className="px-4 py-2 text-left">Dernière activité</th>
               </tr>
@@ -254,7 +256,14 @@ export default function MailboxMonitor() {
                   <td className="px-4 py-3 text-right tabular-nums">{w.last7Days}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-emerald-700">{w.success}</td>
                   <td className="px-4 py-3 text-right tabular-nums">
-                    {w.failures > 0 ? <span className="text-red-600 font-medium">{w.failures}</span> : 0}
+                    {w.failures > 0 ? <span className="text-surface-500" title="Inclut les vieilles erreurs Spamhaus du 10-11 avril">{w.failures}</span> : 0}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {w.failures72h > 0 ? (
+                      <span className="text-red-600 font-semibold" title={w.lastFailure ? `Dernier échec: ${w.lastFailure}` : undefined}>{w.failures72h}</span>
+                    ) : (
+                      <span className="text-emerald-600">0</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{w.totalAll > 0 ? `${w.successRate}%` : "—"}</td>
                   <td className="px-4 py-3 text-xs text-surface-600">
@@ -358,46 +367,42 @@ export default function MailboxMonitor() {
         </>
       )}
 
-      {/* Section 5 : External monitoring (Google + Microsoft) */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-blue-900">
-          <ExternalLink size={16} />
-          Monitoring externe (à configurer)
+      {/* Section 5 : External monitoring (configuré) */}
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm">
+        <div className="mb-2 flex items-center gap-2 font-semibold text-emerald-900">
+          <ShieldCheck size={16} />
+          Monitoring externe — configuré ✓
         </div>
-        <p className="mb-3 text-xs text-blue-800">
-          Pour connaître le <strong>vrai placement Inbox/Spam</strong> chez Gmail et Outlook, configure ces 2 outils gratuits :
+        <p className="mb-3 text-xs text-emerald-800">
+          Complément indispensable au dashboard interne pour le <strong>placement Inbox/Spam réel</strong>
+          chez Gmail et Outlook. Les scores reputation s&apos;affichent directement dans les dashboards officiels.
         </p>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <a href="https://postmaster.google.com/managedomains" target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-between rounded-md border border-blue-300 bg-white px-3 py-2 text-sm hover:bg-blue-50">
+          <a
+            href="https://postmaster.google.com/managedomains"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between rounded-md border border-emerald-300 bg-white px-3 py-2 hover:bg-emerald-50"
+          >
             <div>
-              <div className="font-medium text-blue-900">Google Postmaster Tools</div>
-              <div className="text-xs text-blue-700">Ajoute tes 5 domaines → HIGH/MEDIUM/LOW reputation Gmail</div>
+              <div className="font-medium text-emerald-900">Google Postmaster Tools →</div>
+              <div className="text-xs text-emerald-700">Reputation Gmail par domaine · 10 domaines vérifiés</div>
             </div>
-            <ExternalLink size={14} className="text-blue-700" />
+            <ExternalLink size={14} className="text-emerald-700" />
           </a>
-          <a href="https://sendersupport.olc.protection.outlook.com/snds/" target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-between rounded-md border border-blue-300 bg-white px-3 py-2 text-sm hover:bg-blue-50">
+          <a
+            href="https://sendersupport.olc.protection.outlook.com/snds/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between rounded-md border border-emerald-300 bg-white px-3 py-2 hover:bg-emerald-50"
+          >
             <div>
-              <div className="font-medium text-blue-900">Microsoft SNDS</div>
-              <div className="text-xs text-blue-700">Ajoute ton IP 204.168.180.175 → reputation Outlook/Hotmail</div>
+              <div className="font-medium text-emerald-900">Microsoft SNDS →</div>
+              <div className="text-xs text-emerald-700">Reputation Outlook/Hotmail par IP</div>
             </div>
-            <ExternalLink size={14} className="text-blue-700" />
+            <ExternalLink size={14} className="text-emerald-700" />
           </a>
         </div>
-        <details className="mt-3">
-          <summary className="cursor-pointer text-xs font-medium text-blue-900">Instructions détaillées (Spaceship + Namecheap)</summary>
-          <ol className="mt-2 list-decimal pl-5 text-xs text-blue-800 space-y-1">
-            <li>Connecte-toi sur <a href="https://postmaster.google.com" target="_blank" rel="noopener noreferrer" className="underline">postmaster.google.com</a> avec ton Google.</li>
-            <li>Clique "Add domain" et entre <strong>hub-travelers.com</strong> (puis répète pour les 4 autres).</li>
-            <li>Google te donne un TXT verification code type <code className="bg-blue-100 px-1">google-site-verification=XXXX</code>.</li>
-            <li><strong>Si le domaine est chez Spaceship</strong> : Dashboard → Advanced DNS → Add Record → TXT, host "@", value = le code.</li>
-            <li><strong>Si chez Namecheap</strong> : Dashboard → Advanced DNS → Add New Record → TXT Record, host "@", value = le code.</li>
-            <li>Attends 2-10 min puis clique "Verify" dans Postmaster Tools.</li>
-            <li>Attends 2-7 jours que Google accumule des données, puis reviens voir ton domain reputation.</li>
-            <li>Pour Microsoft SNDS : ajoute l'IP <code className="bg-blue-100 px-1">204.168.180.175</code>, la validation est automatique (consent email).</li>
-          </ol>
-        </details>
       </div>
 
       {/* Section 6 : Timeline chart */}

@@ -49,6 +49,7 @@ services:
       - .env
     volumes:
       - /var/log/pmta:/var/log/pmta:ro
+      - /var/log/mail.log:/var/log/mail.log:ro
     environment:
       # DATABASE_URL, REDIS_URL, OPEN_PAGERANK_API_KEY come from .env
       NODE_ENV: production

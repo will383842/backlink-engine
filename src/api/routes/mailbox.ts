@@ -62,13 +62,17 @@ interface InboxStat {
 
 interface WarmupStat {
   fromEmail: string;
-  today: number;
-  last7Days: number;
+  today: number;       // outbound sends today (Mailflow-triggered)
+  last7Days: number;   // outbound sends last 7 days
   totalAll: number;
   success: number;
-  failures: number;
+  failures: number;       // failures over 7d window
+  failures72h: number;    // failures last 72h (recent only)
+  lastFailure: string | null; // timestamp of last failure
   successRate: number;
   lastActivity: string | null;
+  inboundToday?: number;  // inbound Mailflow emails received today
+  inbound7d?: number;     // inbound last 7d
 }
 
 interface BlacklistResult {
@@ -146,89 +150,111 @@ async function collectColdStats(days: number): Promise<{ inboxes: InboxStat[]; t
 // Helpers: PMTA warmup (Mailflow) stats
 // ---------------------------------------------------------------------------
 
+// V2 warmup detection: uses both PMTA CSV (outbound Mailflow-triggered sends
+// via AWS us-east-1 submission auth) AND Postfix mail.log (inbound Mailflow
+// warmup emails). Mailflow works P2P: outbound recipients are real pool
+// inboxes (gmail/outlook/etc.), not @mailflow.io.
 async function collectWarmupStats(): Promise<WarmupStat[]> {
   const pmtaDir = "/var/log/pmta";
-  let files: string[];
+  const today = new Date().toISOString().slice(0, 10);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000);
+  const sevenAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
+
+  const stats: Record<string, WarmupStat & { inboundToday?: number; inbound7d?: number }> =
+    Object.fromEntries(
+      TRACKED_INBOXES.map((fe) => [fe, {
+        fromEmail: fe, today: 0, last7Days: 0, totalAll: 0,
+        success: 0, failures: 0, failures72h: 0, lastFailure: null,
+        successRate: 0, lastActivity: null,
+        inboundToday: 0, inbound7d: 0,
+      }]),
+    );
+
+  const threeDaysAgoStr = new Date(Date.now() - 72 * 3600_000).toISOString().slice(0, 10);
+
+  // ---------- 1. OUTBOUND via PMTA CSV (all sends from presse@*) ----------
+  let pmtaFiles: string[] = [];
   try {
-    files = (await readdir(pmtaDir)).filter((f) => f.startsWith("acct-") && f.endsWith(".csv"));
+    pmtaFiles = (await readdir(pmtaDir))
+      .filter((f) => f.startsWith("acct-") && f.endsWith(".csv"))
+      .filter((f) => {
+        const m = f.match(/^acct-(\d{4}-\d{2}-\d{2})/);
+        return m ? m[1] >= sevenAgoStr : false;
+      })
+      .sort();
   } catch {
-    return TRACKED_INBOXES.map((fromEmail) => ({
-      fromEmail, today: 0, last7Days: 0, totalAll: 0, success: 0, failures: 0, successRate: 0, lastActivity: null,
-    }));
+    /* no access */
   }
 
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  // Keep only files from last 8 days
-  const recentFiles = files
-    .filter((f) => {
-      const m = f.match(/^acct-(\d{4}-\d{2}-\d{2})/);
-      if (!m) return false;
-      return new Date(m[1]) >= sevenDaysAgo;
-    })
-    .sort();
-
-  // Stat accumulator per inbox
-  const stats: Record<string, WarmupStat> = Object.fromEntries(
-    TRACKED_INBOXES.map((fe) => [fe, {
-      fromEmail: fe, today: 0, last7Days: 0, totalAll: 0, success: 0, failures: 0, successRate: 0, lastActivity: null,
-    }]),
-  );
-
-  for (const file of recentFiles) {
+  for (const file of pmtaFiles) {
     let content: string;
-    try {
-      content = await readFile(path.join(pmtaDir, file), "utf-8");
-    } catch {
-      continue;
-    }
-
-    // CSV format: type,timeLogged,timeQueued,orig,rcpt,orcpt,dsnAction,dsnStatus,dsnDiag,...
-    const lines = content.split("\n");
-    for (const line of lines) {
-      if (!line.startsWith("d,") && !line.startsWith("b,")) continue; // d = delivered, b = bounce
-      // Simple CSV split (fields don't contain commas for our needs — PMTA escapes them)
-      const fields = line.split(",");
-      if (fields.length < 8) continue;
-
-      const type = fields[0];
-      const timeLogged = fields[1];
-      const orig = fields[3];
-      const rcpt = fields[4];
-      const dsnStatus = fields[7];
-
+    try { content = await readFile(path.join(pmtaDir, file), "utf-8"); } catch { continue; }
+    for (const line of content.split("\n")) {
+      if (!line.startsWith("d,") && !line.startsWith("b,")) continue;
+      const f = line.split(",");
+      if (f.length < 8) continue;
+      const orig = f[3];
       if (!orig || !stats[orig]) continue;
-      if (!rcpt) continue;
-
-      // Only count Mailflow warmup traffic
-      if (!rcpt.includes("mailflow.io")) continue;
-
       const s = stats[orig];
       s.totalAll++;
-
-      const success = type === "d" && dsnStatus.startsWith("2.");
-      if (success) s.success++;
-      else s.failures++;
-
-      // Today?
-      if (timeLogged.startsWith(today)) s.today++;
-      // 7 days?
-      const dateStr = timeLogged.slice(0, 10);
-      if (dateStr && dateStr >= sevenDaysAgo.toISOString().slice(0, 10)) s.last7Days++;
-
-      // Track last activity
-      if (!s.lastActivity || timeLogged > s.lastActivity) s.lastActivity = timeLogged;
+      const ok = f[0] === "d" && f[7]?.startsWith("2.");
+      if (ok) s.success++;
+      else {
+        s.failures++;
+        // Failure within last 72h only
+        if (f[1]?.slice(0, 10) >= threeDaysAgoStr) {
+          s.failures72h = (s.failures72h ?? 0) + 1;
+          if (!s.lastFailure || f[1] > s.lastFailure) s.lastFailure = f[1] ?? null;
+        }
+      }
+      if (f[1]?.startsWith(today)) s.today++;
+      if (f[1]?.slice(0, 10) >= sevenAgoStr) s.last7Days++;
+      if (!s.lastActivity || f[1] > s.lastActivity) s.lastActivity = f[1] ?? null;
     }
   }
 
-  // Compute success rate
-  for (const s of Object.values(stats)) {
-    s.successRate = s.totalAll > 0 ? Math.round((s.success / s.totalAll) * 1000) / 10 : 0;
+  // ---------- 2. INBOUND via Postfix mail.log (orig_to=<presse@...>) -----
+  try {
+    const mailLog = await readFile("/var/log/mail.log", "utf-8");
+    const lines = mailLog.split("\n");
+    for (const line of lines) {
+      if (!line.includes("lmtp") || !line.includes("orig_to=<presse@") || !line.includes("Saved")) continue;
+      const mFrom = line.match(/orig_to=<(presse@[^>]+)>/);
+      const mDate = line.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (!mFrom || !mDate) continue;
+      const email = mFrom[1];
+      const dateStr = mDate[1];
+      const rec = stats[email];
+      if (!rec) continue;
+      if (dateStr === today) rec.inboundToday = (rec.inboundToday ?? 0) + 1;
+      if (dateStr >= sevenAgoStr) rec.inbound7d = (rec.inbound7d ?? 0) + 1;
+    }
+  } catch {
+    /* log not accessible */
   }
 
-  return Object.values(stats);
+  // ---------- 3. Compute rates + merge inbound as bonus counters ----------
+  for (const s of Object.values(stats)) {
+    s.successRate = s.totalAll > 0 ? Math.round((s.success / s.totalAll) * 1000) / 10 : 0;
+    // Total "activity" = sends + inbound (a warmup exchange = 1 send + 1 receive)
+    (s as any).inboundToday = s.inboundToday ?? 0;
+    (s as any).inbound7d = s.inbound7d ?? 0;
+  }
+
+  return Object.values(stats).map((s) => ({
+    fromEmail: s.fromEmail,
+    today: s.today,
+    last7Days: s.last7Days,
+    totalAll: s.totalAll,
+    success: s.success,
+    failures: s.failures,
+    failures72h: (s as any).failures72h ?? 0,
+    lastFailure: (s as any).lastFailure ?? null,
+    successRate: s.successRate,
+    lastActivity: s.lastActivity,
+    inboundToday: (s as any).inboundToday,
+    inbound7d: (s as any).inbound7d,
+  }) as WarmupStat & { inboundToday: number; inbound7d: number });
 }
 
 // ---------------------------------------------------------------------------
