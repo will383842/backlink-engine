@@ -473,4 +473,68 @@ export default async function mailboxRoutes(app: FastifyInstance): Promise<void>
       },
     });
   });
+
+
+  // ───── GET /warmup-timeline ─── daily send count per inbox from PMTA ───
+  app.get<{ Querystring: { days?: string } }>(
+    "/warmup-timeline",
+    async (request, reply) => {
+      const days = Math.min(90, Math.max(1, parseInt(request.query.days || "14", 10) || 14));
+      const sinceStr = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+
+      let rows: Array<{ day: string; fromEmail: string; sends: number; receives: number }> = [];
+      try {
+        const files = (await readdir("/var/log/pmta"))
+          .filter((f) => f.startsWith("acct-") && f.endsWith(".csv"))
+          .filter((f) => {
+            const m = f.match(/^acct-(\d{4}-\d{2}-\d{2})/);
+            return m ? m[1] >= sinceStr : false;
+          })
+          .sort();
+
+        const byDay: Record<string, Record<string, { sends: number; receives: number }>> = {};
+        for (const file of files) {
+          let content: string;
+          try { content = await readFile(path.join("/var/log/pmta", file), "utf-8"); } catch { continue; }
+          for (const line of content.split("\n")) {
+            if (!line.startsWith("d,")) continue;
+            const f = line.split(",");
+            if (!f[3] || !TRACKED_INBOXES.includes(f[3]) || !f[1]) continue;
+            const day = f[1].slice(0, 10);
+            byDay[day] = byDay[day] ?? {};
+            byDay[day][f[3]] = byDay[day][f[3]] ?? { sends: 0, receives: 0 };
+            byDay[day][f[3]].sends++;
+          }
+        }
+
+        // Count INBOUND via Postfix mail.log (orig_to=<presse@...>)
+        try {
+          const mailLog = await readFile("/var/log/mail.log", "utf-8");
+          for (const line of mailLog.split("\n")) {
+            if (!line.includes("lmtp") || !line.includes("orig_to=<presse@") || !line.includes("Saved")) continue;
+            const mFrom = line.match(/orig_to=<(presse@[^>]+)>/);
+            const mDate = line.match(/^(\d{4}-\d{2}-\d{2})/);
+            if (!mFrom || !mDate || mDate[1] < sinceStr) continue;
+            const day = mDate[1];
+            const email = mFrom[1];
+            if (!TRACKED_INBOXES.includes(email)) continue;
+            byDay[day] = byDay[day] ?? {};
+            byDay[day][email] = byDay[day][email] ?? { sends: 0, receives: 0 };
+            byDay[day][email].receives++;
+          }
+        } catch { /* no mail.log */ }
+
+        for (const [day, inboxes] of Object.entries(byDay)) {
+          for (const [fromEmail, counts] of Object.entries(inboxes)) {
+            rows.push({ day, fromEmail, sends: counts.sends, receives: counts.receives });
+          }
+        }
+        rows.sort((a, b) => a.day.localeCompare(b.day) || a.fromEmail.localeCompare(b.fromEmail));
+      } catch (err) {
+        log.warn({ err: String(err) }, "warmup-timeline failed");
+      }
+
+      return reply.send({ data: { timeline: rows, period: { days, since: sinceStr } } });
+    },
+  );
 }

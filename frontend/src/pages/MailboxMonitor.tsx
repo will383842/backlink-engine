@@ -112,9 +112,9 @@ export default function MailboxMonitor() {
     refetchInterval: 120_000,
   });
 
-  const timelineQuery = useQuery<{ data: { timeline: TimelineRow[] } }>({
-    queryKey: ["mailbox-timeline", days],
-    queryFn: async () => (await api.get(`/mailbox/timeline?days=${Math.max(14, days)}`)).data,
+  const timelineQuery = useQuery<{ data: { timeline: Array<{ day: string; fromEmail: string; sends: number; receives: number }> } }>({
+    queryKey: ["mailbox-warmup-timeline", days],
+    queryFn: async () => (await api.get(`/mailbox/warmup-timeline?days=${Math.max(14, days)}`)).data,
     refetchInterval: 120_000,
   });
 
@@ -132,13 +132,13 @@ export default function MailboxMonitor() {
   const scores = readinessQuery.data?.data.scores ?? [];
   const bl = readinessQuery.data?.data.blacklists;
 
-  // Pivot timeline for Recharts
+  // Pivot timeline for Recharts (sends + receives = total warmup activity)
   const chartData = (() => {
     const tl = timelineQuery.data?.data.timeline ?? [];
     const byDay = new Map<string, Record<string, string | number>>();
     for (const row of tl) {
       if (!byDay.has(row.day)) byDay.set(row.day, { day: row.day });
-      byDay.get(row.day)![row.fromEmail] = row.opened;
+      byDay.get(row.day)![row.fromEmail] = row.sends + row.receives;
     }
     return Array.from(byDay.values()).sort((a, b) => String(a.day).localeCompare(String(b.day)));
   })();
@@ -409,7 +409,7 @@ export default function MailboxMonitor() {
       <div className="rounded-lg border border-surface-200 bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-surface-200 px-4 py-3">
           <TrendingUp size={18} className="text-surface-500" />
-          <h2 className="font-semibold text-surface-900">Ouvertures quotidiennes par inbox (cold)</h2>
+          <h2 className="font-semibold text-surface-900">Activité warmup quotidienne par inbox (envois + réceptions)</h2>
         </div>
         <div className="p-4">
           <div style={{ width: "100%", height: 280 }}>
