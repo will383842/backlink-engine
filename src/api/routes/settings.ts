@@ -92,6 +92,36 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
   });
 
   // ───── PUT /:key ─── Update or create a setting ─────────────
+  // ───── PUT / ─── Bulk save (Settings form "Save all" button) ─────
+  //
+  // The frontend Settings page sends the whole local-state object here.  We
+  // iterate each top-level key and upsert it with the secrets-preserving
+  // merge so masked "***" placeholders never overwrite real secrets.
+  app.put("/", async (request, reply) => {
+    const body = request.body as Record<string, unknown> | null;
+    if (!body || typeof body !== "object") {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Request body must be an object of { key: value } pairs.",
+      });
+    }
+
+    const saved: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(body)) {
+      const existing = await prisma.appSetting.findUnique({ where: { key } });
+      const mergedValue = mergePreservingSecrets(existing?.value, value);
+      const setting = await prisma.appSetting.upsert({
+        where: { key },
+        create: { key, value: mergedValue as any },
+        update: { value: mergedValue as any },
+      });
+      saved[setting.key] = maskSensitive(setting.value);
+    }
+
+    return reply.send({ data: saved });
+  });
+
   app.put<{
     Params: { key: string };
     Body: { value: unknown };
@@ -169,6 +199,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       dryRun: true,
       apiUrl: process.env.MAILWIZZ_API_URL || null,
       apiKey: process.env.MAILWIZZ_API_KEY ? "***" : null,
+      listUids: {} as Record<string, string>,
     };
 
     if (!setting) {
@@ -192,6 +223,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       dryRun?: boolean;
       apiUrl?: string;
       apiKey?: string;
+      listUids?: Record<string, string>;
     };
   }>(
     "/mailwizz",
@@ -204,6 +236,10 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
             dryRun: { type: "boolean" },
             apiUrl: { type: "string" },
             apiKey: { type: "string" },
+            listUids: {
+              type: "object",
+              additionalProperties: { type: "string" },
+            },
           },
         },
       },
@@ -223,6 +259,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
             dryRun: true,
             apiUrl: process.env.MAILWIZZ_API_URL || null,
             apiKey: process.env.MAILWIZZ_API_KEY || null,
+            listUids: {},
           };
 
       // Merge updates (don't update apiKey if "***" placeholder)
@@ -232,6 +269,7 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       if (updates.apiKey !== undefined && updates.apiKey !== "***") {
         currentConfig.apiKey = updates.apiKey;
       }
+      if (updates.listUids !== undefined) currentConfig.listUids = updates.listUids;
 
       // Save to DB
       await prisma.appSetting.upsert({
