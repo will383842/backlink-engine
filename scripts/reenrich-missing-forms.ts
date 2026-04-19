@@ -13,9 +13,18 @@
 // ---------------------------------------------------------------------------
 
 import { PrismaClient } from "@prisma/client";
-import { enrichmentQueue } from "../src/jobs/queue.js";
+import { Queue } from "bullmq";
+import IORedis from "ioredis";
 
 const prisma = new PrismaClient();
+
+// Standalone Queue client — the app's exported enrichmentQueue is only
+// initialised inside the main process via setupQueues(), so we create our
+// own connection here. Matches the in-app redis module which reads REDIS_URL.
+const redisConnection = new IORedis(process.env.REDIS_URL ?? "redis://127.0.0.1:6379", {
+  maxRetriesPerRequest: null,
+});
+const enrichmentQueue = new Queue("enrichment", { connection: redisConnection });
 
 async function main() {
   const limitArg = process.argv.find((a) => a.startsWith("--limit="));
@@ -40,7 +49,7 @@ async function main() {
   for (const p of prospects) {
     await enrichmentQueue.add(
       "reenrich-form",
-      { type: "auto-score", prospectId: p.id },
+      { type: "auto-score", prospectId: p.id, force: true },
       { jobId: `reenrich-form-${p.id}` }, // dedup across runs
     );
     enqueued++;
@@ -50,6 +59,8 @@ async function main() {
   console.log(`\n✅ Enqueued ${enqueued} jobs. The enrichment worker (cron /2 min) will process them.`);
   console.log("Monitor progress: docker logs bl-app --tail 50 -f | grep enrichment");
 
+  await enrichmentQueue.close();
+  await redisConnection.quit();
   process.exit(0);
 }
 

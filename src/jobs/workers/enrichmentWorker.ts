@@ -26,6 +26,12 @@ const log = createChildLogger("enrichment-worker");
 interface AutoScoreJobData {
   type: "auto-score";
   prospectId: number;
+  /**
+   * When true, bypass the "only NEW/ENRICHING" status gate so the job can
+   * re-process an already-enriched prospect (used for form re-detection after
+   * expanding the contact-path list).
+   */
+  force?: boolean;
 }
 
 interface BatchEnrichNewJobData {
@@ -224,7 +230,7 @@ async function checkGoogleSafeBrowsing(domain: string): Promise<number> {
 // Worker processor
 // ---------------------------------------------------------------------------
 
-async function enrichSingleProspect(prospectId: number): Promise<void> {
+async function enrichSingleProspect(prospectId: number, force = false): Promise<void> {
   // 1. Fetch the prospect from DB
   const prospect = await prisma.prospect.findUnique({
     where: { id: prospectId },
@@ -235,22 +241,29 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
     return;
   }
 
-  // Skip if already enriched or being enriched by another worker
-  if (prospect.status !== "NEW" && prospect.status !== "ENRICHING") {
+  // Skip if already enriched or being enriched by another worker.
+  // `force` bypass is used by scripts that need to re-run enrichment on
+  // already-processed prospects (e.g. after expanding the contact-path
+  // detection list). When forced, we do NOT touch the prospect status.
+  if (!force && prospect.status !== "NEW" && prospect.status !== "ENRICHING") {
     log.debug({ prospectId, status: prospect.status }, "Prospect not in NEW status, skipping.");
     return;
   }
 
   const domain = prospect.domain;
 
-  // 2. Update status to ENRICHING (atomic check to prevent concurrent processing)
-  const updated = await prisma.prospect.updateMany({
-    where: { id: prospectId, status: { in: ["NEW", "ENRICHING"] } },
-    data: { status: "ENRICHING" },
-  });
-  if (updated.count === 0) {
-    log.debug({ prospectId }, "Prospect already being processed, skipping.");
-    return;
+  if (force) {
+    log.info({ prospectId, domain, originalStatus: prospect.status }, "Forced re-enrichment requested — keeping existing status.");
+  } else {
+    // 2. Update status to ENRICHING (atomic check to prevent concurrent processing)
+    const updated = await prisma.prospect.updateMany({
+      where: { id: prospectId, status: { in: ["NEW", "ENRICHING"] } },
+      data: { status: "ENRICHING" },
+    });
+    if (updated.count === 0) {
+      log.debug({ prospectId }, "Prospect already being processed, skipping.");
+      return;
+    }
   }
 
   try {
@@ -721,9 +734,9 @@ async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> 
 
   switch (type) {
     case "auto-score": {
-      const { prospectId } = job.data;
-      log.info({ prospectId, jobId: job.id }, "Starting enrichment for prospect.");
-      await enrichSingleProspect(prospectId);
+      const { prospectId, force } = job.data;
+      log.info({ prospectId, jobId: job.id, force: !!force }, "Starting enrichment for prospect.");
+      await enrichSingleProspect(prospectId, !!force);
       await job.updateProgress(100);
       break;
     }
