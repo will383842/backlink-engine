@@ -194,7 +194,13 @@ export default function Settings() {
 
   useEffect(() => {
     if (telegramData?.data) {
-      setTelegramConfig(telegramData.data);
+      const incoming = telegramData.data as Partial<TelegramConfig>;
+      setTelegramConfig((prev) => ({
+        enabled: incoming.enabled ?? prev.enabled,
+        botToken: incoming.botToken ?? prev.botToken,
+        chatId: incoming.chatId ?? prev.chatId,
+        events: { ...prev.events, ...(incoming.events ?? {}) },
+      }));
     }
   }, [telegramData]);
 
