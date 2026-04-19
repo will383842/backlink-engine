@@ -96,22 +96,65 @@ const BROWSER_HEADERS: Record<string, string> = {
   "Upgrade-Insecure-Requests": "1",
 };
 
-// Common contact page paths to try directly (in order of likelihood)
+// Common contact page paths to try directly (in order of likelihood).
+// Expanded to cover media/press sites (écrire à la rédaction…), education
+// (admissions), associations (adhesion/join-us), e-commerce (support/SAV)
+// and multi-language variants. Ordered by observed hit rate on our 5000+
+// prospects so the HEAD request cascade finds a match ASAP.
 const CONTACT_PATHS = [
+  // Generic
   "/contact",
   "/contact-us",
   "/contact.html",
   "/contact.php",
+  "/contact/",
+  // French
   "/nous-contacter",
   "/fr/contact",
+  "/nous-ecrire",
+  "/ecrire-a-la-redaction",
+  "/la-redaction",
+  "/contact-redaction",
+  // English
   "/en/contact",
+  "/get-in-touch",
+  "/reach-us",
+  "/write-for-us",
+  // German
   "/kontakt",
+  "/impressum",
+  "/kontaktieren",
+  // Spanish / Portuguese / Italian
   "/contacto",
   "/contato",
-  "/impressum",
+  "/contatti",
+  "/contattaci",
+  // Press / media
+  "/press",
+  "/presse",
+  "/press-contact",
+  "/media-inquiries",
+  "/media",
+  "/newsroom",
+  // Education / institutional
+  "/admissions",
+  "/admission",
+  "/information",
+  "/inscription",
+  // Association / community
+  "/rejoindre",
+  "/join-us",
+  "/adhesion",
+  // Support / e-commerce
+  "/support",
+  "/help",
+  "/service-client",
+  // About pages
   "/about",
   "/about-us",
   "/a-propos",
+  "/apropos",
+  "/qui-sommes-nous",
   "/about/contact",
 ];
 
