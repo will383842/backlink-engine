@@ -8,7 +8,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  Mail, TrendingUp, AlertTriangle, CheckCircle2, RefreshCw, Shield, ExternalLink,
+  Mail, TrendingUp, RefreshCw, Shield, ExternalLink,
   Activity, Clock, ShieldCheck, ShieldAlert,
 } from "lucide-react";
 import api from "@/lib/api";
@@ -30,8 +30,6 @@ interface StatsResponse {
   };
 }
 
-interface TimelineRow { day: string; fromEmail: string; sent: number; opened: number }
-
 interface WarmupStat {
   fromEmail: string; today: number; last7Days: number; totalAll: number;
   success: number; failures: number; failures72h: number; lastFailure: string | null;
@@ -41,8 +39,6 @@ interface WarmupStat {
 interface WarmupResponse { data: { inboxes: WarmupStat[] } }
 
 interface BlacklistResult { name: string; listed: boolean; reply: string | null }
-
-interface BlacklistResponse { data: { ip: string; results: BlacklistResult[]; listedCount: number } }
 
 interface ReadinessScore {
   fromEmail: string; score: number; verdict: Verdict;

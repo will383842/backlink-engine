@@ -333,66 +333,50 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
       return reply.status(400).send({ error: `Cannot approve email with status "${email.status}". Only drafts can be approved.` });
     }
 
-    // Send the email now
+    // Send the draft via SMTP direct (Postfix/PMTA) with domain rotation.
+    // MailWizz + emailEngine fallbacks removed — we only use local SMTP now.
+    const { sendViaSMTP } = await import("../../services/outreach/smtpSender.js");
+    const { getNextSendingDomain } = await import("../../services/outreach/domainRotator.js");
+
+    let senderSettings = { fromEmail: "", fromName: "", replyTo: "" };
+    try {
+      const row = await prisma.appSetting.findUnique({ where: { key: "sender" } });
+      if (row) Object.assign(senderSettings, row.value);
+    } catch { /* defaults */ }
+
     let messageId: string | undefined;
     let emailSent = false;
+    let sendingDomain: { domain: string; fromEmail: string; fromName: string; replyTo: string } | null = null;
 
-    const { getEmailEngineClient } = await import("../../services/outreach/emailEngineClient.js");
-    const emailEngine = getEmailEngineClient();
+    try {
+      sendingDomain = await getNextSendingDomain();
+      const fromEmail = senderSettings.fromEmail || sendingDomain.fromEmail;
+      const fromName = senderSettings.fromName || sendingDomain.fromName;
+      const replyTo = senderSettings.replyTo || sendingDomain.replyTo;
 
-    if (emailEngine.isConfigured()) {
-      try {
-        const result = await emailEngine.sendEmail({
-          toEmail: email.contact.email,
-          toName: email.contact.firstName ?? email.contact.name ?? undefined,
-          subject: email.subject,
-          body: email.body,
-          language: email.language,
-          tags: [`bl_step_${email.stepNumber}`],
-          metadata: {
-            prospect_id: String(email.prospectId),
-            enrollment_id: String(email.enrollmentId),
-            step: String(email.stepNumber),
-          },
-        });
-        emailSent = result.success;
-      } catch {
-        // fall through to MailWizz
-      }
-    }
+      const result = await sendViaSMTP({
+        sentEmailId: id,
+        toEmail: email.contact.email,
+        toName: email.contact.firstName ?? email.contact.name ?? undefined,
+        fromEmail,
+        fromName,
+        replyTo,
+        subject: email.subject,
+        bodyText: email.body,
+      });
 
-    if (!emailSent) {
-      try {
-        const { MailWizzClient } = await import("../../services/outreach/mailwizzClient.js");
-        const { mailwizzConfig } = await import("../../config/mailwizz.js");
-        const mailwizz = new MailWizzClient(mailwizzConfig.apiUrl, mailwizzConfig.apiKey);
-
-        let senderSettings = { fromEmail: "", fromName: "", replyTo: "" };
-        try {
-          const row = await prisma.appSetting.findUnique({ where: { key: "sender" } });
-          if (row) Object.assign(senderSettings, row.value);
-        } catch { /* defaults */ }
-
-        const result = await mailwizz.sendTransactionalEmail({
-          toEmail: email.contact.email,
-          toName: email.contact.firstName ?? email.contact.name ?? undefined,
-          subject: email.subject,
-          body: email.body,
-          fromEmail: senderSettings.fromEmail || undefined,
-          fromName: senderSettings.fromName || undefined,
-          replyTo: senderSettings.replyTo || undefined,
-        });
+      if (result.success) {
         messageId = result.messageId;
         emailSent = true;
-      } catch {
-        // both failed
       }
+    } catch {
+      // fall through — will be handled below
     }
 
     const now = new Date();
 
     if (!emailSent) {
-      // Both email-engine and MailWizz failed — keep as draft for retry, don't update enrollment/prospect
+      // SMTP failed — keep as draft for retry, don't update enrollment/prospect
       await prisma.event.create({
         data: {
           prospectId: email.prospectId,
@@ -400,13 +384,13 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
           enrollmentId: email.enrollmentId,
           eventType: "DRAFT_APPROVE_FAILED",
           eventSource: "admin",
-          data: { sentEmailId: id, reason: "both_send_methods_failed" },
+          data: { sentEmailId: id, reason: "smtp_send_failed", domain: sendingDomain?.domain ?? null },
         },
       });
 
       return reply.status(502).send({
         status: "error",
-        message: "Email could not be sent (both email-engine and MailWizz failed). Draft preserved — you can retry.",
+        message: "Email could not be sent via SMTP. Draft preserved — check sending domain DNS and retry.",
       });
     }
 

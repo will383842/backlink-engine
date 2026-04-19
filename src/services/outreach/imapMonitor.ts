@@ -232,6 +232,33 @@ export async function processReply(reply: ParsedReply): Promise<void> {
     }
   }
 
+  // Bounce detection — RFC 3464 DSNs arrive in the same inbox now that we
+  // send via SMTP direct (no MailWizz webhooks). We detect them heuristically:
+  //   • sender is MAILER-DAEMON / postmaster@* / bounces@*
+  //   • OR subject matches typical DSN phrasings (undelivered, returned,
+  //     delivery status notification, delivery failure)
+  const fromLc = reply.from.toLowerCase().trim();
+  const subjectLc = (reply.subject ?? "").toLowerCase();
+  const isBounceSender =
+    fromLc.startsWith("mailer-daemon@") ||
+    fromLc.startsWith("postmaster@") ||
+    fromLc.startsWith("bounces@") ||
+    fromLc.startsWith("noreply-dsn@");
+  const isBounceSubject =
+    subjectLc.includes("undelivered") ||
+    subjectLc.includes("returned mail") ||
+    subjectLc.includes("delivery status notification") ||
+    subjectLc.includes("delivery failure") ||
+    subjectLc.includes("mail delivery failed") ||
+    subjectLc.includes("non remis") ||
+    subjectLc.includes("non distribué") ||
+    subjectLc.includes("non distribue");
+
+  if (isBounceSender || isBounceSubject) {
+    await processBounce(reply);
+    return;
+  }
+
   const normalizedEmail = reply.from.toLowerCase().trim();
 
   // Find the contact by email
@@ -329,6 +356,135 @@ export async function processReply(reply: ParsedReply): Promise<void> {
   log.info(
     { prospectId: contact.prospectId, from: reply.from },
     "Reply processed.",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bounce processing (RFC 3464 DSN messages arriving in the replies inbox)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the failed recipient address from a DSN body. Tries common
+ * patterns: "Final-Recipient: rfc822; addr@domain", "Original-Recipient:",
+ * or plain "<addr@domain>" inclusion. Falls back to any email found in the
+ * body that matches a contact we have in DB.
+ */
+function extractBouncedAddress(body: string): string | null {
+  // Final-Recipient / Original-Recipient DSN headers
+  const dsnMatch = body.match(/(?:Final|Original)-Recipient:\s*(?:rfc822|RFC822)?;?\s*([^\s<>\r\n]+@[^\s<>\r\n]+)/i);
+  if (dsnMatch?.[1]) return dsnMatch[1].toLowerCase().trim();
+
+  // Generic "<addr@domain>" in body (common in DSN)
+  const addrMatch = body.match(/<([^\s<>]+@[^\s<>]+)>/);
+  if (addrMatch?.[1]) return addrMatch[1].toLowerCase().trim();
+
+  return null;
+}
+
+/**
+ * Classify bounce hardness: hard (550 / 5.x.x / "no such user") vs soft
+ * (421 / 4.x.x / "temporary" / "mailbox full" / "rate limited"). Hard bounces
+ * mark the contact invalid immediately; soft bounces increment a counter and
+ * opt-out after 3 occurrences.
+ */
+function isHardBounce(body: string): boolean {
+  const b = body.toLowerCase();
+  if (/5\.\d\.\d/.test(body) || /\b550\b|\b551\b|\b553\b|\b554\b/.test(body)) return true;
+  if (b.includes("no such user") || b.includes("user unknown") || b.includes("does not exist") || b.includes("recipient address rejected")) {
+    return true;
+  }
+  // Soft: explicit temporary / 4.x.x
+  if (/4\.\d\.\d/.test(body) || /\b421\b|\b450\b|\b452\b/.test(body)) return false;
+  if (b.includes("temporary") || b.includes("mailbox full") || b.includes("rate limit")) return false;
+  // Default: treat as hard so prospect is quickly excluded
+  return true;
+}
+
+async function processBounce(reply: ParsedReply): Promise<void> {
+  const bouncedAddr = extractBouncedAddress(reply.body);
+  if (!bouncedAddr) {
+    log.debug({ from: reply.from, subject: reply.subject }, "Bounce detected but recipient could not be extracted.");
+    return;
+  }
+
+  const contact = await prisma.contact.findUnique({
+    where: { emailNormalized: bouncedAddr },
+    include: {
+      enrollments: { where: { status: "active" } },
+    },
+  });
+
+  if (!contact) {
+    log.debug({ bouncedAddr }, "Bounce received for unknown contact.");
+    return;
+  }
+
+  const hard = isHardBounce(reply.body);
+  const eventType = hard ? "hard_bounce" : "soft_bounce";
+
+  await prisma.$transaction(async (tx) => {
+    // Log bounce event (attached to first active enrollment if any)
+    await tx.event.create({
+      data: {
+        prospectId: contact.prospectId,
+        contactId: contact.id,
+        enrollmentId: contact.enrollments[0]?.id ?? null,
+        eventType,
+        eventSource: "imap_bounce",
+        data: {
+          from: reply.from,
+          subject: reply.subject,
+          bouncedAddr,
+          bodyPreview: reply.body.slice(0, 600),
+          receivedAt: reply.receivedAt.toISOString(),
+        },
+      },
+    });
+
+    if (hard) {
+      // Hard bounce → mark email invalid + stop enrollments
+      await tx.contact.update({
+        where: { id: contact.id },
+        data: {
+          emailStatus: "invalid",
+          optedOut: true,
+          optedOutAt: new Date(),
+        },
+      });
+      if (contact.enrollments.length > 0) {
+        await tx.enrollment.updateMany({
+          where: { contactId: contact.id, status: "active" },
+          data: { status: "stopped", stoppedReason: "hard_bounce", completedAt: new Date() },
+        });
+      }
+    } else {
+      // Soft bounce → increment counter, opt-out after 3
+      const updated = await tx.contact.update({
+        where: { id: contact.id },
+        data: { softBounceCount: { increment: 1 } },
+      });
+      if (updated.softBounceCount >= 3) {
+        await tx.contact.update({
+          where: { id: contact.id },
+          data: {
+            emailStatus: "invalid",
+            optedOut: true,
+            optedOutAt: new Date(),
+          },
+        });
+        if (contact.enrollments.length > 0) {
+          await tx.enrollment.updateMany({
+            where: { contactId: contact.id, status: "active" },
+            data: { status: "stopped", stoppedReason: "soft_bounce_3x", completedAt: new Date() },
+          });
+        }
+      }
+    }
+  });
+
+  log.info(
+    { bouncedAddr, type: eventType, prospectId: contact.prospectId },
+    "Bounce processed.",
   );
 }
 

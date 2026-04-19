@@ -17,6 +17,7 @@ import { findBestCampaign } from "../../services/autoEnrollment/campaignSelector
 import { autoEnrollmentQueue } from "../queue.js";
 import { createRedisConnection } from "../../config/redis.js";
 import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
+import { enrollProspect } from "../../services/outreach/enrollmentManager.js";
 
 const log = logger.child({ worker: "auto-enrollment" });
 
@@ -106,34 +107,15 @@ export async function processAutoEnrollment(
           continue;
         }
 
-        await prisma.enrollment.create({
-          data: {
-            prospectId: prospect.id,
-            contactId: contact.id,
-            campaignId: campaign.id,
-            status: "active",
-            enrolledAt: new Date(),
-          },
-        });
-
-        // ────────────────────────────────────────────────────────────
-        // 4. Create event
-        // ────────────────────────────────────────────────────────────
-
-        await prisma.event.create({
-          data: {
-            prospectId: prospect.id,
-            contactId: contact.id,
-            eventType: "ENROLLED",
-            eventSource: "auto_enrollment",
-            data: {
-              campaignId: campaign.id,
-              campaignName: campaign.name,
-              autoEnrolled: true,
-              enrolledAt: new Date().toISOString(),
-            },
-          },
-        });
+        // Delegate to enrollmentManager.enrollProspect — it handles:
+        //   • suppression-list check
+        //   • AI email generation
+        //   • SMTP direct send (auto mode) or draft creation (review mode)
+        //   • Enrollment + SentEmail + Event persistence in a single transaction
+        //
+        // Previous implementation created the Enrollment row directly here,
+        // which skipped email generation/sending entirely (production bug).
+        await enrollProspect(prospect.id, campaign.id);
 
         log.info(
           {
