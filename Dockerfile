@@ -11,6 +11,7 @@ RUN npm ci --ignore-scripts
 COPY tsconfig.json ./
 COPY prisma ./prisma
 COPY src ./src
+COPY scripts ./scripts
 
 RUN npx prisma generate
 
@@ -40,6 +41,7 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 # Copy TypeScript source (will be run with tsx)
 COPY tsconfig.json ./
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/scripts ./scripts
 
 # Copy built frontend
 COPY --from=builder /app/frontend/dist ./frontend/dist
