@@ -109,6 +109,17 @@ const backlinkVerifier = {
             },
           });
 
+          // Promote prospect status from WON / LINK_PENDING → LINK_VERIFIED.
+          // updateMany with a where-filter so we never clobber a downstream
+          // status (LINK_LOST, LOST, DO_NOT_CONTACT, etc.).
+          await prisma.prospect.updateMany({
+            where: {
+              id: backlink.prospectId,
+              status: { in: ["WON", "LINK_PENDING"] },
+            },
+            data: { status: "LINK_VERIFIED" },
+          });
+
           // Send Telegram notification
           await notifyBacklinkVerified(backlink.id).catch((err) => {
             log.error({ err, backlinkId: backlink.id }, "Failed to send Telegram notification for backlink verified");

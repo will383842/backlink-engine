@@ -1037,11 +1037,16 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         });
       }
 
-      // Update prospect status to WON
+      // If a backlink URL is provided, the link is claimed to be already
+      // posted → set LINK_PENDING so the verification worker picks it up on
+      // Sunday and promotes to LINK_VERIFIED if it finds the link live.
+      // Without a backlink URL, the deal is agreed but nothing posted yet → WON.
+      const nextStatus = backlink?.pageUrl ? "LINK_PENDING" : "WON";
+
       await prisma.prospect.update({
         where: { id },
         data: {
-          status: "WON",
+          status: nextStatus,
         },
       });
 
@@ -1685,42 +1690,78 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         if (outreachRow) Object.assign(senderSettings, outreachRow.value);
       } catch { /* defaults */ }
 
-      // Generate message via LLM
-      try {
-        const { getLlmClient } = await import("../../llm/index.js");
-        const llm = getLlmClient();
+      // Lookup a MessageTemplate from the DB — no LLM call.
+      // Fallback chain:
+      //   1. Exact match: (prospect.language, prospect.category)
+      //   2. Same language, no category (general template for that language)
+      //   3. English template with same category
+      //   4. English general template
+      // Returns 404 if nothing is found so the admin can create one from
+      // /message-templates instead of getting a silently-wrong default.
+      const lang = prospect.language ?? "en";
+      const cat = prospect.category;
 
-        const generated = await llm.generateOutreachEmail({
-          domain: prospect.domain,
-          language: prospect.language ?? "en",
-          country: prospect.country ?? undefined,
-          themes: prospect.thematicCategories as string[] | undefined,
-          opportunityType: prospect.opportunityType ?? undefined,
-          contactName: prospect.contacts[0]?.firstName ?? prospect.contacts[0]?.name ?? undefined,
-          contactType: (prospect.contacts[0] as any)?.sourceContactType ?? prospect.sourceContactType ?? undefined,
-          channel: "contact_form",
-          stepNumber: 0,
-          yourWebsite: senderSettings.yourWebsite,
-          yourCompany: senderSettings.yourCompany,
-        });
+      const candidates = await prisma.messageTemplate.findMany({
+        where: {
+          OR: [
+            { language: lang, category: cat },
+            { language: lang, category: null },
+            { language: "en", category: cat },
+            { language: "en", category: null },
+          ],
+        },
+      });
 
-        return reply.send({
-          data: {
-            subject: generated.subject,
-            body: generated.body,
-            language: prospect.language ?? "en",
-            prospectDomain: prospect.domain,
-            contactFormUrl: prospect.contactFormUrl,
-            hasCaptcha: prospect.hasCaptcha,
-            formFields: prospect.contactFormFields,
-          },
-        });
-      } catch (err) {
-        return reply.status(500).send({
-          error: "llm_error",
-          message: err instanceof Error ? err.message : "Failed to generate message",
+      const pickByPriority = (): typeof candidates[number] | null => {
+        const byScore = (t: typeof candidates[number]) => {
+          let score = 0;
+          if (t.language === lang) score += 10;
+          if (t.category === cat) score += 5;
+          return score;
+        };
+        return candidates.sort((a, b) => byScore(b) - byScore(a))[0] ?? null;
+      };
+
+      const template = pickByPriority();
+
+      if (!template) {
+        return reply.status(404).send({
+          error: "no_template",
+          message: `No MessageTemplate found for language "${lang}" (category "${cat}"). Create one from /message-templates.`,
+          language: lang,
+          category: cat,
         });
       }
+
+      // Variable substitution — keeps the legacy {siteName}/{yourName}/
+      // {yourCompany}/{yourWebsite} placeholders and adds {contactName} for
+      // personalised greetings.
+      const contactName =
+        prospect.contacts[0]?.firstName ??
+        prospect.contacts[0]?.name ??
+        "";
+
+      const substitute = (text: string): string =>
+        text
+          .replace(/\{siteName\}/g, prospect.domain)
+          .replace(/\{domain\}/g, prospect.domain)
+          .replace(/\{contactName\}/g, contactName)
+          .replace(/\{yourName\}/g, senderSettings.yourName || "")
+          .replace(/\{yourCompany\}/g, senderSettings.yourCompany)
+          .replace(/\{yourWebsite\}/g, senderSettings.yourWebsite);
+
+      return reply.send({
+        data: {
+          subject: substitute(template.subject),
+          body: substitute(template.body),
+          language: template.language,
+          templateId: template.id,
+          prospectDomain: prospect.domain,
+          contactFormUrl: prospect.contactFormUrl,
+          hasCaptcha: prospect.hasCaptcha,
+          formFields: prospect.contactFormFields,
+        },
+      });
     },
   );
 }
