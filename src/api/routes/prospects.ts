@@ -1202,6 +1202,84 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
     },
   );
 
+  // ───── DELETE /:id/manual-contact ─── Undo last manual contact (form) ────
+  //
+  // Removes the most recent MANUAL_CONTACT_SENT event so the prospect is put
+  // back in /form-outreach's queue (the queue query excludes prospects having
+  // any such event). We also revert prospect.status to READY_TO_CONTACT only
+  // when the current status is CONTACTED_MANUAL — we don't clobber a status
+  // advanced by another flow (REPLIED, WON, …).
+  app.delete<{ Params: ProspectParams }>(
+    "/:id/manual-contact",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const id = parseIdParam(request.params.id);
+
+      const prospect = await prisma.prospect.findUnique({ where: { id } });
+      if (!prospect) {
+        return reply.status(404).send({ error: "Prospect not found" });
+      }
+
+      const lastEvent = await prisma.event.findFirst({
+        where: { prospectId: id, eventType: "MANUAL_CONTACT_SENT" },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (!lastEvent) {
+        return reply.status(404).send({
+          error: "no_manual_contact",
+          message: "This prospect has no manual contact event to undo.",
+        });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.event.delete({ where: { id: lastEvent.id } });
+
+        // Revert status only if still CONTACTED_MANUAL — don't clobber a
+        // status advanced by another downstream flow.
+        if (prospect.status === "CONTACTED_MANUAL") {
+          await tx.prospect.update({
+            where: { id },
+            data: {
+              status: "READY_TO_CONTACT",
+              nextFollowupAt: null,
+              // Keep lastContactedAt: it reflects history even if the
+              // current contact is rolled back.
+            },
+          });
+        }
+
+        // Audit trail
+        await tx.event.create({
+          data: {
+            prospectId: id,
+            eventType: "MANUAL_CONTACT_UNDONE",
+            eventSource: "manual",
+            userId: request.user.id,
+            data: {
+              undoneEventId: lastEvent.id,
+              undoneAt: new Date().toISOString(),
+              originalData: lastEvent.data as unknown as import("@prisma/client").Prisma.InputJsonValue,
+            },
+          },
+        });
+      });
+
+      return reply.send({
+        message: "Manual contact undone",
+        prospectId: id,
+      });
+    },
+  );
+
   // ───── GET /:id/contact-history ─── Get all manual contacts for a prospect ────
   app.get<{ Params: ProspectParams }>(
     "/:id/contact-history",

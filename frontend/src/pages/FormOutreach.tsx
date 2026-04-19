@@ -82,7 +82,6 @@ function ProspectCard({
   const [editedBody, setEditedBody] = useState("");
   const [editedSubject, setEditedSubject] = useState("");
   const [copied, setCopied] = useState<"subject" | "body" | null>(null);
-  const [formOpened, setFormOpened] = useState(false);
   const [editing, setEditing] = useState(false);
 
   const generateMutation = useMutation({
@@ -105,8 +104,22 @@ function ProspectCard({
     },
   });
 
-  const markDoneMutation = useMutation({
+  const undoMutation = useMutation({
     mutationFn: async () => {
+      await api.delete(`/prospects/${prospect.id}/manual-contact`);
+    },
+    onSuccess: () => {
+      toast.success(`${prospect.domain} remis en non contacte`);
+      queryClient.invalidateQueries({ queryKey: ["formQueue"] });
+    },
+    onError: () => toast.error("Impossible d'annuler"),
+  });
+
+  const openAndSendMutation = useMutation({
+    mutationFn: async () => {
+      // Optimistically log the manual contact. The external form is opened
+      // in a new tab synchronously so the browser doesn't block the popup.
+      window.open(prospect.contactFormUrl, "_blank");
       await api.post(`/prospects/${prospect.id}/log-manual-contact`, {
         message: editedBody || generated?.body || "(message non enregistre)",
         method: "contact_form",
@@ -114,11 +127,29 @@ function ProspectCard({
       });
     },
     onSuccess: () => {
-      toast.success(`${prospect.domain} marque comme contacte`);
+      toast(
+        (t) => (
+          <span className="flex items-center gap-3">
+            <span>
+              <strong>{prospect.domain}</strong> marque comme contacte
+            </span>
+            <button
+              onClick={() => {
+                toast.dismiss(t.id);
+                undoMutation.mutate();
+              }}
+              className="rounded bg-white px-2 py-1 text-xs font-medium text-emerald-700 border border-emerald-200 hover:bg-emerald-50"
+            >
+              Annuler
+            </button>
+          </span>
+        ),
+        { icon: "✓", duration: 8000 },
+      );
       queryClient.invalidateQueries({ queryKey: ["formQueue"] });
       onDone();
     },
-    onError: () => toast.error("Erreur lors du marquage"),
+    onError: () => toast.error("Erreur lors de l'envoi"),
   });
 
   const copyToClipboard = async (text: string, type: "subject" | "body") => {
@@ -126,11 +157,6 @@ function ProspectCard({
     setCopied(type);
     toast.success(type === "subject" ? "Sujet copie" : "Message copie");
     setTimeout(() => setCopied(null), 2000);
-  };
-
-  const openForm = () => {
-    window.open(prospect.contactFormUrl, "_blank");
-    setFormOpened(true);
   };
 
   const fieldList = prospect.contactFormFields
@@ -256,32 +282,22 @@ function ProspectCard({
             {editing ? "Terminer l'edition" : "Modifier le message"}
           </button>
 
-          {/* Action buttons */}
+          {/* Action button — single step: opens tab + logs contact atomically.
+              An "Annuler" button appears in the success toast for 8 s in case
+              the form wasn't actually submitted. */}
           <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-surface-200">
             <button
-              onClick={openForm}
-              className="btn-primary flex items-center gap-2"
+              onClick={() => openAndSendMutation.mutate()}
+              disabled={openAndSendMutation.isPending}
+              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-60"
             >
               <ExternalLink size={16} />
-              {formOpened ? "Formulaire ouvert" : "Ouvrir le formulaire"}
+              {openAndSendMutation.isPending ? "En cours..." : "Ouvrir et envoyer"}
             </button>
 
-            {formOpened && (
-              <button
-                onClick={() => markDoneMutation.mutate()}
-                disabled={markDoneMutation.isPending}
-                className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
-              >
-                <Check size={16} />
-                {markDoneMutation.isPending ? "En cours..." : "Fait — Message soumis"}
-              </button>
-            )}
-
-            {!formOpened && (
-              <p className="text-xs text-surface-400 flex items-center gap-1">
-                <AlertTriangle size={12} /> Ouvrez le formulaire d'abord, puis copiez-collez le message
-              </p>
-            )}
+            <p className="text-xs text-surface-400 flex items-center gap-1">
+              <AlertTriangle size={12} /> Le formulaire s'ouvre, le prospect est marque comme contacte. Clique "Annuler" dans la notification si tu n'as finalement pas envoye.
+            </p>
           </div>
         </div>
       )}
