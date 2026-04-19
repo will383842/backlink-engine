@@ -275,33 +275,4 @@ export default async function assetsRoutes(app: FastifyInstance): Promise<void> 
     },
   );
 
-  // ───── DELETE /:id ─── Delete a linkable asset ─────────
-  app.delete<{ Params: AssetParams }>(
-    "/:id",
-    {
-      schema: {
-        params: {
-          type: "object",
-          required: ["id"],
-          properties: { id: { type: "string" } },
-        },
-      },
-    },
-    async (request, reply) => {
-      const id = parseIdParam(request.params.id);
-
-      const existing = await prisma.linkableAsset.findUnique({ where: { id } });
-      if (!existing) {
-        return reply.status(404).send({
-          statusCode: 404,
-          error: "Not Found",
-          message: `Asset ${id} not found`,
-        });
-      }
-
-      await prisma.linkableAsset.delete({ where: { id } });
-
-      return reply.status(204).send();
-    },
-  );
 }

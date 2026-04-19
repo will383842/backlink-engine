@@ -5,7 +5,6 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser, parseIdParam } from "../middleware/auth.js";
-import { crawlingQueue } from "../../jobs/queue.js";
 
 // ---------------------------------------------------------------------------
 // Request types
@@ -116,21 +115,6 @@ export default async function crawlingRoutes(app: FastifyInstance): Promise<void
     const id = parseIdParam(request.params.id);
     await prisma.crawlSource.delete({ where: { id } });
     return reply.status(204).send();
-  });
-
-  // POST /api/crawl-sources/:id/trigger - Manually trigger crawl
-  app.post<{ Params: { id: string } }>("/:id/trigger", async (request, reply) => {
-    const id = parseIdParam(request.params.id);
-
-    // Verify source exists
-    await prisma.crawlSource.findUniqueOrThrow({ where: { id } });
-
-    await crawlingQueue.add("manual-crawl", {
-      type: "crawl-source",
-      sourceId: id,
-    });
-
-    return reply.status(202).send({ message: "Crawl job enqueued", sourceId: id });
   });
 
   // GET /api/crawl-sources/results - List crawl results

@@ -715,6 +715,22 @@ function VariationsTab({ campaignId }: { campaignId: number }) {
     onError: () => toast.error("Erreur de regeneration"),
   });
 
+  const testSendMutation = useMutation({
+    mutationFn: ({ email, contactType, language }: { email: string; contactType: string; language: string }) =>
+      api.post(`/broadcast/${campaignId}/test-send`, { email, contactType, language }),
+    onSuccess: () => toast.success("Email de test envoye"),
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Erreur lors de l'envoi du test";
+      toast.error(msg);
+    },
+  });
+
+  const handleTestSend = (contactType: string, language: string) => {
+    const email = window.prompt("Adresse email pour le test-send :");
+    if (!email) return;
+    testSendMutation.mutate({ email, contactType, language });
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-4">
@@ -756,7 +772,15 @@ function VariationsTab({ campaignId }: { campaignId: number }) {
       )}
 
       {selected && (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={() => handleTestSend(selected, filtered[0]?.language ?? "fr")}
+            disabled={testSendMutation.isPending || filtered.length === 0}
+            className="flex items-center gap-1 rounded-lg bg-surface-100 px-3 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-200 disabled:opacity-50"
+          >
+            <Send size={12} />
+            Test-send
+          </button>
           <button
             onClick={() => regenerateMutation.mutate(selected)}
             disabled={regenerateMutation.isPending}

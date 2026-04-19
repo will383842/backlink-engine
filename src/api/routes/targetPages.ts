@@ -109,25 +109,6 @@ export default async function targetPagesRoutes(app: FastifyInstance): Promise<v
     return reply.status(201).send({ data: targetPage });
   });
 
-  // GET /api/target-pages/:id
-  app.get<{ Params: { id: string } }>("/:id", async (request, reply) => {
-    const id = parseIdParam(request.params.id);
-
-    const targetPage = await prisma.targetPage.findUnique({
-      where: { id },
-      include: {
-        anchorStrategies: true,
-        _count: { select: { backlinks: true } },
-      },
-    });
-
-    if (!targetPage) {
-      return reply.status(404).send({ statusCode: 404, error: "Not Found", message: `Target page ${id} not found` });
-    }
-
-    return reply.send({ data: targetPage });
-  });
-
   // PUT /api/target-pages/:id
   app.put<{ Params: { id: string }; Body: UpdateBody }>("/:id", async (request, reply) => {
     const id = parseIdParam(request.params.id);
