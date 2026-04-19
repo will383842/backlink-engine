@@ -7,6 +7,7 @@ import { redis } from "../../config/redis.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
 import { checkForReplies, processReply } from "../../services/outreach/imapMonitor.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 
 const log = createChildLogger("reply-worker");
 
@@ -25,6 +26,11 @@ type ReplyJobData = ImapCheckJobData;
 // ---------------------------------------------------------------------------
 
 async function processReplyJob(job: Job<ReplyJobData>): Promise<void> {
+  if (!(await isWorkerEnabled("reply"))) {
+    log.info({ jobId: job.id }, "reply worker disabled, skipping job.");
+    return;
+  }
+
   const { type } = job.data;
 
   if (type !== "imap-check") {

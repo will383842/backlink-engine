@@ -13,6 +13,7 @@ import {
   advanceAllWarmups,
 } from "../../services/broadcast/warmupScheduler.js";
 import { advanceBroadcastEnrollments } from "../../services/broadcast/broadcastSequenceAdvancer.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 
 const log = createChildLogger("broadcast-worker");
 
@@ -39,6 +40,11 @@ type BroadcastJobData = ProcessBroadcastData | AdvanceWarmupData | AdvanceBroadc
 // ---------------------------------------------------------------------------
 
 async function processBroadcastJob(job: Job<BroadcastJobData>): Promise<void> {
+  if (!(await isWorkerEnabled("broadcast"))) {
+    log.info({ jobId: job.id, type: job.data.type }, "broadcast worker disabled, skipping job.");
+    return;
+  }
+
   const { type } = job.data;
 
   if (type === "advance-warmup") {

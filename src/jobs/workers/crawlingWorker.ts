@@ -7,6 +7,7 @@ import { redis } from "../../config/redis.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
 import { executeCrawl, crawlAllSources } from "../../services/crawling/crawlOrchestrator.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 
 const log = createChildLogger("crawling-worker");
 
@@ -30,6 +31,11 @@ type CrawlingJobData = CrawlSourceJobData | CrawlAllJobData;
 // ---------------------------------------------------------------------------
 
 async function processCrawlingJob(job: Job<CrawlingJobData>): Promise<void> {
+  if (!(await isWorkerEnabled("crawling"))) {
+    log.info({ jobId: job.id, type: job.data.type }, "crawling worker disabled, skipping job.");
+    return;
+  }
+
   const { type } = job.data;
 
   if (type === "crawl-source") {

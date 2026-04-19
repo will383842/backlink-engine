@@ -14,6 +14,7 @@ import { canAutoEnroll, isProspectEligible } from "../../services/autoEnrollment
 import { findBestCampaign, isAlreadyEnrolled } from "../../services/autoEnrollment/campaignSelector.js";
 import { enrollProspect } from "../../services/outreach/enrollmentManager.js";
 import { getLlmClient } from "../../llm/index.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 import type { OpportunityType } from "@prisma/client";
 
 const log = createChildLogger("enrichment-worker");
@@ -708,6 +709,11 @@ async function autoEnrollIfEligible(prospectId: number): Promise<void> {
 }
 
 async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> {
+  if (!(await isWorkerEnabled("enrichment"))) {
+    log.info({ jobId: job.id, type: job.data.type }, "enrichment worker disabled, skipping job.");
+    return;
+  }
+
   const { type } = job.data;
 
   switch (type) {

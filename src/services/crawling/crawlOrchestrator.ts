@@ -46,6 +46,18 @@ export async function executeCrawl(sourceId: number): Promise<CrawlStats> {
       break;
 
     case "search_engine": {
+      // Disabled by default — direct Google scraping risks IP ban and
+      // SerpAPI is paid. Use blog_directory / competitor_backlinks /
+      // write_for_us instead. Set CRAWLING_SEARCH_ENGINE_ENABLED=true to
+      // re-enable (requires SERPAPI_KEY or accepting IP ban risk).
+      if (process.env["CRAWLING_SEARCH_ENGINE_ENABLED"] !== "true") {
+        log.warn(
+          { sourceId, name: source.name },
+          "search_engine source skipped: disabled by default. Set CRAWLING_SEARCH_ENGINE_ENABLED=true to enable.",
+        );
+        break;
+      }
+
       const queries = (config.queries as string[]) ?? [];
       const countries = (config.countries as string[]) ?? [];
       const languages = (config.languages as string[]) ?? ["en"];

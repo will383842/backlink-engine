@@ -77,6 +77,14 @@ export default async function crawlingRoutes(app: FastifyInstance): Promise<void
   app.post<{ Body: CreateBody }>("/", async (request, reply) => {
     const { name, type, baseUrl, config } = request.body;
 
+    if (type === "search_engine" && process.env["CRAWLING_SEARCH_ENGINE_ENABLED"] !== "true") {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "search_engine sources are disabled (risk of IP ban). Use blog_directory, competitor_backlinks, or write_for_us instead. Set CRAWLING_SEARCH_ENGINE_ENABLED=true to override.",
+      });
+    }
+
     const source = await prisma.crawlSource.create({
       data: { name, type, baseUrl, config: (config ?? {}) as unknown as import("@prisma/client").Prisma.InputJsonValue },
     });

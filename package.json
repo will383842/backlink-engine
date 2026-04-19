@@ -7,14 +7,16 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/index.js",
-    "type-check": "tsc --noEmit",
+    "type-check": "prisma generate && tsc --noEmit",
     "migrate": "tsx scripts/run-migrations.ts",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:crawl-sources": "tsx scripts/seed-crawl-sources.ts",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "db:reset": "prisma migrate reset --force",

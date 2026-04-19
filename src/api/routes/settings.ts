@@ -9,6 +9,13 @@ import {
 import { sendTestNotification } from "../../services/notifications/telegramService.js";
 import { getOutreachMode, setOutreachMode } from "../../services/outreach/outreachMode.js";
 import type { OutreachMode } from "../../services/outreach/outreachMode.js";
+import {
+  WORKER_NAMES,
+  getWorkerToggles,
+  setWorkerEnabled,
+  setAllWorkers,
+  type WorkerName,
+} from "../../services/automation/automationToggles.js";
 
 // ─────────────────────────────────────────────────────────────
 // Global settings management
@@ -570,6 +577,68 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
             : "Switched to REVIEW mode — emails will be saved as drafts for approval",
         },
       });
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────
+  // Per-worker automation toggles
+  // ─────────────────────────────────────────────────────────────
+
+  app.get("/automation/workers", async (_request, reply) => {
+    const toggles = await getWorkerToggles(true);
+    return reply.send({ data: toggles, workers: WORKER_NAMES });
+  });
+
+  app.put<{
+    Params: { worker: string };
+    Body: { enabled: boolean };
+  }>(
+    "/automation/workers/:worker",
+    {
+      schema: {
+        params: {
+          type: "object",
+          required: ["worker"],
+          properties: { worker: { type: "string" } },
+        },
+        body: {
+          type: "object",
+          required: ["enabled"],
+          properties: { enabled: { type: "boolean" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { worker } = request.params;
+      const { enabled } = request.body;
+
+      if (!(WORKER_NAMES as readonly string[]).includes(worker)) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: `Unknown worker "${worker}". Valid: ${WORKER_NAMES.join(", ")}`,
+        });
+      }
+
+      const toggles = await setWorkerEnabled(worker as WorkerName, enabled);
+      return reply.send({ data: toggles });
+    },
+  );
+
+  app.put<{ Body: { enabled: boolean } }>(
+    "/automation/all",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["enabled"],
+          properties: { enabled: { type: "boolean" } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const toggles = await setAllWorkers(request.body.enabled);
+      return reply.send({ data: toggles });
     },
   );
 }

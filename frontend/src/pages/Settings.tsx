@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, Bot, User, Building2, Globe, Mail, Phone, MessageCircle, Send, Shield, Zap } from "lucide-react";
+import { Save, Bot, User, Building2, Globe, Mail, Phone, MessageCircle, Send, Shield, Zap, Power } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import type { AppSettings } from "@/types";
@@ -115,6 +115,42 @@ export default function Settings() {
       setOutreachMode(mode);
       toast.success(mode === "auto" ? "Mode AUTO activé — emails envoyés immédiatement" : "Mode REVIEW activé — emails en brouillon");
       queryClient.invalidateQueries({ queryKey: ["settings", "outreach-mode"] });
+    },
+  });
+
+  // Per-worker automation toggles
+  const { data: workerTogglesData } = useQuery({
+    queryKey: ["settings", "automation-workers"],
+    queryFn: async () => {
+      const res = await api.get<{
+        data: Record<string, boolean>;
+        workers: readonly string[];
+      }>("/settings/automation/workers");
+      return res.data;
+    },
+  });
+
+  const toggleWorker = useMutation({
+    mutationFn: async ({ worker, enabled }: { worker: string; enabled: boolean }) => {
+      const res = await api.put(`/settings/automation/workers/${worker}`, { enabled });
+      return res.data;
+    },
+    onSuccess: (_, vars) => {
+      toast.success(
+        `${vars.worker} ${vars.enabled ? "activé" : "désactivé"}`,
+      );
+      queryClient.invalidateQueries({ queryKey: ["settings", "automation-workers"] });
+    },
+  });
+
+  const toggleAllWorkers = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await api.put("/settings/automation/all", { enabled });
+      return res.data;
+    },
+    onSuccess: (_, enabled) => {
+      toast.success(enabled ? "Automatisation ACTIVÉE (tous les workers)" : "Automatisation COUPÉE (tous les workers)");
+      queryClient.invalidateQueries({ queryKey: ["settings", "automation-workers"] });
     },
   });
 
@@ -313,6 +349,84 @@ export default function Settings() {
             <a href="/sent-emails?status=draft" className="font-semibold underline">Voir les brouillons</a>
           </div>
         )}
+      </div>
+
+      {/* Per-worker automation toggles */}
+      <div className="card space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-surface-900 flex items-center gap-2">
+              <Power size={20} className="text-brand-600" />
+              Automatisation — par worker
+            </h3>
+            <p className="mt-1 text-sm text-surface-600">
+              Active ou coupe chaque worker individuellement. Un worker désactivé n'exécute plus ses jobs planifiés ; le cron continue mais les jobs se terminent immédiatement.
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => toggleAllWorkers.mutate(true)}
+              className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+            >
+              Tout activer
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm("Couper TOUS les workers ? Aucune automatisation ne tournera plus.")) {
+                  toggleAllWorkers.mutate(false);
+                }
+              }}
+              className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+            >
+              Tout couper
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {(workerTogglesData?.workers ?? []).map((worker) => {
+            const enabled = workerTogglesData?.data?.[worker] !== false;
+            const labels: Record<string, { title: string; desc: string }> = {
+              enrichment: { title: "Enrichment", desc: "Score, langue, pays, tags" },
+              autoEnrollment: { title: "Auto-enrollment", desc: "Inscription auto aux campagnes" },
+              outreach: { title: "Outreach", desc: "Envoi d'emails / retry" },
+              reply: { title: "Reply", desc: "Ingestion IMAP des réponses" },
+              verification: { title: "Verification", desc: "Vérif backlinks + link loss" },
+              reporting: { title: "Reporting", desc: "Rapports quotidiens / hebdo" },
+              sequence: { title: "Sequence", desc: "Relances de séquence" },
+              crawling: { title: "Crawling", desc: "Découverte de prospects" },
+              broadcast: { title: "Broadcast", desc: "Campagnes de masse + warmup" },
+            };
+            const meta = labels[worker] ?? { title: worker, desc: "" };
+            return (
+              <button
+                key={worker}
+                type="button"
+                onClick={() => toggleWorker.mutate({ worker, enabled: !enabled })}
+                className={`rounded-xl border-2 p-3 text-left transition-all ${
+                  enabled
+                    ? "border-emerald-500 bg-emerald-50"
+                    : "border-surface-300 bg-surface-50 opacity-75"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-surface-900">{meta.title}</span>
+                  <span
+                    className={`inline-block h-2.5 w-2.5 rounded-full ${
+                      enabled ? "bg-emerald-500" : "bg-surface-400"
+                    }`}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-surface-600">{meta.desc}</p>
+                <p className={`mt-2 text-xs font-semibold ${enabled ? "text-emerald-700" : "text-surface-500"}`}>
+                  {enabled ? "ACTIF" : "COUPÉ"}
+                </p>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Outreach Config */}

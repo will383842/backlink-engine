@@ -5,6 +5,7 @@ import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
 import { notifyBacklinkLost, notifyBacklinkVerified } from "../../services/notifications/telegramService.js";
 import { proxyFetch } from "../../config/proxy.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 
 const log = createChildLogger("verification-worker");
 
@@ -265,6 +266,11 @@ interface LinkLossResult {
 async function processVerificationJob(
   job: Job<VerificationJobData>
 ): Promise<void> {
+  if (!(await isWorkerEnabled("verification"))) {
+    log.info({ jobId: job.id, type: job.data.type }, "verification worker disabled, skipping job.");
+    return;
+  }
+
   const { type } = job.data;
 
   switch (type) {

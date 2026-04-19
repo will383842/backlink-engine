@@ -16,6 +16,7 @@ import {
   sendWeeklyReportNotification,
   sendDailyBroadcastReport,
 } from "../../services/notifications/telegramService.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 
 const log = createChildLogger("reporting-worker");
 
@@ -189,6 +190,11 @@ async function storeDailyStats(stats: DailyStats): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function processReportingJob(job: Job<ReportingJobData>): Promise<void> {
+  if (!(await isWorkerEnabled("reporting"))) {
+    log.info({ jobId: job.id, type: job.data.type }, "reporting worker disabled, skipping job.");
+    return;
+  }
+
   const { type } = job.data;
 
   if (type === "daily-stats") {

@@ -7,6 +7,7 @@ import { redis } from "../../config/redis.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { QUEUE_NAMES } from "../queue.js";
 import { advanceEligibleEnrollments } from "../../services/outreach/sequenceAdvancer.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 
 const log = createChildLogger("sequence-worker");
 
@@ -25,6 +26,11 @@ type SequenceJobData = AdvanceSequenceJobData;
 // ---------------------------------------------------------------------------
 
 async function processSequenceJob(job: Job<SequenceJobData>): Promise<void> {
+  if (!(await isWorkerEnabled("sequence"))) {
+    log.info({ jobId: job.id }, "sequence worker disabled, skipping job.");
+    return;
+  }
+
   const { type } = job.data;
 
   if (type !== "advance-sequence") {

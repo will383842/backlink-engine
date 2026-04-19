@@ -16,6 +16,7 @@ import { logger } from "../../utils/logger.js";
 import { findBestCampaign } from "../../services/autoEnrollment/campaignSelector.js";
 import { autoEnrollmentQueue } from "../queue.js";
 import { createRedisConnection } from "../../config/redis.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 
 const log = logger.child({ worker: "auto-enrollment" });
 
@@ -26,6 +27,11 @@ export interface AutoEnrollmentJobData {
 export async function processAutoEnrollment(
   job: Job<AutoEnrollmentJobData>
 ): Promise<{ enrolled: number; skipped: number }> {
+  if (!(await isWorkerEnabled("autoEnrollment"))) {
+    log.info({ jobId: job.id }, "autoEnrollment worker disabled, skipping job.");
+    return { enrolled: 0, skipped: 0 };
+  }
+
   const { triggeredAt } = job.data;
 
   log.info({ triggeredAt }, "Starting auto-enrollment batch");

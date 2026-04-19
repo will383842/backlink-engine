@@ -5,6 +5,7 @@ import { createChildLogger } from "../../utils/logger.js";
 import { mailwizzConfig, isMailwizzConfigured } from "../../config/mailwizz.js";
 import { isMailwizzReady } from "../../services/mailwizz/config.js";
 import { QUEUE_NAMES } from "../queue.js";
+import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 
 const log = createChildLogger("outreach-worker");
 
@@ -86,6 +87,11 @@ async function addSubscriberToMailwizz(
 // ---------------------------------------------------------------------------
 
 async function processOutreachJob(job: Job<OutreachJobData>): Promise<void> {
+  if (!(await isWorkerEnabled("outreach"))) {
+    log.info({ jobId: job.id }, "outreach worker disabled, skipping job.");
+    return;
+  }
+
   const { type, enrollmentId, failedStatus } = job.data;
 
   if (type !== "retry-failed") {
