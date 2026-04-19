@@ -69,6 +69,8 @@ const SEEDS: Seed[] = [
   { typeKey: "ufe", category: "association", label: "UFE" },
   { typeKey: "communaute-expat", category: "association", label: "Communauté expat" },
   { typeKey: "lieu-communautaire", category: "association", label: "Lieu communautaire" },
+  { typeKey: "ambassade", category: "association", label: "Ambassade" },
+  { typeKey: "embassy", category: "association", label: "Embassy (EN)" },
 
   // ── education ──────────────────────────────────────────────
   { typeKey: "ecole", category: "education", label: "École" },
