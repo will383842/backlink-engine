@@ -1,21 +1,22 @@
 // ---------------------------------------------------------------------------
-// Enrollment Manager - Enroll a prospect into a MailWizz outreach campaign
+// Enrollment Manager — enroll a prospect and send via SMTP direct
+// ---------------------------------------------------------------------------
+// Sending path: Postfix/PMTA on the VPS, using the per-domain rotation
+// (domainRotator) with ISP throttling. MailWizz is NOT used. A/B testing,
+// sequences, pixel tracking, reply classification and warmup are all handled
+// locally.
 // ---------------------------------------------------------------------------
 
 import { prisma } from "../../config/database.js";
-import {
-  mailwizzConfig,
-  getListUid,
-} from "../../config/mailwizz.js";
 import type { SupportedLanguage } from "../../config/constants.js";
 import { DA_THRESHOLDS, SCORE_THRESHOLDS } from "../../config/constants.js";
 import type { AbVariant } from "../../llm/types.js";
 import { createChildLogger } from "../../utils/logger.js";
-import { MailWizzClient } from "./mailwizzClient.js";
 import { isInSuppressionList } from "../suppression/suppressionManager.js";
 import { getLlmClient } from "../../llm/index.js";
-import { getMailwizzConfig } from "../mailwizz/config.js";
 import { shouldSendImmediately } from "./outreachMode.js";
+import { sendViaSMTP } from "./smtpSender.js";
+import { getNextSendingDomain } from "./domainRotator.js";
 
 const log = createChildLogger("enrollment");
 
@@ -72,29 +73,6 @@ export async function enrollProspect(
 ): Promise<void> {
   log.info({ prospectId, campaignId }, "Starting enrollment");
 
-  // 0. Check MailWizz kill switch
-  const mwConfig = await getMailwizzConfig();
-
-  if (!mwConfig.enabled) {
-    log.warn({ prospectId, campaignId }, "MailWizz disabled, enrollment skipped");
-    await logEvent(prospectId, null, null, "ENROLLMENT_BLOCKED", {
-      reason: "mailwizz_disabled",
-    });
-    return;
-  }
-
-  if (mwConfig.dryRun) {
-    log.info(
-      { prospectId, campaignId },
-      "DRY RUN MODE - Simulating enrollment without sending to MailWizz"
-    );
-    await logEvent(prospectId, null, null, "ENROLLMENT_DRY_RUN", {
-      campaignId,
-      prospectId,
-    });
-    return;
-  }
-
   // 1. Load data
   const prospect = await prisma.prospect.findUniqueOrThrow({
     where: { id: prospectId },
@@ -126,24 +104,7 @@ export async function enrollProspect(
     return;
   }
 
-  // 3. Check if already in MailWizz
-  const listUid = await resolveListUid(campaign, prospect);
-
-  const mailwizz = new MailWizzClient(mailwizzConfig.apiUrl, mailwizzConfig.apiKey);
-  const existing = await mailwizz.searchSubscriber(listUid, contact.email);
-
-  if (existing) {
-    log.warn(
-      { prospectId, email: contact.email },
-      "Subscriber already exists in MailWizz",
-    );
-    await logEvent(prospectId, contact.id, null, "ENROLLMENT_BLOCKED", {
-      reason: "already_in_mailwizz",
-    });
-    return;
-  }
-
-  // 4. Check for existing enrollment for this contact + campaign
+  // 3. Check for existing enrollment for this contact + campaign
   const existingEnrollment = await prisma.enrollment.findUnique({
     where: {
       contactId_campaignId: {
@@ -203,77 +164,49 @@ export async function enrollProspect(
   // 9. Check outreach mode: auto (send immediately) vs review (create draft)
   const sendNow = await shouldSendImmediately();
 
-  let subscriberUid: string | undefined;
   let messageId: string | undefined;
-  let emailEngineCampaignId: number | undefined;
+  let sendingDomain: { domain: string; fromEmail: string; fromName: string; replyTo: string } | null = null;
   let emailStatus: string;
 
   if (sendNow) {
-    // ── AUTO MODE: Create MailWizz subscriber + send email immediately ──
-    const mwResult = await mailwizz.createSubscriber(listUid, {
-      email: contact.email,
-      fname: contact.name ?? undefined,
-      BLOG_NAME: prospect.domain,
-      BLOG_URL: `https://${prospect.domain}`,
-      COUNTRY: prospect.country ?? "",
-      LANGUAGE: prospect.language ?? campaign.language,
-      PERSONALIZED_LINE: generatedEmail.body.slice(0, 200),
-      PROSPECT_ID: String(prospectId),
-      CAMPAIGN_REF: campaignRef,
-      TAGS: tags.join(","),
-    });
-    subscriberUid = mwResult.subscriberUid;
+    // ── AUTO MODE: send directly via SMTP (Postfix/PMTA) with domain rotation ──
+    //
+    // We pick the next sending domain from the rotation pool (round-robin with
+    // per-domain warmup caps applied by the rotator). The actual SMTP relay is
+    // the local Postfix; PMTA handles throttling + warmup traffic mixing.
+    try {
+      sendingDomain = await getNextSendingDomain();
+      const fromEmail = senderSettings.fromEmail || sendingDomain.fromEmail;
+      const fromName = senderSettings.fromName || sendingDomain.fromName;
+      const replyTo = senderSettings.replyTo || sendingDomain.replyTo;
 
-    // Send via email-engine (primary) or MailWizz transactional (fallback)
-    const { getEmailEngineClient } = await import("./emailEngineClient.js");
-    const emailEngine = getEmailEngineClient();
+      const result = await sendViaSMTP({
+        toEmail: contact.email,
+        toName: contact.name ?? undefined,
+        fromEmail,
+        fromName,
+        replyTo,
+        subject: generatedEmail.subject,
+        bodyText: generatedEmail.body,
+      });
 
-    if (emailEngine.isConfigured()) {
-      try {
-        const result = await emailEngine.sendEmail({
-          toEmail: contact.email,
-          toName: contact.name ?? undefined,
-          subject: generatedEmail.subject,
-          body: generatedEmail.body,
-          language: prospect.language ?? campaign.language,
-          tags: tags,
-          metadata: {
-            prospect_id: String(prospectId),
-            campaign_ref: campaignRef,
-            domain: prospect.domain,
-          },
-        });
-
-        if (result.success) {
-          emailEngineCampaignId = result.campaignId;
-          log.info({ prospectId, toEmail: contact.email, campaignId: result.campaignId }, "Initial email SENT via email-engine.");
-        } else {
-          log.warn({ prospectId, error: result.error }, "Email-engine send failed, trying MailWizz fallback.");
-        }
-      } catch (err) {
-        log.warn({ err, prospectId }, "Email-engine unavailable, trying MailWizz fallback.");
-      }
-    }
-
-    if (!emailEngineCampaignId) {
-      try {
-        const result = await mailwizz.sendTransactionalEmail({
-          toEmail: contact.email,
-          toName: contact.name ?? undefined,
-          subject: generatedEmail.subject,
-          body: generatedEmail.body,
-          fromEmail: senderSettings.fromEmail || undefined,
-          fromName: senderSettings.fromName || undefined,
-          replyTo: senderSettings.replyTo || undefined,
-        });
+      if (result.success) {
         messageId = result.messageId;
-        log.info({ prospectId, toEmail: contact.email, messageId }, "Initial email SENT via MailWizz fallback.");
-      } catch (err) {
-        log.error({ err, prospectId }, "Both email-engine and MailWizz failed. Email not sent.");
+        log.info(
+          { prospectId, toEmail: contact.email, domain: sendingDomain.domain, messageId },
+          "Initial email SENT via SMTP direct.",
+        );
+      } else {
+        log.error(
+          { prospectId, error: result.error, domain: sendingDomain.domain },
+          "SMTP send failed.",
+        );
       }
+    } catch (err) {
+      log.error({ err, prospectId }, "Fatal error during SMTP send attempt.");
     }
 
-    emailStatus = (emailEngineCampaignId || messageId) ? "sent" : "failed";
+    emailStatus = messageId ? "sent" : "failed";
   } else {
     // ── REVIEW MODE: Generate draft, do NOT send ──
     emailStatus = "draft";
@@ -290,8 +223,10 @@ export async function enrollProspect(
         contactId: contact.id,
         campaignId: campaign.id,
         prospectId: prospect.id,
-        mailwizzSubscriberUid: subscriberUid ?? null,
-        mailwizzListUid: listUid,
+        // mailwizzSubscriberUid / mailwizzListUid intentionally null — we send
+        // via SMTP direct. Columns kept in schema for historical compat.
+        mailwizzSubscriberUid: null,
+        mailwizzListUid: null,
         campaignRef,
         currentStep: 0,
         status: "active",
@@ -309,6 +244,9 @@ export async function enrollProspect(
         contactId: contact.id,
         campaignId: campaign.id,
         stepNumber: 0,
+        // fromEmail records which sending domain actually carried this message
+        // so the Mailbox Monitor can attribute stats per inbox.
+        fromEmail: sendingDomain?.fromEmail ?? null,
         subject: generatedEmail.subject,
         body: generatedEmail.body,
         language: prospect.language ?? campaign.language,
@@ -317,9 +255,10 @@ export async function enrollProspect(
           domain: prospect.domain,
           contactName: contact.name ?? null,
           abVariant: abVariant ?? null,
+          sendingDomain: sendingDomain?.domain ?? null,
         } as unknown as import("@prisma/client").Prisma.InputJsonValue,
         mailwizzMessageId: messageId ?? null,
-        mailwizzCampaignUid: emailEngineCampaignId ? String(emailEngineCampaignId) : null,
+        mailwizzCampaignUid: null,
         status: emailStatus,
         sentAt: sendNow ? new Date() : null as unknown as Date,
         abVariant: abVariant ?? null,
@@ -356,9 +295,8 @@ export async function enrollProspect(
         data: {
           campaignId,
           campaignRef,
-          subscriberUid: subscriberUid ?? null,
-          listUid,
           messageId: messageId ?? null,
+          sendingDomain: sendingDomain?.domain ?? null,
           emailSubject: generatedEmail.subject,
           tags,
           abVariant: abVariant ?? null,
@@ -400,34 +338,6 @@ function calculateFirstFollowupDate(campaign: CampaignForEnrollment): Date | nul
   } catch {
     return null;
   }
-}
-
-// ---------------------------------------------------------------------------
-// List UID resolution: campaign override → DB settings → env vars
-// ---------------------------------------------------------------------------
-
-async function resolveListUid(
-  campaign: CampaignForEnrollment,
-  prospect: ProspectForEnrollment,
-): Promise<string> {
-  // 1. Campaign-level override
-  if (campaign.mailwizzListUid) return campaign.mailwizzListUid;
-
-  // 2. Try DB settings
-  const lang = (prospect.language ?? campaign.language) as SupportedLanguage;
-  try {
-    const row = await prisma.appSetting.findUnique({ where: { key: "mailwizz" } });
-    if (row) {
-      const mw = row.value as Record<string, unknown>;
-      const listUids = mw.listUids as Record<string, string> | undefined;
-      if (listUids?.[lang]) return listUids[lang];
-    }
-  } catch {
-    // fall through to env vars
-  }
-
-  // 3. Env vars (via config)
-  return getListUid(lang);
 }
 
 // ---------------------------------------------------------------------------

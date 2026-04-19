@@ -4,9 +4,9 @@
 
 import { prisma } from "../../config/database.js";
 import { redis } from "../../config/redis.js";
-import { mailwizzConfig } from "../../config/mailwizz.js";
+import { sendViaSMTP } from "./smtpSender.js";
+import { getNextSendingDomain } from "./domainRotator.js";
 import { createChildLogger } from "../../utils/logger.js";
-import { MailWizzClient } from "./mailwizzClient.js";
 import { getLlmClient } from "../../llm/index.js";
 import { shouldSendImmediately } from "./outreachMode.js";
 
@@ -281,62 +281,41 @@ async function advanceToNextStep(
   let emailSent = false;
   let emailStatus: string;
 
+  let sendingDomain: { domain: string; fromEmail: string; fromName: string; replyTo: string } | null = null;
+
   if (sendNow) {
-    // ── AUTO MODE: Send follow-up immediately ──
-    const { getEmailEngineClient } = await import("./emailEngineClient.js");
-    const emailEngine = getEmailEngineClient();
+    // ── AUTO MODE: Send follow-up immediately via SMTP direct ──
+    try {
+      sendingDomain = await getNextSendingDomain();
+      const fromEmail = senderSettings.fromEmail || sendingDomain.fromEmail;
+      const fromName = senderSettings.fromName || sendingDomain.fromName;
+      const replyTo = senderSettings.replyTo || sendingDomain.replyTo;
 
-    if (emailEngine.isConfigured()) {
-      try {
-        const result = await emailEngine.sendEmail({
-          toEmail: contact.email,
-          toName: contact.firstName ?? contact.name ?? undefined,
-          subject: generatedEmail.subject,
-          body: generatedEmail.body,
-          language: prospect.language ?? "en",
-          tags: [`bl_step_${nextStepIndex}`],
-          metadata: {
-            prospect_id: String(enrollment.prospectId),
-            enrollment_id: String(enrollment.id),
-            step: String(nextStepIndex),
-          },
-        });
-        emailSent = result.success;
-        if (result.success) {
-          log.info({ enrollmentId: enrollment.id, step: nextStepIndex, toEmail: contact.email }, "Follow-up SENT via email-engine.");
-        }
-      } catch (err) {
-        log.warn({ err, enrollmentId: enrollment.id }, "Email-engine unavailable for follow-up.");
-      }
-    }
+      const result = await sendViaSMTP({
+        toEmail: contact.email,
+        toName: contact.firstName ?? contact.name ?? undefined,
+        fromEmail,
+        fromName,
+        replyTo,
+        subject: generatedEmail.subject,
+        bodyText: generatedEmail.body,
+      });
 
-    if (!emailSent) {
-      try {
-        const mailwizz = new MailWizzClient(mailwizzConfig.apiUrl, mailwizzConfig.apiKey);
-
-        if (enrollment.mailwizzSubscriberUid && enrollment.mailwizzListUid) {
-          await mailwizz.updateSubscriber(enrollment.mailwizzListUid, enrollment.mailwizzSubscriberUid, {
-            CURRENT_STEP: String(nextStepIndex),
-          }).catch((err: unknown) => {
-            log.warn({ err, enrollmentId: enrollment.id }, "Failed to update MailWizz subscriber step.");
-          });
-        }
-
-        const result = await mailwizz.sendTransactionalEmail({
-          toEmail: contact.email,
-          toName: contact.firstName ?? contact.name ?? undefined,
-          subject: generatedEmail.subject,
-          body: generatedEmail.body,
-          fromEmail: senderSettings.fromEmail || undefined,
-          fromName: senderSettings.fromName || undefined,
-          replyTo: senderSettings.replyTo || undefined,
-        });
+      if (result.success) {
         messageId = result.messageId;
         emailSent = true;
-        log.info({ enrollmentId: enrollment.id, step: nextStepIndex, messageId }, "Follow-up SENT via MailWizz fallback.");
-      } catch (err) {
-        log.error({ err, enrollmentId: enrollment.id, step: nextStepIndex }, "Both email-engine and MailWizz failed for follow-up.");
+        log.info(
+          { enrollmentId: enrollment.id, step: nextStepIndex, domain: sendingDomain.domain, messageId },
+          "Follow-up SENT via SMTP direct.",
+        );
+      } else {
+        log.error(
+          { enrollmentId: enrollment.id, step: nextStepIndex, error: result.error, domain: sendingDomain.domain },
+          "SMTP follow-up failed.",
+        );
       }
+    } catch (err) {
+      log.error({ err, enrollmentId: enrollment.id, step: nextStepIndex }, "Fatal error during SMTP follow-up.");
     }
     emailStatus = emailSent ? "sent" : "failed";
   } else {
