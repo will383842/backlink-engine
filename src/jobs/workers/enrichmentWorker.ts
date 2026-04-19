@@ -339,6 +339,9 @@ async function enrichSingleProspect(prospectId: number): Promise<void> {
                 lastName: item.lastName || null,    // Already extracted!
                 emailStatus: item.validation.status as any,
                 discoveredVia: "auto_scraper",
+                // Inherit sourceContactType from parent prospect so every
+                // contact can be targeted by campaigns (100% coverage).
+                sourceContactType: prospect.sourceContactType ?? "scraped",
               },
             });
 

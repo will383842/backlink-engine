@@ -188,12 +188,16 @@ async function processHits(sourceId: number, hits: CrawlHit[]): Promise<CrawlSta
     stats.newResults++;
 
     // Auto-create prospect
+    // NOTE: sourceContactType is mandatory for reporting / campaign targeting.
+    // Scraper-origin prospects default to "scraped" (no human-typed source).
+    // Enrichment worker will propagate this value to any auto-created contact.
     try {
       const prospect = await prisma.prospect.create({
         data: {
           domain,
           source: "scraper",
           status: "NEW",
+          sourceContactType: "scraped",
           sourceUrls: {
             create: {
               url: hit.url,
