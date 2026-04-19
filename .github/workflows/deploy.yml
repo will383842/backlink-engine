@@ -55,6 +55,13 @@ jobs:
             # Wait for the app container to be up before extracting the frontend dist
             sleep 10
 
+            # Apply pending Prisma migrations. Fail the deploy loudly if any
+            # migration errors out — do NOT silently continue with a DB in an
+            # inconsistent state. `migrate deploy` is idempotent: already-applied
+            # migrations are skipped.
+            echo "Running prisma migrate deploy..."
+            docker exec bl-app npx prisma migrate deploy
+
             # Sync freshly-built frontend dist from the container into the host
             # nginx static directory (nginx serves /opt/backlink-engine/frontend-static).
             if [ -d /opt/backlink-engine/frontend-static ]; then
