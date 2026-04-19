@@ -17,8 +17,6 @@ interface RetryFailedJobData {
   type: "retry-failed";
   /** Optional: restrict retry to a specific enrollment ID */
   enrollmentId?: number;
-  /** Optional: restrict retry to enrollments with this status */
-  failedStatus?: string;
 }
 
 type OutreachJobData = RetryFailedJobData;
@@ -92,18 +90,27 @@ async function processOutreachJob(job: Job<OutreachJobData>): Promise<void> {
     return;
   }
 
-  const { type, enrollmentId, failedStatus } = job.data;
+  const { type, enrollmentId } = job.data;
 
   if (type !== "retry-failed") {
     log.warn({ type, jobId: job.id }, "Unknown outreach job type, skipping.");
     return;
   }
 
-  log.info({ jobId: job.id, enrollmentId, failedStatus }, "Processing outreach retry.");
+  log.info({ jobId: job.id, enrollmentId }, "Processing outreach retry.");
 
-  // Build query to find enrollments that need retry
+  // "Failed" enrollments = active ones whose initial MailWizz subscribe never
+  // completed (subscriberUid is NULL). The previous query used
+  // `status: "failed"` but EnrollmentStatus has only {active, stopped,
+  // completed}, so every retry tick crashed with a Prisma validation error
+  // (see incident 2026-04-11 → ~193 failed jobs).
+  //
+  // We also require the enrollment to be at least 5 minutes old so the
+  // initial attempt has had time to complete before we try to retry it.
   const where: Record<string, unknown> = {
-    status: failedStatus ?? "failed",
+    status: "active",
+    mailwizzSubscriberUid: null,
+    enrolledAt: { lt: new Date(Date.now() - 5 * 60 * 1000) },
   };
   if (enrollmentId) {
     where["id"] = enrollmentId;
