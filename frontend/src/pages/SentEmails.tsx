@@ -294,8 +294,11 @@ function EmailDetailModal({
 
 export default function SentEmails() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [selectedEmail, setSelectedEmail] = useState<SentEmail | null>(null);
+  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<number>>(new Set());
+  const [confirmingBulk, setConfirmingBulk] = useState(false);
   const [filters, setFilters] = useState({
     campaignId: "",
     status: "",
@@ -307,6 +310,7 @@ export default function SentEmails() {
   const updateFilter = useCallback((key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPage(1);
+    setSelectedDraftIds(new Set());
   }, []);
 
   // Build query filters
@@ -320,6 +324,49 @@ export default function SentEmails() {
   const { data: emailsData, isLoading } = useSentEmails(queryFilters);
   const { data: stats } = useSentEmailStats();
   const { data: campaigns } = useCampaigns();
+
+  const isDraftView = filters.status === "draft";
+  const visibleDrafts = (emailsData?.data ?? []).filter((e) => e.status === "draft");
+  const allDraftsSelected =
+    visibleDrafts.length > 0 && visibleDrafts.every((e) => selectedDraftIds.has(e.id));
+
+  const bulkApproveMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const res = await api.post("/sent-emails/approve-all", { ids });
+      return res.data;
+    },
+    onSuccess: (res) => {
+      const { approved, failed, errors } = res.data ?? {};
+      if (failed > 0) {
+        toast.error(`${approved} envoyés, ${failed} échecs`);
+        if (errors?.length) console.warn("bulk approve errors", errors);
+      } else {
+        toast.success(`${approved} email(s) envoyé(s) avec succès`);
+      }
+      setSelectedDraftIds(new Set());
+      setConfirmingBulk(false);
+      queryClient.invalidateQueries({ queryKey: ["sent-emails"] });
+      queryClient.invalidateQueries({ queryKey: ["sent-emails-stats"] });
+    },
+    onError: () => toast.error("Erreur bulk approve"),
+  });
+
+  function toggleDraft(id: number) {
+    setSelectedDraftIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllDrafts() {
+    if (allDraftsSelected) {
+      setSelectedDraftIds(new Set());
+    } else {
+      setSelectedDraftIds(new Set(visibleDrafts.map((e) => e.id)));
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -424,12 +471,85 @@ export default function SentEmails() {
         </div>
       </div>
 
+      {/* Bulk-approve action bar — only visible in draft view, only when
+          at least one draft is selected. Mirrors the Gmail/Linear pattern
+          of "select rows then act on them". 100-row server-side cap is
+          enforced by the backend, plus a confirmation modal triggers above
+          10 to prevent fat-finger mistakes. */}
+      {isDraftView && selectedDraftIds.size > 0 && (
+        <div className="sticky top-2 z-10 flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm">
+          <span className="text-sm font-semibold text-emerald-900">
+            {selectedDraftIds.size} brouillon{selectedDraftIds.size > 1 ? "s" : ""} sélectionné{selectedDraftIds.size > 1 ? "s" : ""}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedDraftIds(new Set())}
+              className="text-xs text-surface-600 hover:underline"
+            >
+              Désélectionner
+            </button>
+            <button
+              onClick={() => {
+                if (selectedDraftIds.size > 10) setConfirmingBulk(true);
+                else bulkApproveMutation.mutate(Array.from(selectedDraftIds));
+              }}
+              disabled={bulkApproveMutation.isPending}
+              className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {bulkApproveMutation.isPending ? "Envoi…" : `✓ Approuver et envoyer (${selectedDraftIds.size})`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal — shown above 10 drafts to slow the user down */}
+      {confirmingBulk && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl space-y-4">
+            <h3 className="text-lg font-semibold text-surface-900">
+              Confirmer l'envoi de {selectedDraftIds.size} emails ?
+            </h3>
+            <p className="text-sm text-surface-600">
+              Tous ces brouillons partiront immédiatement via SMTP direct
+              (Postfix/PMTA). Cette action est irréversible une fois les
+              emails envoyés.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmingBulk(false)}
+                className="rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm hover:bg-surface-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={() => bulkApproveMutation.mutate(Array.from(selectedDraftIds))}
+                disabled={bulkApproveMutation.isPending}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                {bulkApproveMutation.isPending ? "Envoi…" : "Oui, envoyer tout"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-surface-200 bg-surface-50">
               <tr>
+                {isDraftView && (
+                  <th className="px-3 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={allDraftsSelected}
+                      onChange={toggleAllDrafts}
+                      title="Tout sélectionner"
+                      className="h-4 w-4"
+                    />
+                  </th>
+                )}
                 <th className="px-4 py-3 font-medium text-surface-600">{t("sentEmails.date")}</th>
                 <th className="px-4 py-3 font-medium text-surface-600">{t("sentEmails.recipient")}</th>
                 <th className="px-4 py-3 font-medium text-surface-600">{t("sentEmails.subject")}</th>
@@ -443,13 +563,13 @@ export default function SentEmails() {
             <tbody className="divide-y divide-surface-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center">
+                  <td colSpan={isDraftView ? 9 : 8} className="px-4 py-12 text-center">
                     <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-brand-600 border-t-transparent" />
                   </td>
                 </tr>
               ) : !emailsData?.data.length ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-surface-500">
+                  <td colSpan={isDraftView ? 9 : 8} className="px-4 py-12 text-center text-surface-500">
                     {t("sentEmails.noEmailsFound")}
                   </td>
                 </tr>
@@ -460,6 +580,18 @@ export default function SentEmails() {
                     onClick={() => setSelectedEmail(email)}
                     className="cursor-pointer transition-colors hover:bg-surface-50"
                   >
+                    {isDraftView && (
+                      <td className="px-3 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                        {email.status === "draft" && (
+                          <input
+                            type="checkbox"
+                            checked={selectedDraftIds.has(email.id)}
+                            onChange={() => toggleDraft(email.id)}
+                            className="h-4 w-4"
+                          />
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-xs text-surface-500 whitespace-nowrap">
                       {format(new Date(email.sentAt), "dd MMM yyyy HH:mm")}
                     </td>

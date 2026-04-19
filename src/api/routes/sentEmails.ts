@@ -5,6 +5,9 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser, parseIdParam } from "../middleware/auth.js";
+import { createChildLogger } from "../../utils/logger.js";
+
+const log = createChildLogger("sent-emails-api");
 
 export default async function sentEmailsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticateUser);
@@ -550,32 +553,151 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
     },
   );
 
-  // ───── POST /approve-all ─── Approve all draft emails at once ──
-  app.post("/approve-all", async (_request, reply) => {
-    const drafts = await prisma.sentEmail.findMany({
-      where: { status: "draft" },
-      select: { id: true },
-    });
-
-    if (drafts.length === 0) {
-      return reply.send({ data: { approved: 0 } });
-    }
-
-    // Mark all as approved (they will be sent by a separate process or one by one)
-    // For safety, we approve them one by one via the approve endpoint logic
-    // But for bulk, we just mark them — the actual sending happens via approve
-    const ids = drafts.map((d) => d.id);
-
-    // NOTE: For bulk approve, we don't send immediately — we just mark as "approved"
-    // so the sequence advancer or a dedicated worker can pick them up.
-    // For now, return the count and let the admin approve individually.
-    return reply.send({
-      data: {
-        pendingDrafts: drafts.length,
-        message: `${drafts.length} drafts pending. Approve individually via POST /:id/approve to send.`,
+  // ───── POST /approve-all ─── Approve + send N draft emails at once ────
+  //
+  // Body: { ids?: number[] }   — explicit selection (preferred from UI)
+  // If `ids` is omitted we default to ALL drafts in DB (capped at 100 for
+  // safety so the HTTP request doesn't time out and so a fat-finger click
+  // can't blast thousands of emails).
+  //
+  // For each id we run the same SMTP-direct logic as POST /:id/approve:
+  //   • get next sending domain
+  //   • sendViaSMTP
+  //   • on success → status=sent, sentAt=now, prospect=CONTACTED_EMAIL,
+  //     log ENROLLMENT_SENT event, increment campaign counter
+  //   • on failure → leave as draft, log DRAFT_APPROVE_FAILED event
+  // A failure on one draft never blocks the rest.
+  app.post<{ Body: { ids?: number[] } }>(
+    "/approve-all",
+    {
+      schema: {
+        body: {
+          type: "object",
+          properties: {
+            ids: { type: "array", items: { type: "integer" }, maxItems: 100 },
+          },
+        },
       },
-    });
-  });
+    },
+    async (request, reply) => {
+      const { sendViaSMTP } = await import("../../services/outreach/smtpSender.js");
+      const { getNextSendingDomain } = await import("../../services/outreach/domainRotator.js");
+
+      const requestedIds = request.body?.ids;
+      const drafts = await prisma.sentEmail.findMany({
+        where: {
+          status: "draft",
+          ...(requestedIds && requestedIds.length > 0 ? { id: { in: requestedIds } } : {}),
+        },
+        include: {
+          contact: true,
+          prospect: true,
+          enrollment: true,
+          campaign: true,
+        },
+        take: 100,
+      });
+
+      if (drafts.length === 0) {
+        return reply.send({ data: { approved: 0, failed: 0, errors: [] } });
+      }
+
+      let senderSettings = { fromEmail: "", fromName: "", replyTo: "" };
+      try {
+        const row = await prisma.appSetting.findUnique({ where: { key: "sender" } });
+        if (row) Object.assign(senderSettings, row.value);
+      } catch { /* defaults */ }
+
+      const errors: Array<{ id: number; reason: string }> = [];
+      let approved = 0;
+
+      for (const email of drafts) {
+        try {
+          const domain = await getNextSendingDomain();
+          const fromEmail = senderSettings.fromEmail || domain.fromEmail;
+          const fromName = senderSettings.fromName || domain.fromName;
+          const replyTo = senderSettings.replyTo || domain.replyTo;
+
+          const result = await sendViaSMTP({
+            sentEmailId: email.id,
+            toEmail: email.contact.email,
+            toName: email.contact.firstName ?? email.contact.name ?? undefined,
+            fromEmail,
+            fromName,
+            replyTo,
+            subject: email.subject,
+            bodyText: email.body,
+          });
+
+          if (!result.success) {
+            errors.push({ id: email.id, reason: result.error ?? "smtp_failed" });
+            await prisma.event.create({
+              data: {
+                prospectId: email.prospectId,
+                contactId: email.contactId,
+                enrollmentId: email.enrollmentId,
+                eventType: "DRAFT_APPROVE_FAILED",
+                eventSource: "admin_bulk",
+                data: { sentEmailId: email.id, reason: result.error ?? "smtp_failed", domain: domain.domain },
+              },
+            });
+            continue;
+          }
+
+          const now = new Date();
+          await prisma.$transaction(async (tx) => {
+            await tx.sentEmail.update({
+              where: { id: email.id },
+              data: { status: "sent", sentAt: now, mailwizzMessageId: result.messageId ?? null },
+            });
+            await tx.enrollment.update({
+              where: { id: email.enrollmentId },
+              data: { status: "active", lastSentAt: now },
+            });
+            await tx.prospect.update({
+              where: { id: email.prospectId },
+              data: {
+                status: "CONTACTED_EMAIL",
+                lastContactedAt: now,
+                firstContactedAt:
+                  email.prospect.status === "NEW" || email.prospect.status === "READY_TO_CONTACT"
+                    ? now
+                    : undefined,
+              },
+            });
+            await tx.campaign.update({
+              where: { id: email.campaignId },
+              data: { totalSent: { increment: 1 } },
+            });
+            await tx.event.create({
+              data: {
+                prospectId: email.prospectId,
+                contactId: email.contactId,
+                enrollmentId: email.enrollmentId,
+                eventType: "ENROLLMENT_SENT",
+                eventSource: "admin_bulk",
+                data: { sentEmailId: email.id, messageId: result.messageId ?? null, domain: domain.domain },
+              },
+            });
+          });
+          approved++;
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          errors.push({ id: email.id, reason: message });
+          log.error({ err, sentEmailId: email.id }, "Bulk approve failed for one draft");
+        }
+      }
+
+      return reply.send({
+        data: {
+          requested: drafts.length,
+          approved,
+          failed: errors.length,
+          errors: errors.slice(0, 20),
+        },
+      });
+    },
+  );
 
   // ───── GET /prospect/:prospectId ─── All emails for a prospect ──
   app.get<{ Params: { prospectId: string } }>(
