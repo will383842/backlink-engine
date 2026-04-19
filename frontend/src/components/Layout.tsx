@@ -46,20 +46,20 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    labelKey: "nav.section.activity",
-    items: [
-      { to: "/sent-emails", labelKey: "nav.sentEmails", icon: <Send size={18} /> },
-      { to: "/replies", labelKey: "nav.replies", icon: <Mail size={18} /> },
-      { to: "/backlinks", labelKey: "nav.backlinks", icon: <LinkIcon size={18} /> },
-    ],
-  },
-  {
     labelKey: "nav.section.tools",
     items: [
       { to: "/form-outreach", labelKey: "nav.formOutreach", icon: <FileText size={18} /> },
       { to: "/recontact", labelKey: "nav.recontact", icon: <RefreshCcw size={18} /> },
       { to: "/suppression", labelKey: "nav.suppression", icon: <ShieldOff size={18} /> },
       { to: "/mc-sync", labelKey: "nav.mcSync", icon: <Satellite size={18} /> },
+    ],
+  },
+  {
+    labelKey: "nav.section.activity",
+    items: [
+      { to: "/sent-emails", labelKey: "nav.sentEmails", icon: <Send size={18} /> },
+      { to: "/replies", labelKey: "nav.replies", icon: <Mail size={18} /> },
+      { to: "/backlinks", labelKey: "nav.backlinks", icon: <LinkIcon size={18} /> },
     ],
   },
   {
