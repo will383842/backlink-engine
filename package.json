@@ -17,6 +17,8 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:crawl-sources": "tsx scripts/seed-crawl-sources.ts",
+    "db:seed:contact-types": "tsx scripts/seed-contact-type-mappings.ts",
+    "db:migrate:prospect-category": "tsx scripts/migrate-recalc-prospect-category.ts",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
     "db:reset": "prisma migrate reset --force",

@@ -1,5 +1,5 @@
 import { useState, useRef, type DragEvent, type ChangeEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Upload,
   CheckCircle2,
@@ -66,18 +66,17 @@ const CATEGORIES = [
   { value: "other", label: "📦 Autre" },
 ];
 
-const SOURCE_CONTACT_TYPES = [
-  { value: "", label: "— Non spécifié —" },
-  { value: "presse", label: "📰 Presse" },
-  { value: "blog", label: "✍️ Blog" },
-  { value: "influenceur", label: "🎤 Influenceur" },
-  { value: "youtubeur", label: "📺 YouTubeur" },
-  { value: "instagrammeur", label: "📷 Instagrammeur" },
-  { value: "tiktokeur", label: "🎵 TikTokeur" },
-  { value: "association", label: "🏛️ Association" },
-  { value: "corporate", label: "🏢 Corporate" },
-  { value: "unknown", label: "❔ Inconnu" },
-];
+interface ContactTypeMapping {
+  id: number;
+  typeKey: string;
+  category: string;
+  label: string | null;
+}
+
+interface MappingsResponse {
+  data: ContactTypeMapping[];
+  categories: string[];
+}
 
 const LANGUAGES = [
   { value: "", label: "— Auto-détection —" },
@@ -114,6 +113,15 @@ export default function BulkImport() {
   const [defaultSourceType, setDefaultSourceType] = useState("");
   const [defaultLanguage, setDefaultLanguage] = useState("");
   const [defaultCountry, setDefaultCountry] = useState("");
+
+  const { data: mappingsData } = useQuery<MappingsResponse>({
+    queryKey: ["contact-type-mappings"],
+    queryFn: async () => {
+      const res = await api.get<MappingsResponse>("/contact-type-mappings");
+      return res.data;
+    },
+    staleTime: 5 * 60_000,
+  });
 
   // --- File handling ---
   function handleFileSelect(file: File) {
@@ -413,12 +421,19 @@ export default function BulkImport() {
                   onChange={(e) => setDefaultSourceType(e.target.value)}
                   className="input-field"
                 >
-                  {SOURCE_CONTACT_TYPES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
+                  <option value="">— Non spécifié —</option>
+                  {(mappingsData?.data ?? []).map((m) => (
+                    <option key={m.id} value={m.typeKey}>
+                      {m.label ?? m.typeKey} ({m.category})
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-xs text-surface-500">
+                  La catégorie sera déduite automatiquement.{" "}
+                  <a href="/settings/contact-types" className="underline hover:text-brand-600">
+                    Gérer la liste
+                  </a>
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-surface-700">

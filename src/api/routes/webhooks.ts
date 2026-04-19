@@ -614,47 +614,10 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
         "Mission Control contact-created webhook received",
       );
 
-      // Category mapping: Mission Control type → Backlink Engine ProspectCategory
-      // Map ALL Mission Control types to Backlink Engine categories
-      const CATEGORY_MAP: Record<string, string> = {
-        // Médias & Influence
-        presse: "media",
-        blog: "blogger",
-        podcast_radio: "media",
-        influenceur: "influencer",
-        youtubeur: "influencer",
-        instagrammeur: "influencer",
-        // Digital
-        backlink: "blogger",
-        annuaire: "other",
-        partenaire: "partner",
-        // Institutionnel
-        consulat: "association",
-        association: "association",
-        ecole: "association",
-        institut_culturel: "association",
-        chambre_commerce: "association",
-        alliance_francaise: "association",
-        ufe: "association",
-        // Services B2B
-        avocat: "corporate",
-        immobilier: "corporate",
-        assurance: "corporate",
-        banque_fintech: "corporate",
-        traducteur: "corporate",
-        agence_voyage: "corporate",
-        emploi: "corporate",
-        // Communautés
-        communaute_expat: "association",
-        groupe_whatsapp_telegram: "other",
-        coworking_coliving: "corporate",
-        logement: "corporate",
-        lieu_communautaire: "association",
-        plateforme_nomad: "other",
-      };
-
-      // Default to "other" for unknown types (don't reject anymore — sync everything)
-      const category = CATEGORY_MAP[type] ?? "other";
+      // Category is now resolved inside ingestProspect() via the editable
+      // contact_type_mappings table (seeded with the old hard-coded values +
+      // all admin-added synonyms). Keep passing the raw MC type — ingest will
+      // look it up and infer the ProspectCategory.
 
       // Idempotency: check by emailNormalized
       const idempotencyKey = `webhook:mc:${emailNormalized}`;
@@ -698,8 +661,7 @@ export default async function webhooksRoutes(app: FastifyInstance): Promise<void
           name: name || publication || undefined,
           language: language || undefined,
           country: country || undefined,
-          category,
-          sourceContactType: type, // Original MC type (presse, influenceur, youtubeur, instagrammeur...)
+          sourceContactType: type, // Original MC type — category resolved from this
           source: "csv_import", // closest match for external sync
           notes: `Synced from Mission Control (${source_table || "unknown"}, id: ${source_id || "?"})`,
         });

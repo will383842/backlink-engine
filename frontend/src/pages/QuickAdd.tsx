@@ -1,9 +1,21 @@
-import { useState, type FormEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Globe, AlertTriangle, CheckCircle2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
 import { useTranslation } from "@/i18n";
+
+interface ContactTypeMapping {
+  id: number;
+  typeKey: string;
+  category: string;
+  label: string | null;
+}
+
+interface MappingsResponse {
+  data: ContactTypeMapping[];
+  categories: string[];
+}
 
 interface DedupResult {
   isDuplicate: boolean;
@@ -36,6 +48,27 @@ export default function QuickAdd() {
   const [dedup, setDedup] = useState<DedupResult | null>(null);
   const [preview, setPreview] = useState<SitePreview | null>(null);
   const [checkingUrl, setCheckingUrl] = useState(false);
+
+  const { data: mappingsData } = useQuery<MappingsResponse>({
+    queryKey: ["contact-type-mappings"],
+    queryFn: async () => {
+      const res = await api.get<MappingsResponse>("/contact-type-mappings");
+      return res.data;
+    },
+    staleTime: 5 * 60_000, // 5 min — rarely changes
+  });
+
+  const mappingByKey = useMemo(() => {
+    const map = new Map<string, ContactTypeMapping>();
+    for (const m of mappingsData?.data ?? []) map.set(m.typeKey, m);
+    return map;
+  }, [mappingsData]);
+
+  const derivedCategory = sourceContactType
+    ? mappingByKey.get(sourceContactType)?.category ?? "other"
+    : null;
+
+  const effectiveCategory = derivedCategory ?? category;
 
   async function handleUrlBlur() {
     if (!url.trim()) return;
@@ -72,7 +105,7 @@ export default function QuickAdd() {
         contactName: name.trim() || null,
         phone: phone.trim() || null,
         phoneCountryCode: phone.trim() ? phoneCountryCode : null,
-        category,
+        category: effectiveCategory,
         sourceContactType: sourceContactType || null,
         language,
         country,
@@ -227,31 +260,11 @@ export default function QuickAdd() {
           </div>
         </div>
 
-        {/* Category + Source contact type */}
+        {/* Source contact type + catégorie auto-dérivée */}
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-medium text-surface-700">
-              Catégorie (site)
-            </label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="input-field"
-            >
-              <option value="blogger">🖊️ Blogger</option>
-              <option value="media">📰 Media / Presse</option>
-              <option value="influencer">⭐ Influencer</option>
-              <option value="association">🤝 Association</option>
-              <option value="corporate">💼 Corporate</option>
-              <option value="partner">🤝 Partner</option>
-              <option value="agency">🏢 Agency</option>
-              <option value="ecommerce">🛒 E-commerce</option>
-              <option value="other">🔹 Autre</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-surface-700">
-              Type de contact (personne)
+              Type de contact
             </label>
             <select
               value={sourceContactType}
@@ -259,22 +272,54 @@ export default function QuickAdd() {
               className="input-field"
             >
               <option value="">— Non spécifié —</option>
-              <option value="presse">📰 Presse / Journaliste</option>
-              <option value="blog">✍️ Blog</option>
-              <option value="influenceur">⭐ Influenceur</option>
-              <option value="youtubeur">📺 YouTubeur</option>
-              <option value="instagrammeur">📷 Instagrammeur</option>
-              <option value="tiktokeur">🎵 TikTokeur</option>
-              <option value="podcast_radio">🎙️ Podcast / Radio</option>
-              <option value="consulat">🏛️ Consulat</option>
-              <option value="avocat">⚖️ Avocat</option>
-              <option value="association">🤝 Association</option>
-              <option value="alliance_francaise">🇫🇷 Alliance Française</option>
-              <option value="ufe">🌍 UFE</option>
-              <option value="communaute_expat">👥 Communauté expat</option>
-              <option value="ecole">🏫 École</option>
-              <option value="unknown">❔ Inconnu</option>
+              {(mappingsData?.data ?? []).map((m) => (
+                <option key={m.id} value={m.typeKey}>
+                  {m.label ?? m.typeKey}
+                </option>
+              ))}
             </select>
+            <p className="mt-1 text-xs text-surface-500">
+              <a href="/settings/contact-types" className="underline hover:text-brand-600">
+                Gérer la liste
+              </a>{" "}
+              pour ajouter un synonyme.
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-surface-700">
+              Catégorie {sourceContactType && <span className="text-xs text-brand-600">(auto-dérivée)</span>}
+            </label>
+            <select
+              value={effectiveCategory}
+              onChange={(e) => setCategory(e.target.value)}
+              disabled={!!sourceContactType}
+              className="input-field disabled:bg-surface-50 disabled:text-surface-500"
+            >
+              {(mappingsData?.categories ?? [
+                "blogger",
+                "association",
+                "partner",
+                "influencer",
+                "media",
+                "agency",
+                "corporate",
+                "ecommerce",
+                "podcast",
+                "forum",
+                "directory",
+                "education",
+                "other",
+              ]).map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            {sourceContactType && (
+              <p className="mt-1 text-xs text-surface-500">
+                Dérivée depuis le type <span className="font-mono">{sourceContactType}</span>.
+              </p>
+            )}
           </div>
         </div>
 

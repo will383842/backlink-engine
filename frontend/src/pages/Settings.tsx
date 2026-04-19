@@ -435,6 +435,23 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Types & Catégories de contact */}
+      <a
+        href="/settings/contact-types"
+        className="card flex items-center justify-between gap-4 transition hover:border-brand-300 hover:bg-brand-50/30"
+      >
+        <div>
+          <h3 className="text-lg font-semibold text-surface-900">Types & Catégories de contact</h3>
+          <p className="mt-1 text-sm text-surface-600">
+            Gère la correspondance entre les types de contact (ex. <em>youtubeur</em>, <em>journaliste</em>)
+            et les catégories canoniques (blogger, media, influencer…). Ajoute tes propres synonymes.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white">
+          Gérer →
+        </span>
+      </a>
+
       {/* Outreach Config */}
       <form
         onSubmit={(e) => {

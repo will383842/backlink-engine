@@ -354,7 +354,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         notes,
         language,
         country,
-        category: category ?? "blogger",
+        category: category ?? undefined,
         sourceContactType: sourceContactType || undefined,
         source: "manual",
         meta: { userId: request.user.id },

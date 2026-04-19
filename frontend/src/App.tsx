@@ -30,6 +30,7 @@ const MissionControlSync = lazy(() => import("./pages/MissionControlSync"));
 const Broadcast = lazy(() => import("./pages/Broadcast"));
 const Campaigns = lazy(() => import("./pages/Campaigns"));
 const CampaignsHub = lazy(() => import("./pages/CampaignsHub"));
+const ContactTypeMappings = lazy(() => import("./pages/ContactTypeMappings"));
 
 function PageFallback() {
   return (
@@ -106,6 +107,7 @@ export default function App() {
           <Route path="ab-testing" element={<AbTestResults />} />
           <Route path="suppression" element={<Suppression />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="settings/contact-types" element={<ContactTypeMappings />} />
           <Route path="reports" element={<Reports />} />
             <Route path="mailbox-monitor" element={<MailboxMonitor />} />
             <Route path="vps-health" element={<VpsHealth />} />

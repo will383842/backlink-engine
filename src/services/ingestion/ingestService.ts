@@ -7,6 +7,8 @@ import { createChildLogger } from "../../utils/logger.js";
 import { normalizeUrl, extractDomain } from "../../utils/urlNormalizer.js";
 import { validateEmail } from "../email/emailValidator.js";
 import { enrichmentQueue } from "../../jobs/queue.js";
+import { inferCategory } from "../prospects/contactTypeMapper.js";
+import type { ProspectCategory } from "@prisma/client";
 
 const log = createChildLogger("ingest");
 
@@ -128,6 +130,16 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
     const language = data.language || null;
     const country = data.country || null;
 
+    // 3.bis Resolve category from sourceContactType via the editable mapping
+    // table. sourceContactType wins; `data.category` is only honoured when no
+    // type is provided (CSV rows that use category directly).
+    let resolvedCategory: ProspectCategory;
+    if (data.sourceContactType) {
+      resolvedCategory = await inferCategory(data.sourceContactType);
+    } else {
+      resolvedCategory = ((data.category as ProspectCategory) || "blogger");
+    }
+
     // 4. Create prospect, source URL, and optionally a contact in a transaction
     const result = await prisma.$transaction(async (tx) => {
       // Create the prospect
@@ -138,7 +150,7 @@ export async function ingestProspect(data: IngestInput): Promise<IngestResult> {
         data: {
           domain,
           source: data.source,
-          category: (data.category || "blogger") as any,
+          category: resolvedCategory,
           // Write sourceContactType at prospect level only if no contact will be created
           sourceContactType: !data.email ? (data.sourceContactType || null) : null,
           language: (language !== "unknown" ? language : null) as any,
