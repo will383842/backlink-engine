@@ -12,12 +12,24 @@ interface MessageTemplate {
   id: number;
   language: string;
   category: string | null;
+  sourceContactType: string | null;
+  translatedFromId: number | null;
   subject: string;
   body: string;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+interface ContactTypeMapping {
+  id: number;
+  typeKey: string;
+  category: string;
+  label: string | null;
+  isSystem: boolean;
+}
+
+type TemplateScope = "category" | "sourceContactType";
 
 const LANGUAGES = [
   { code: "fr", label: "🇫🇷 Français" },
@@ -56,14 +68,27 @@ const VARIABLES = [
 export default function MessageTemplates() {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scope, setScope] = useState<TemplateScope>("sourceContactType");
   const [selectedLang, setSelectedLang] = useState("fr");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<MessageTemplate | null>(null);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [autoFillProspectId, setAutoFillProspectId] = useState<number | null>(null);
+  const [translating, setTranslating] = useState(false);
+
+  // Load contact-type mappings so we can populate the type selector
+  const { data: mappingsData } = useQuery({
+    queryKey: ["contactTypeMappings"],
+    queryFn: async () => {
+      const res = await api.get("/contact-type-mappings");
+      return res.data;
+    },
+  });
+  const contactTypes = (mappingsData?.data ?? []) as ContactTypeMapping[];
 
   // Fetch prospects for auto-fill dropdown
   const { data: prospectsData } = useQuery({
@@ -93,9 +118,16 @@ export default function MessageTemplates() {
     }
   };
 
-  const loadTemplate = (lang: string, category: string | null) => {
-    const template = templates.find(
-      (t) => t.language === lang && t.category === category
+  const loadTemplate = (
+    lang: string,
+    category: string | null,
+    sct: string | null,
+  ) => {
+    // Prefer type-keyed template when scope is sourceContactType
+    const template = templates.find((t) =>
+      scope === "sourceContactType"
+        ? t.language === lang && t.sourceContactType === sct
+        : t.language === lang && t.category === category && !t.sourceContactType,
     );
 
     if (template) {
@@ -111,8 +143,8 @@ export default function MessageTemplates() {
   };
 
   useEffect(() => {
-    loadTemplate(selectedLang, selectedCategory);
-  }, [selectedLang, selectedCategory, templates]);
+    loadTemplate(selectedLang, selectedCategory, selectedType);
+  }, [selectedLang, selectedCategory, selectedType, scope, templates]);
 
   const handleSave = async () => {
     if (!subject.trim() || !body.trim()) {
@@ -123,15 +155,20 @@ export default function MessageTemplates() {
     try {
       setSaving(true);
 
-      const url = selectedCategory
-        ? `/message-templates/${selectedLang}?category=${selectedCategory}`
-        : `/message-templates/${selectedLang}`;
+      const params = new URLSearchParams();
+      if (scope === "sourceContactType" && selectedType) {
+        params.set("sourceContactType", selectedType);
+      } else if (scope === "category" && selectedCategory) {
+        params.set("category", selectedCategory);
+      }
+      const qs = params.toString() ? `?${params.toString()}` : "";
 
-      await api.put(url, {
+      await api.put(`/message-templates/${selectedLang}${qs}`, {
         subject,
         body,
-        category: selectedCategory,
-        isDefault: selectedCategory === null,
+        category: scope === "category" ? selectedCategory : null,
+        sourceContactType: scope === "sourceContactType" ? selectedType : null,
+        isDefault: scope === "category" && selectedCategory === null,
       });
 
       toast.success("✅ Template sauvegardé avec succès !");
@@ -141,6 +178,36 @@ export default function MessageTemplates() {
       console.error(err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTranslate = async () => {
+    if (!editingTemplate) {
+      toast.error("Sauvegardez d'abord le template avant de traduire");
+      return;
+    }
+    if (selectedLang !== "fr") {
+      toast.error("Rédigez d'abord la version FR puis cliquez Traduire depuis la vue FR");
+      return;
+    }
+
+    try {
+      setTranslating(true);
+      const res = await api.post(`/message-templates/${editingTemplate.id}/translate`);
+      const results = res.data?.results ?? [];
+      const ok = results.filter((r: any) => r.ok).length;
+      const ko = results.filter((r: any) => !r.ok).length;
+      if (ko === 0) {
+        toast.success(`✨ Traduit dans ${ok} langues avec succès`);
+      } else {
+        toast(`Traduit: ${ok} OK, ${ko} échec`, { icon: "⚠️" });
+      }
+      loadTemplates();
+    } catch (err: any) {
+      toast.error("Erreur lors de la traduction");
+      console.error(err);
+    } finally {
+      setTranslating(false);
     }
   };
 
@@ -233,6 +300,31 @@ export default function MessageTemplates() {
         </p>
       </div>
 
+      {/* Scope switch */}
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-4 flex items-center gap-3">
+        <span className="text-sm font-medium text-gray-700">Clé du template :</span>
+        <button
+          onClick={() => setScope("sourceContactType")}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+            scope === "sourceContactType"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          Par type de contact (recommandé)
+        </button>
+        <button
+          onClick={() => setScope("category")}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+            scope === "category"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+          }`}
+        >
+          Par catégorie (legacy)
+        </button>
+      </div>
+
       {/* Selectors */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -254,26 +346,62 @@ export default function MessageTemplates() {
             </select>
           </div>
 
-          {/* Category selector */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              🏷️ Catégorie
-            </label>
-            <select
-              value={selectedCategory || ""}
-              onChange={(e) =>
-                setSelectedCategory(e.target.value || null)
-              }
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {CATEGORIES.map((cat) => (
-                <option key={cat.value || "general"} value={cat.value || ""}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {scope === "sourceContactType" ? (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                👤 Type de contact
+              </label>
+              <select
+                value={selectedType || ""}
+                onChange={(e) => setSelectedType(e.target.value || null)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">— Sélectionner un type —</option>
+                {contactTypes
+                  .slice()
+                  .sort((a, b) => (a.label ?? a.typeKey).localeCompare(b.label ?? b.typeKey))
+                  .map((t) => (
+                    <option key={t.id} value={t.typeKey}>
+                      {t.label ?? t.typeKey} ({t.typeKey})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                🏷️ Catégorie
+              </label>
+              <select
+                value={selectedCategory || ""}
+                onChange={(e) => setSelectedCategory(e.target.value || null)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {CATEGORIES.map((cat) => (
+                  <option key={cat.value || "general"} value={cat.value || ""}>
+                    {cat.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
+
+        {/* Translate button — only for FR master templates */}
+        {scope === "sourceContactType" && selectedLang === "fr" && selectedType && editingTemplate && (
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={handleTranslate}
+              disabled={translating}
+              className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"
+            >
+              {translating ? "Traduction en cours…" : "🌐 Traduire FR → 8 langues"}
+            </button>
+            <p className="text-xs text-gray-500">
+              Utilise Claude Sonnet, qualité native, préserve les placeholders. Écrase uniquement les langues cibles pour ce type.
+            </p>
+          </div>
+        )}
 
         {/* Template exists indicator */}
         <div className="mt-4">

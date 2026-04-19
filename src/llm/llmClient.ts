@@ -460,6 +460,80 @@ export class LlmClient {
   }
 
   // -----------------------------------------------------------------------
+  // Template translation (for MessageTemplate admin flow)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Translate a `{subject, body}` pair into the requested target language,
+   * preserving placeholders like {siteName} / {contactName} / {yourCompany}.
+   * Prefers Claude Sonnet for native-quality output, falls back to GPT-4o-mini.
+   */
+  async translateTemplate(input: {
+    subject: string;
+    body: string;
+    sourceLanguage: string;
+    targetLanguage: string;
+  }): Promise<{ subject: string; body: string }> {
+    if (!this.enabled) {
+      return { subject: input.subject, body: input.body };
+    }
+
+    const systemPrompt =
+      `You are a native ${input.targetLanguage.toUpperCase()} professional translator specialised in B2B outreach messages.\n\n` +
+      `Translate the given subject + body from ${input.sourceLanguage.toUpperCase()} to ${input.targetLanguage.toUpperCase()}.\n\n` +
+      `RULES:\n` +
+      `- Write like a native speaker, not a literal translation.\n` +
+      `- Adapt cultural tone (formal "Sie" in DE, "vous" in FR, respectful greetings in AR/ZH/JA…).\n` +
+      `- PRESERVE all placeholders EXACTLY as-is (e.g. {siteName}, {contactName}, {yourName}, {yourCompany}, {yourWebsite}). Never translate what's inside the curly braces.\n` +
+      `- Preserve line breaks and paragraph structure.\n` +
+      `- Do not add or remove content; just translate.\n\n` +
+      `Return STRICT JSON only: {"subject": "...", "body": "..."}. No markdown, no commentary.`;
+
+    const userContent =
+      `subject: ${input.subject}\n` +
+      `---BODY---\n${input.body}`;
+
+    try {
+      let raw: string;
+
+      if (this.claudeApiKey) {
+        raw = await callClaude(
+          this.claudeApiKey,
+          this.claudeModel,
+          systemPrompt,
+          [{ role: "user", content: userContent }],
+          1536,
+        );
+      } else {
+        const completion = await this.client.chat.completions.create({
+          model: this.model,
+          max_tokens: 1536,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+        });
+        raw = completion.choices[0]?.message?.content?.trim() ?? "";
+      }
+
+      const jsonStr = raw
+        .replace(/^```(?:json)?\s*/, "")
+        .replace(/\s*```$/, "")
+        .trim();
+
+      const parsed = JSON.parse(jsonStr) as { subject: string; body: string };
+      if (!parsed.subject || !parsed.body) {
+        throw new Error("Missing subject or body in translation response");
+      }
+
+      return parsed;
+    } catch (err) {
+      log.error({ err, targetLanguage: input.targetLanguage }, "Template translation failed.");
+      throw err;
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Broadcast email variations (batch generation)
   // -----------------------------------------------------------------------
 

@@ -312,18 +312,31 @@ function ProspectCard({
 export default function FormOutreach() {
   const [filterLanguage, setFilterLanguage] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [filterType, setFilterType] = useState("");
   const [doneIds, setDoneIds] = useState<Set<number>>(new Set());
+
+  // Load contact-type mappings so the filter can list them
+  const { data: mappingsData } = useQuery({
+    queryKey: ["contactTypeMappings"],
+    queryFn: async () => {
+      const res = await api.get("/contact-type-mappings");
+      return res.data;
+    },
+  });
+  const contactTypes =
+    (mappingsData?.data as Array<{ typeKey: string; label: string | null }>) ?? [];
 
   const { data, isLoading } = useQuery<{
     data: FormProspect[];
     total: number;
     alreadyContactedCount: number;
   }>({
-    queryKey: ["formQueue", filterLanguage, filterCategory],
+    queryKey: ["formQueue", filterLanguage, filterCategory, filterType],
     queryFn: async () => {
       const params: Record<string, string> = { limit: "50" };
       if (filterLanguage) params.language = filterLanguage;
       if (filterCategory) params.category = filterCategory;
+      if (filterType) params.sourceContactType = filterType;
       const res = await api.get("/prospects/form-queue", { params });
       return res.data;
     },
@@ -371,6 +384,22 @@ export default function FormOutreach() {
           {["blogger", "influencer", "media", "partner", "other"].map((c) => (
             <option key={c} value={c}>{CATEGORY_LABELS[c] ?? c}</option>
           ))}
+        </select>
+
+        <select
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          className="input-field w-auto"
+        >
+          <option value="">Tous les types de contact</option>
+          {contactTypes
+            .slice()
+            .sort((a, b) => (a.label ?? a.typeKey).localeCompare(b.label ?? b.typeKey))
+            .map((t) => (
+              <option key={t.typeKey} value={t.typeKey}>
+                {t.label ?? t.typeKey}
+              </option>
+            ))}
         </select>
 
         <div className="flex-1" />

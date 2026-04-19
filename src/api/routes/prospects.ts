@@ -1568,7 +1568,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
 
   // ───── GET /form-queue ─── Prospects with contact form, not yet contacted ────
   app.get<{
-    Querystring: { language?: string; category?: string; limit?: string };
+    Querystring: { language?: string; category?: string; sourceContactType?: string; limit?: string };
   }>(
     "/form-queue",
     {
@@ -1578,13 +1578,14 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           properties: {
             language: { type: "string" },
             category: { type: "string" },
+            sourceContactType: { type: "string" },
             limit: { type: "string", default: "50" },
           },
         },
       },
     },
     async (request, reply) => {
-      const { language, category, limit } = request.query;
+      const { language, category, sourceContactType, limit } = request.query;
       const take = Math.min(parseInt(limit ?? "50", 10) || 50, 200);
 
       const where: Record<string, unknown> = {
@@ -1597,6 +1598,15 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
           },
         },
       };
+
+      if (sourceContactType) {
+        // Match either on prospect.sourceContactType (fallback when no
+        // contact) or any contact.sourceContactType.
+        where["OR"] = [
+          { sourceContactType },
+          { contacts: { some: { sourceContactType } } },
+        ];
+      }
 
       if (language) where["language"] = language;
       if (category) where["category"] = category;
@@ -1691,23 +1701,32 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       } catch { /* defaults */ }
 
       // Lookup a MessageTemplate from the DB — no LLM call.
-      // Fallback chain:
-      //   1. Exact match: (prospect.language, prospect.category)
-      //   2. Same language, no category (general template for that language)
-      //   3. English template with same category
-      //   4. English general template
+      // Priority order (highest first):
+      //   1. (lang + sourceContactType)        — most specific
+      //   2. (lang + category)                  — category fallback
+      //   3. (lang, null, null)                 — general per-language
+      //   4. (en  + sourceContactType)
+      //   5. (en  + category)
+      //   6. (en, null, null)
       // Returns 404 if nothing is found so the admin can create one from
       // /message-templates instead of getting a silently-wrong default.
       const lang = prospect.language ?? "en";
       const cat = prospect.category;
+      const sct =
+        (prospect.contacts[0] as unknown as { sourceContactType?: string | null })
+          ?.sourceContactType ??
+        prospect.sourceContactType ??
+        null;
 
       const candidates = await prisma.messageTemplate.findMany({
         where: {
           OR: [
+            { language: lang, sourceContactType: sct },
             { language: lang, category: cat },
-            { language: lang, category: null },
+            { language: lang, category: null, sourceContactType: null },
+            { language: "en", sourceContactType: sct },
             { language: "en", category: cat },
-            { language: "en", category: null },
+            { language: "en", category: null, sourceContactType: null },
           ],
         },
       });
@@ -1715,8 +1734,9 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       const pickByPriority = (): typeof candidates[number] | null => {
         const byScore = (t: typeof candidates[number]) => {
           let score = 0;
-          if (t.language === lang) score += 10;
-          if (t.category === cat) score += 5;
+          if (t.language === lang) score += 100;
+          if (sct && t.sourceContactType === sct) score += 20;
+          if (t.category === cat) score += 10;
           return score;
         };
         return candidates.sort((a, b) => byScore(b) - byScore(a))[0] ?? null;
