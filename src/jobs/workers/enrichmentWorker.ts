@@ -393,9 +393,13 @@ async function enrichSingleProspect(prospectId: number, force = false): Promise<
   // 3.6. Auto-detect contact form (if not already detected)
   let hasContactForm = !!prospect.contactFormUrl;  // Track if form detected (for score calculation)
 
-  if (!prospect.contactFormUrl && sourceUrl) {
+  // Form detection only needs the domain, not a sourceUrl. Earlier code gated
+  // on sourceUrl which silently skipped ~92% of manually-imported prospects
+  // that were inserted without a source_urls row. We now always run it when
+  // the prospect has no form yet.
+  if (!prospect.contactFormUrl) {
     try {
-      log.info({ prospectId, url: sourceUrl.url }, "Detecting contact form");
+      log.info({ prospectId, domain }, "Detecting contact form");
 
       // Try homepage first (most common location)
       const homepageUrl = `https://${domain}`;
