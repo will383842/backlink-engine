@@ -101,7 +101,7 @@ export default function Dashboard() {
     queryKey: ["dashboardPipeline"],
     queryFn: async () => {
       const res = await api.get("/dashboard/pipeline");
-      return res.data as Record<string, number> | undefined;
+      return res.data?.data?.byStatus as Record<string, number> | undefined;
     },
     staleTime: 60_000,
   });
