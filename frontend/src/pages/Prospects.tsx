@@ -321,7 +321,12 @@ export default function Prospects() {
           {/* By Category (BL) — clickable */}
           <div className="card">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400">Par categorie</h4>
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400">Par categorie</h4>
+                <p className="text-[10px] text-surface-400 mt-0.5">
+                  {statsData.byCategory.reduce((s, c) => s + c.count, 0)} prospects (tous)
+                </p>
+              </div>
               {filters.status === "CATEGORY_FILTER" && (
                 <button onClick={() => { updateFilter("status", ""); }} className="text-xs text-brand-600 hover:underline">
                   Voir tous
@@ -359,7 +364,12 @@ export default function Prospects() {
           {/* By Source Type (MC) — clickable */}
           <div className="card">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400">Par type de contact</h4>
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-surface-400">Par type de contact</h4>
+                <p className="text-[10px] text-surface-400 mt-0.5">
+                  {statsData.bySourceType.reduce((s, t) => s + t.count, 0)} emails contactables (non opt-out, non invalides)
+                </p>
+              </div>
               {filters.sourceContactType && (
                 <button onClick={() => updateFilter("sourceContactType", "")} className="text-xs text-brand-600 hover:underline">
                   Voir tous
