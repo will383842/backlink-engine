@@ -58,6 +58,22 @@ const defaultSettings: AppSettings = {
 export default function Settings() {
   const queryClient = useQueryClient();
   const { t } = useTranslation();
+  // Tab state — split the historical 1400-line settings page into 5 logical
+  // tabs so admins don't have to scroll past unrelated sections to reach the
+  // toggle they need. The choice persists via localStorage so a re-visit
+  // lands on the last tab the admin was using.
+  type SettingsTab = "general" | "email" | "dns" | "quality" | "notifications";
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    if (typeof window === "undefined") return "general";
+    const saved = window.localStorage.getItem("settings.activeTab");
+    return (saved && ["general", "email", "dns", "quality", "notifications"].includes(saved))
+      ? (saved as SettingsTab)
+      : "general";
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem("settings.activeTab", activeTab);
+  }, [activeTab]);
+
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [outreachConfig, setOutreachConfig] = useState<OutreachConfig>({
     yourName: "",
@@ -297,9 +313,41 @@ export default function Settings() {
     );
   }
 
+  const TABS: Array<{ id: SettingsTab; label: string; icon: string }> = [
+    { id: "general", label: "Général", icon: "⚙️" },
+    { id: "email", label: "Envoi Email", icon: "✉️" },
+    { id: "dns", label: "Domaines & DNS", icon: "🌐" },
+    { id: "quality", label: "Qualité & IA", icon: "🎯" },
+    { id: "notifications", label: "Notifications", icon: "🔔" },
+  ];
+
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
-      {/* Outreach Mode Toggle */}
+    <div className="mx-auto max-w-3xl space-y-6">
+      {/* Tabs nav — sticky so it's still reachable when the admin scrolls
+          deep into a section. Each click instantly hides/shows the relevant
+          card blocks below; the existing forms + state are unchanged. */}
+      <div className="sticky top-0 z-20 -mx-1 bg-white/95 backdrop-blur border-b border-surface-200 px-1 py-2">
+        <div className="flex gap-1 overflow-x-auto">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition whitespace-nowrap ${
+                activeTab === tab.id
+                  ? "bg-brand-600 text-white shadow-sm"
+                  : "bg-surface-100 text-surface-700 hover:bg-surface-200"
+              }`}
+            >
+              <span>{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Outreach Mode Toggle — Tab: Général (wraps 3 sections in a Fragment) */}
+      {activeTab === "general" && (
+      <>
       <div className="card space-y-4">
         <div>
           <h3 className="text-lg font-semibold text-surface-900 flex items-center gap-2">
@@ -451,8 +499,11 @@ export default function Settings() {
           Gérer →
         </span>
       </a>
+      </>
+      )}
 
-      {/* Outreach Config */}
+      {/* Outreach Config — Tab: Envoi Email */}
+      {activeTab === "email" && (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -603,8 +654,10 @@ export default function Settings() {
           {saveOutreachMutation.isPending ? "Sauvegarde..." : "Sauvegarder Outreach"}
         </button>
       </form>
+      )}
 
-      {/* Telegram Notifications */}
+      {/* Telegram Notifications — Tab: Notifications */}
+      {activeTab === "notifications" && (
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -825,10 +878,15 @@ export default function Settings() {
           </button>
         </div>
       </form>
+      )}
 
-      {/* Other Settings */}
+      {/* Other Settings — split between tabs Email (MailWizz/IMAP), Quality
+          (Scoring/Recontact/AI), and DNS (SendingDomainsSection) below.
+          The form wrapper stays open across tabs so the bulk Save button
+          submits the entire `settings` object regardless of visible tab. */}
       <form onSubmit={handleSubmit} className="space-y-8">
-      {/* MailWizz */}
+      {/* MailWizz — Tab: Envoi Email */}
+      {activeTab === "email" && (
       <section className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
           {t("settings.mailwizzConfig")}
@@ -891,8 +949,10 @@ export default function Settings() {
           </div>
         </div>
       </section>
+      )}
 
-      {/* IMAP */}
+      {/* IMAP — Tab: Envoi Email */}
+      {activeTab === "email" && (
       <section className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
           {t("settings.imapConfig")}
@@ -970,8 +1030,10 @@ export default function Settings() {
           </div>
         </div>
       </section>
+      )}
 
-      {/* Scoring */}
+      {/* Scoring — Tab: Qualité & IA */}
+      {activeTab === "quality" && (
       <section className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
           {t("settings.scoringThresholds")}
@@ -1042,8 +1104,10 @@ export default function Settings() {
           </div>
         </div>
       </section>
+      )}
 
-      {/* Recontact */}
+      {/* Recontact — Tab: Qualité & IA */}
+      {activeTab === "quality" && (
       <section className="card space-y-4">
         <h3 className="text-lg font-semibold text-surface-900">
           {t("settings.recontactSettings")}
@@ -1114,8 +1178,10 @@ export default function Settings() {
           </div>
         </div>
       </section>
+      )}
 
-      {/* AI */}
+      {/* AI — Tab: Qualité & IA */}
+      {activeTab === "quality" && (
       <section className="card space-y-4">
         <h3 className="flex items-center gap-2 text-lg font-semibold text-surface-900">
           <Bot size={20} />
@@ -1181,21 +1247,26 @@ export default function Settings() {
           </div>
         </div>
       </section>
+      )}
 
-      {/* Sending Domains + DNS check */}
-      <SendingDomainsSection />
+      {/* Sending Domains + DNS check — Tab: Domaines & DNS */}
+      {activeTab === "dns" && <SendingDomainsSection />}
 
-      {/* Save button */}
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={saveMutation.isPending}
-          className="btn-primary"
-        >
-          <Save size={16} className="mr-1.5" />
-          {saveMutation.isPending ? t("common.saving") : t("settings.saveSettings")}
-        </button>
-      </div>
+      {/* Save button — visible only on tabs whose sections feed the bulk
+          saveMutation (Email + Quality). Other tabs have their own save
+          buttons in their own forms. */}
+      {(activeTab === "email" || activeTab === "quality") && (
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={saveMutation.isPending}
+            className="btn-primary"
+          >
+            <Save size={16} className="mr-1.5" />
+            {saveMutation.isPending ? t("common.saving") : t("settings.saveSettings")}
+          </button>
+        </div>
+      )}
       </form>
     </div>
   );
