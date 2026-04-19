@@ -679,4 +679,98 @@ export default async function settingsRoutes(app: FastifyInstance): Promise<void
       return reply.send({ data: toggles });
     },
   );
+
+  // ───── GET /sending-domains ─── List configured sending domains ─────
+  //
+  // Source of truth: app_settings.sending_domains (admin-editable). Falls back
+  // to the 5 hardcoded DEFAULT_DOMAINS from domainRotator when empty.
+  app.get("/sending-domains", async (_request, reply) => {
+    const setting = await prisma.appSetting.findUnique({ where: { key: "sending_domains" } });
+    const domains = (setting?.value ?? []) as Array<Record<string, unknown>>;
+    return reply.send({ data: domains });
+  });
+
+  // ───── PUT /sending-domains ─── Replace the whole list ─────
+  app.put<{ Body: { domains: Array<{ domain: string; fromEmail: string; fromName: string; replyTo: string; active: boolean }> } }>(
+    "/sending-domains",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["domains"],
+          properties: {
+            domains: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["domain", "fromEmail", "fromName", "replyTo", "active"],
+                properties: {
+                  domain: { type: "string" },
+                  fromEmail: { type: "string" },
+                  fromName: { type: "string" },
+                  replyTo: { type: "string" },
+                  active: { type: "boolean" },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      await prisma.appSetting.upsert({
+        where: { key: "sending_domains" },
+        create: { key: "sending_domains", value: request.body.domains as any },
+        update: { value: request.body.domains as any },
+      });
+      return reply.send({ data: request.body.domains });
+    },
+  );
+
+  // ───── GET /sending-domains/dns-check ─── Verify SPF / DKIM / DMARC ─────
+  //
+  // Resolves three TXT records per sending domain using Quad9 (9.9.9.9) — the
+  // same resolver the rest of the app uses, because Google/Cloudflare public
+  // resolvers return false NXDOMAIN for Spamhaus-listed hosts. Selector is
+  // fixed to "dkim" to match OpenDKIM's signing.table convention on the VPS.
+  app.get("/sending-domains/dns-check", async (_request, reply) => {
+    const { Resolver } = await import("node:dns/promises");
+    const resolver = new Resolver();
+    resolver.setServers(["9.9.9.9"]);
+
+    const setting = await prisma.appSetting.findUnique({ where: { key: "sending_domains" } });
+    const domains = ((setting?.value ?? []) as Array<{ domain: string; active?: boolean }>).filter(Boolean);
+
+    async function resolveTxt(host: string): Promise<string[]> {
+      try {
+        const rows = await resolver.resolveTxt(host);
+        return rows.map((parts) => parts.join(""));
+      } catch {
+        return [];
+      }
+    }
+
+    const checks = await Promise.all(
+      domains.map(async ({ domain }) => {
+        const [spfRaw, dkimRaw, dmarcRaw] = await Promise.all([
+          resolveTxt(domain),
+          resolveTxt(`dkim._domainkey.${domain}`),
+          resolveTxt(`_dmarc.${domain}`),
+        ]);
+        const spf = spfRaw.find((r) => r.startsWith("v=spf1")) ?? null;
+        const dkim = dkimRaw.find((r) => r.includes("v=DKIM1") || r.includes("k=rsa")) ?? null;
+        const dmarc = dmarcRaw.find((r) => r.startsWith("v=DMARC1")) ?? null;
+
+        return {
+          domain,
+          spf: { ok: !!spf, value: spf },
+          dkim: { ok: !!dkim, value: dkim, selector: "dkim" },
+          dmarc: { ok: !!dmarc, value: dmarc },
+          allOk: !!spf && !!dkim && !!dmarc,
+        };
+      }),
+    );
+
+    return reply.send({ data: checks });
+  });
 }

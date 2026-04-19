@@ -1182,6 +1182,9 @@ export default function Settings() {
         </div>
       </section>
 
+      {/* Sending Domains + DNS check */}
+      <SendingDomainsSection />
+
       {/* Save button */}
       <div className="flex justify-end">
         <button
@@ -1195,5 +1198,200 @@ export default function Settings() {
       </div>
       </form>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sending Domains + DNS check section
+// ─────────────────────────────────────────────────────────────
+
+interface SendingDomain {
+  domain: string;
+  fromEmail: string;
+  fromName: string;
+  replyTo: string;
+  active: boolean;
+}
+
+interface DnsRecord {
+  ok: boolean;
+  value: string | null;
+  selector?: string;
+}
+
+interface DnsCheckResult {
+  domain: string;
+  spf: DnsRecord;
+  dkim: DnsRecord;
+  dmarc: DnsRecord;
+  allOk: boolean;
+}
+
+function SendingDomainsSection() {
+  const queryClient = useQueryClient();
+
+  const domainsQuery = useQuery<{ data: SendingDomain[] }>({
+    queryKey: ["sending-domains"],
+    queryFn: async () => (await api.get("/settings/sending-domains")).data,
+  });
+
+  const dnsQuery = useQuery<{ data: DnsCheckResult[] }>({
+    queryKey: ["sending-domains-dns"],
+    queryFn: async () => (await api.get("/settings/sending-domains/dns-check")).data,
+    staleTime: 60_000,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (domains: SendingDomain[]) => {
+      await api.put("/settings/sending-domains", { domains });
+    },
+    onSuccess: () => {
+      toast.success("Domaines enregistres");
+      queryClient.invalidateQueries({ queryKey: ["sending-domains"] });
+      queryClient.invalidateQueries({ queryKey: ["sending-domains-dns"] });
+    },
+    onError: () => toast.error("Erreur lors de l'enregistrement"),
+  });
+
+  const [draft, setDraft] = useState<SendingDomain[]>([]);
+
+  useEffect(() => {
+    if (domainsQuery.data?.data) setDraft(domainsQuery.data.data);
+  }, [domainsQuery.data]);
+
+  const domains = draft.length ? draft : (domainsQuery.data?.data ?? []);
+  const dnsByDomain: Record<string, DnsCheckResult> = {};
+  for (const r of dnsQuery.data?.data ?? []) dnsByDomain[r.domain] = r;
+
+  function updateDomain(i: number, patch: Partial<SendingDomain>) {
+    setDraft((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+  }
+
+  function addDomain() {
+    setDraft((prev) => [
+      ...prev,
+      { domain: "", fromEmail: "", fromName: "SOS Expat", replyTo: "replies@life-expat.com", active: true },
+    ]);
+  }
+
+  function removeDomain(i: number) {
+    setDraft((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <section className="card space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-lg font-semibold text-surface-900">
+          <Globe size={20} /> Domaines d'envoi & DNS
+        </h3>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => dnsQuery.refetch()}
+            className="text-xs rounded-lg border border-surface-300 px-3 py-1.5 hover:bg-surface-50"
+          >
+            {dnsQuery.isFetching ? "Verification…" : "Revérifier DNS"}
+          </button>
+          <button
+            type="button"
+            onClick={() => saveMutation.mutate(draft)}
+            disabled={saveMutation.isPending}
+            className="text-xs rounded-lg bg-brand-600 text-white px-3 py-1.5 hover:bg-brand-700 disabled:opacity-50"
+          >
+            {saveMutation.isPending ? "Enregistrement…" : "Enregistrer les domaines"}
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-surface-500">
+        Ces domaines tournent en round-robin pour tous les envois (outreach + broadcast).
+        Warmup géré au niveau PMTA/Mailflow. DNS attendu : SPF, DKIM (sélecteur <code>dkim</code>), DMARC.
+      </p>
+
+      {domains.length === 0 && (
+        <p className="text-sm text-surface-400 italic">Aucun domaine configuré.</p>
+      )}
+
+      <div className="space-y-3">
+        {domains.map((d, i) => {
+          const dns = dnsByDomain[d.domain];
+          return (
+            <div key={i} className="rounded-lg border border-surface-200 bg-white p-3 space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                <input
+                  value={d.domain}
+                  onChange={(e) => updateDomain(i, { domain: e.target.value })}
+                  placeholder="domain.com"
+                  className="input-field text-sm"
+                />
+                <input
+                  value={d.fromEmail}
+                  onChange={(e) => updateDomain(i, { fromEmail: e.target.value })}
+                  placeholder="contact@domain.com"
+                  className="input-field text-sm"
+                />
+                <input
+                  value={d.fromName}
+                  onChange={(e) => updateDomain(i, { fromName: e.target.value })}
+                  placeholder="SOS Expat"
+                  className="input-field text-sm"
+                />
+                <input
+                  value={d.replyTo}
+                  onChange={(e) => updateDomain(i, { replyTo: e.target.value })}
+                  placeholder="replies@life-expat.com"
+                  className="input-field text-sm"
+                />
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1 text-xs text-surface-600">
+                    <input
+                      type="checkbox"
+                      checked={d.active}
+                      onChange={(e) => updateDomain(i, { active: e.target.checked })}
+                    />
+                    Actif
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeDomain(i)}
+                    className="text-xs text-red-600 hover:underline"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+              {dns ? (
+                <div className="flex flex-wrap gap-3 text-xs pt-1 border-t border-surface-100">
+                  <span className={dns.spf.ok ? "text-emerald-600" : "text-red-600"}>
+                    {dns.spf.ok ? "✅ SPF" : "❌ SPF manquant"}
+                  </span>
+                  <span className={dns.dkim.ok ? "text-emerald-600" : "text-red-600"}>
+                    {dns.dkim.ok ? "✅ DKIM (dkim._domainkey)" : "❌ DKIM manquant (sélecteur: dkim)"}
+                  </span>
+                  <span className={dns.dmarc.ok ? "text-emerald-600" : "text-red-600"}>
+                    {dns.dmarc.ok ? "✅ DMARC" : "❌ DMARC manquant"}
+                  </span>
+                  {!dns.allOk && (
+                    <span className="text-xs text-surface-400">
+                      → ajoute les enregistrements TXT manquants chez ton registrar DNS
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-surface-400">DNS non vérifié encore.</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={addDomain}
+        className="text-xs rounded-lg border border-dashed border-surface-300 px-3 py-2 text-surface-600 hover:bg-surface-50"
+      >
+        + Ajouter un domaine
+      </button>
+    </section>
   );
 }
