@@ -88,6 +88,7 @@ export default function Dashboard() {
         totalOpened: number;
         totalClicked: number;
         totalBounced: number;
+        totalDrafts: number;
         openRate: string;
         clickRate: string;
         bounceRate: string;
@@ -279,7 +280,7 @@ export default function Dashboard() {
             />
             <StatsCard
               label="Emails drafts a valider"
-              value={0}
+              value={emailStats?.totalDrafts ?? 0}
               color="yellow"
               to="/sent-emails?status=draft"
             />
