@@ -31,6 +31,7 @@ import ingestRoutes from "./api/routes/ingest.js";
 import webhooksRoutes from "./api/routes/webhooks.js";
 import trackingRoutes from "./api/routes/tracking.js";
 import mailboxRoutes from "./api/routes/mailbox.js";
+import mailboxesRoutes from "./api/routes/mailboxes.js";
 import vpsHealthRoutes from "./api/routes/vpsHealth.js";
 import authRoutes from "./api/routes/auth.js";
 import tagsRoutes from "./api/routes/tags.js";
@@ -236,6 +237,7 @@ await app.register(contactTypeMappingsRoutes, { prefix: "/api/contact-type-mappi
 await app.register(targetPagesRoutes, { prefix: "/api/target-pages" });
 await app.register(sentEmailsRoutes, { prefix: "/api/sent-emails" });
 await app.register(mailboxRoutes, { prefix: "/api/mailbox" });
+await app.register(mailboxesRoutes, { prefix: "/api/mailboxes" });
 await app.register(vpsHealthRoutes, { prefix: "/api/vps-health" });
 await app.register(broadcastRoutes, { prefix: "/api/broadcast" });
 

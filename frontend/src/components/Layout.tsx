@@ -57,8 +57,9 @@ const navSections: NavSection[] = [
   {
     labelKey: "nav.section.activity",
     items: [
+      { to: "/mailboxes", labelKey: "nav.mailboxes", icon: <Mail size={18} /> },
       { to: "/sent-emails", labelKey: "nav.sentEmails", icon: <Send size={18} /> },
-      { to: "/replies", labelKey: "nav.replies", icon: <Mail size={18} /> },
+      { to: "/replies", labelKey: "nav.replies", icon: <MessageSquare size={18} /> },
       { to: "/backlinks", labelKey: "nav.backlinks", icon: <LinkIcon size={18} /> },
     ],
   },
@@ -88,6 +89,7 @@ const pageTitleKeys: Record<string, string> = {
   "/suppression": "pageTitles.suppression",
   "/settings": "pageTitles.settings",
   "/reports": "pageTitles.reports",
+  "/mailboxes": "nav.mailboxes",
 };
 
 export default function Layout() {

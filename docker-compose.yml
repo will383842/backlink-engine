@@ -50,6 +50,13 @@ services:
     volumes:
       - /var/log/pmta:/var/log/pmta:ro
       - /var/log/mail.log:/var/log/mail.log:ro
+      # Mount host /var/mail so the app can read/write per-mailbox Maildirs
+      # (replies, presse-*). Needed by the /mailboxes feature (inbox viewer
+      # + compose/reply). Read-write so the UI can move messages to cur/
+      # on read and to Trash/ on delete. The container runs as node (uid
+      # 1000) but Maildir files are owned by the local mail users — we
+      # use doveadm-style flag renaming which doesn't require ownership.
+      - /var/mail:/var/mail
     environment:
       # DATABASE_URL, REDIS_URL, OPEN_PAGERANK_API_KEY come from .env
       NODE_ENV: production

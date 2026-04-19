@@ -63,6 +63,7 @@ export const fr = {
     settings: "Parametres",
     reports: "Rapports",
     mailboxMonitor: "Monitoring boites mail",
+    mailboxes: "Boites mail",
     vpsHealth: "Sante du VPS",
     logout: "Deconnexion",
     section: {

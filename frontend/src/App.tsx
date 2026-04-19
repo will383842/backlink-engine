@@ -21,6 +21,7 @@ const Suppression = lazy(() => import("./pages/Suppression"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Reports = lazy(() => import("./pages/Reports"));
 const MailboxMonitor = lazy(() => import("./pages/MailboxMonitor"));
+const Mailboxes = lazy(() => import("./pages/Mailboxes"));
 const VpsHealth = lazy(() => import("./pages/VpsHealth"));
 const RecontactSuggestions = lazy(() => import("./pages/RecontactSuggestions"));
 const SentEmails = lazy(() => import("./pages/SentEmails"));
@@ -110,6 +111,7 @@ export default function App() {
           <Route path="settings/contact-types" element={<ContactTypeMappings />} />
           <Route path="reports" element={<Reports />} />
             <Route path="mailbox-monitor" element={<MailboxMonitor />} />
+            <Route path="mailboxes" element={<Mailboxes />} />
             <Route path="vps-health" element={<VpsHealth />} />
           {/* Unified Campaigns hub (outreach + broadcast) */}
           <Route path="campaigns" element={<CampaignsHub />} />

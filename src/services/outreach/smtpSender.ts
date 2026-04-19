@@ -45,6 +45,12 @@ export interface SmtpSendOptions {
   subject: string;
   bodyText: string;
   bodyHtml?: string;
+  /** Optional extra recipients (comma-separated or single address). */
+  cc?: string;
+  bcc?: string;
+  /** Threading headers — set when replying so Gmail/Apple Mail keep the thread intact. */
+  inReplyTo?: string;
+  references?: string;
 }
 
 export interface SmtpSendResult {
@@ -82,10 +88,14 @@ export async function sendViaSMTP(opts: SmtpSendOptions): Promise<SmtpSendResult
     const result = await transport.sendMail({
       from: `${opts.fromName} <${opts.fromEmail}>`,
       to: opts.toName ? `${opts.toName} <${opts.toEmail}>` : opts.toEmail,
+      cc: opts.cc,
+      bcc: opts.bcc,
       replyTo: opts.replyTo,
       subject: opts.subject,
       text: opts.bodyText,
       html,
+      inReplyTo: opts.inReplyTo,
+      references: opts.references,
       headers: {
         "List-Unsubscribe": unsubHeaders["List-Unsubscribe"],
         "List-Unsubscribe-Post": unsubHeaders["List-Unsubscribe-Post"],
