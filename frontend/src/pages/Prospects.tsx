@@ -430,33 +430,48 @@ export default function Prospects() {
 
       {/* Filters */}
       <div className="card space-y-3">
-        {/* Contactable toggle — prominent at the top */}
-        <label
-          className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-            contactableOnly
-              ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-              : "border-surface-300 bg-white text-surface-600 hover:bg-surface-50"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={contactableOnly}
-            onChange={(e) => {
-              setContactableOnly(e.target.checked);
-              setPage(1);
-            }}
-            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500"
-          />
-          {contactableOnly ? (
-            <>
-              <CheckCircle2 size={16} /> Contactables uniquement (recommandé)
-            </>
-          ) : (
-            <>
-              <XCircle size={16} /> Afficher TOUS les prospects (y compris unreachable)
-            </>
-          )}
-        </label>
+        {/* Contactable toggle — prominent 2-button pill so the choice is
+            obvious before scrolling through all the other filters. The
+            count next to each label tells the user exactly how many
+            prospects each option will return. */}
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-surface-200 bg-surface-50 p-2">
+          <div className="flex items-center gap-1 flex-1">
+            <button
+              type="button"
+              onClick={() => { setContactableOnly(true); setPage(1); }}
+              className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                contactableOnly
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "bg-white text-surface-600 hover:bg-surface-100 border border-surface-200"
+              }`}
+            >
+              <CheckCircle2 size={16} />
+              Contactables uniquement
+              {statsData && (
+                <span className={`ml-1 text-xs ${contactableOnly ? "text-emerald-100" : "text-surface-400"}`}>
+                  ({(statsData.contactable ?? 0).toLocaleString()})
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setContactableOnly(false); setPage(1); }}
+              className={`flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                !contactableOnly
+                  ? "bg-surface-700 text-white shadow-sm"
+                  : "bg-white text-surface-600 hover:bg-surface-100 border border-surface-200"
+              }`}
+            >
+              <XCircle size={16} />
+              Tous les prospects
+              {statsData && (
+                <span className={`ml-1 text-xs ${!contactableOnly ? "text-surface-200" : "text-surface-400"}`}>
+                  ({(statsData.total ?? 0).toLocaleString()})
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {/* Search */}
