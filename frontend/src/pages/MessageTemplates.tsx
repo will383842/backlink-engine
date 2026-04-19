@@ -300,29 +300,50 @@ export default function MessageTemplates() {
         </p>
       </div>
 
-      {/* Scope switch */}
-      <div className="bg-white rounded-lg shadow-sm p-4 mb-4 flex items-center gap-3">
-        <span className="text-sm font-medium text-gray-700">Clé du template :</span>
-        <button
-          onClick={() => setScope("sourceContactType")}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-            scope === "sourceContactType"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          Par type de contact (recommandé)
-        </button>
-        <button
-          onClick={() => setScope("category")}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-            scope === "category"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-          }`}
-        >
-          Par catégorie (legacy)
-        </button>
+      {/* Scope switch — prominent, just below the title so the user picks the
+          template axis (per-type vs per-category) before anything else. */}
+      <div className="bg-white rounded-xl shadow-sm border-2 border-blue-200 p-5 mb-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 mb-3">
+          Étape 1 — Comment veux-tu organiser ce template ?
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => setScope("sourceContactType")}
+            className={`flex-1 min-w-[280px] rounded-lg px-5 py-4 text-left transition border-2 ${
+              scope === "sourceContactType"
+                ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                : "bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50"
+            }`}
+          >
+            <div className="font-semibold text-base flex items-center gap-2">
+              👤 Par type de contact
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                scope === "sourceContactType" ? "bg-white/20" : "bg-emerald-100 text-emerald-700"
+              }`}>RECOMMANDÉ</span>
+            </div>
+            <div className={`text-xs mt-1 ${scope === "sourceContactType" ? "text-blue-100" : "text-gray-500"}`}>
+              1 message par rôle (Presse, École, Avocat, YouTubeur…) — granularité fine
+            </div>
+          </button>
+          <button
+            onClick={() => setScope("category")}
+            className={`flex-1 min-w-[280px] rounded-lg px-5 py-4 text-left transition border-2 ${
+              scope === "category"
+                ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                : "bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50"
+            }`}
+          >
+            <div className="font-semibold text-base flex items-center gap-2">
+              🏷️ Par catégorie
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                scope === "category" ? "bg-white/20" : "bg-gray-100 text-gray-600"
+              }`}>LEGACY</span>
+            </div>
+            <div className={`text-xs mt-1 ${scope === "category" ? "text-blue-100" : "text-gray-500"}`}>
+              1 message par catégorie large (Media, Education, Corporate…) — utile pour les fallbacks
+            </div>
+          </button>
+        </div>
       </div>
 
       {/* Selectors */}
@@ -666,6 +687,39 @@ export default function MessageTemplates() {
           </p>
         </div>
       </div>
+
+      {/* Sticky save bar — visible while user scrolls long bodies. Mirrors
+          the inline Save button so the action is always reachable without
+          having to scroll back up. */}
+      {(scope === "sourceContactType" ? selectedType : true) && (subject.trim() || body.trim()) && (
+        <div className="sticky bottom-4 z-30 mt-6 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white/95 backdrop-blur p-3 shadow-lg">
+          <div className="text-xs text-gray-600 truncate">
+            {scope === "sourceContactType"
+              ? `Type : ${selectedType ?? "—"}`
+              : `Catégorie : ${selectedCategory ?? "général"}`}
+            {" · "}Langue : {selectedLang.toUpperCase()}
+            {editingTemplate ? " · ✏️ Modification" : " · 🆕 Nouveau"}
+          </div>
+          <div className="flex items-center gap-2">
+            {scope === "sourceContactType" && selectedLang === "fr" && selectedType && editingTemplate && (
+              <button
+                onClick={handleTranslate}
+                disabled={translating}
+                className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"
+              >
+                {translating ? "Traduction…" : "🌐 Traduire FR → 8 langues"}
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving || !subject.trim() || !body.trim()}
+              className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? "💾 Sauvegarde…" : "💾 Enregistrer"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
