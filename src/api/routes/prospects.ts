@@ -196,22 +196,32 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         };
       }
 
-      // Contactability filter: keep only prospects with a valid email or a contact form
+      // Contactability filter — aligned with /prospects/stats-by-type and
+      // /dashboard/outreach-overview so the count shown in the stats bar
+      // equals the number of rows returned by the list.
+      //
+      // Contactable = has a non-invalid, non-opted-out email OR has a contact form.
       if (contactable === "true") {
         where["OR"] = [
           {
             contacts: {
-              some: { emailStatus: { in: ["verified", "risky"] } },
+              some: {
+                emailStatus: { not: "invalid" },
+                optedOut: false,
+              },
             },
           },
           { contactFormUrl: { not: null } },
         ];
       } else if (contactable === "false") {
-        // Unreachable: neither valid email nor contact form
+        // Unreachable: neither a valid email nor a contact form.
         where["AND"] = [
           {
             contacts: {
-              none: { emailStatus: { in: ["verified", "risky"] } },
+              none: {
+                emailStatus: { not: "invalid" },
+                optedOut: false,
+              },
             },
           },
           { contactFormUrl: null },
