@@ -14,6 +14,9 @@ import {
   Reply,
   PenSquare,
   AlertCircle,
+  Trash2,
+  RotateCcw,
+  Inbox,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "@/lib/api";
@@ -175,18 +178,46 @@ function ComposeModal({
 function MessageViewer({
   mailbox,
   messageId,
+  folder,
   onBack,
   onReply,
+  onDeleted,
+  onRestored,
 }: {
   mailbox: MailboxInfo;
   messageId: string;
+  folder: "inbox" | "trash";
   onBack: () => void;
   onReply: (defaults: { to: string; subject: string; body: string; inReplyTo?: string; references?: string }) => void;
+  onDeleted: () => void;
+  onRestored: () => void;
 }) {
   const { data, isLoading } = useQuery<{ data: MessageDetail }>({
     queryKey: ["mailbox-message", mailbox.address, messageId],
     queryFn: async () =>
       (await api.get(`/mailboxes/${encodeURIComponent(mailbox.address)}/messages/${encodeURIComponent(messageId)}`)).data,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/mailboxes/${encodeURIComponent(mailbox.address)}/messages/${encodeURIComponent(messageId)}/delete`);
+    },
+    onSuccess: () => {
+      toast.success("Message déplacé dans Supprimés");
+      onDeleted();
+    },
+    onError: () => toast.error("Erreur lors de la suppression"),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async () => {
+      await api.post(`/mailboxes/${encodeURIComponent(mailbox.address)}/messages/${encodeURIComponent(messageId)}/restore`);
+    },
+    onSuccess: () => {
+      toast.success("Message restauré");
+      onRestored();
+    },
+    onError: () => toast.error("Erreur lors de la restauration"),
   });
 
   if (isLoading) {
@@ -208,24 +239,49 @@ function MessageViewer({
         <button onClick={onBack} className="flex items-center gap-1 text-sm text-surface-600 hover:text-surface-900 sm:hidden">
           <ArrowLeft size={14} /> Retour
         </button>
-        <button
-          onClick={() => {
-            const quoted = msg.bodyText
-              .split("\n")
-              .map((l) => "> " + l)
-              .join("\n");
-            onReply({
-              to: extractEmail(msg.from),
-              subject: msg.subject.startsWith("Re:") ? msg.subject : `Re: ${msg.subject}`,
-              body: `\n\nLe ${new Date(msg.date).toLocaleString()}, ${msg.from} a écrit :\n${quoted}\n`,
-              inReplyTo: msg.messageId ?? undefined,
-              references: msg.references ?? msg.messageId ?? undefined,
-            });
-          }}
-          className="flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
-        >
-          <Reply size={14} /> Répondre
-        </button>
+        <div className="flex items-center gap-2 ml-auto">
+          {folder === "inbox" ? (
+            <>
+              <button
+                onClick={() => {
+                  const quoted = msg.bodyText
+                    .split("\n")
+                    .map((l) => "> " + l)
+                    .join("\n");
+                  onReply({
+                    to: extractEmail(msg.from),
+                    subject: msg.subject.startsWith("Re:") ? msg.subject : `Re: ${msg.subject}`,
+                    body: `\n\nLe ${new Date(msg.date).toLocaleString()}, ${msg.from} a écrit :\n${quoted}\n`,
+                    inReplyTo: msg.messageId ?? undefined,
+                    references: msg.references ?? msg.messageId ?? undefined,
+                  });
+                }}
+                className="flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+              >
+                <Reply size={14} /> Répondre
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                className="flex items-center gap-1 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                title="Supprimer"
+              >
+                <Trash2 size={14} />
+                Supprimer
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => restoreMutation.mutate()}
+              disabled={restoreMutation.isPending}
+              className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+              title="Restaurer dans la boîte de réception"
+            >
+              <RotateCcw size={14} />
+              Restaurer
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -262,6 +318,7 @@ export default function Mailboxes() {
   const queryClient = useQueryClient();
   const [activeMailbox, setActiveMailbox] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [folder, setFolder] = useState<"inbox" | "trash">("inbox");
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeDefaults, setComposeDefaults] = useState<{ to?: string; subject?: string; body?: string; inReplyTo?: string; references?: string } | undefined>(undefined);
 
@@ -277,9 +334,9 @@ export default function Mailboxes() {
   );
 
   const messagesQuery = useQuery<{ data: MessageSummary[] }>({
-    queryKey: ["mailbox-messages", current?.address],
+    queryKey: ["mailbox-messages", current?.address, folder],
     queryFn: async () =>
-      (await api.get(`/mailboxes/${encodeURIComponent(current!.address)}/messages?limit=100`)).data,
+      (await api.get(`/mailboxes/${encodeURIComponent(current!.address)}/messages?limit=100&folder=${folder}`)).data,
     enabled: !!current,
     refetchInterval: 60_000,
   });
@@ -340,21 +397,41 @@ export default function Mailboxes() {
       {current ? (
         <>
           <section className={`${selectedId ? "hidden sm:flex" : "flex"} w-full sm:w-96 flex-col border-r border-surface-200`}>
-            <header className="flex items-center justify-between p-3 border-b border-surface-200 bg-white">
-              <div>
-                <h2 className="text-sm font-semibold text-surface-900">{current.label}</h2>
-                <p className="text-xs text-surface-500">
-                  {messages.length} messages · {unreadCount} non lus
-                </p>
+            <header className="flex flex-col gap-2 p-3 border-b border-surface-200 bg-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-surface-900">{current.label}</h2>
+                  <p className="text-xs text-surface-500">
+                    {messages.length} messages{folder === "inbox" && ` · ${unreadCount} non lus`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => messagesQuery.refetch()}
+                  disabled={messagesQuery.isFetching}
+                  className="text-surface-500 hover:text-surface-900 disabled:opacity-50"
+                  title="Rafraîchir"
+                >
+                  <RefreshCw size={16} className={messagesQuery.isFetching ? "animate-spin" : ""} />
+                </button>
               </div>
-              <button
-                onClick={() => messagesQuery.refetch()}
-                disabled={messagesQuery.isFetching}
-                className="text-surface-500 hover:text-surface-900 disabled:opacity-50"
-                title="Rafraîchir"
-              >
-                <RefreshCw size={16} className={messagesQuery.isFetching ? "animate-spin" : ""} />
-              </button>
+              <div className="flex gap-1 text-xs">
+                <button
+                  onClick={() => { setFolder("inbox"); setSelectedId(null); }}
+                  className={`flex items-center gap-1 rounded px-2 py-1 ${
+                    folder === "inbox" ? "bg-brand-600 text-white" : "bg-surface-100 text-surface-600 hover:bg-surface-200"
+                  }`}
+                >
+                  <Inbox size={12} /> Boîte de réception
+                </button>
+                <button
+                  onClick={() => { setFolder("trash"); setSelectedId(null); }}
+                  className={`flex items-center gap-1 rounded px-2 py-1 ${
+                    folder === "trash" ? "bg-brand-600 text-white" : "bg-surface-100 text-surface-600 hover:bg-surface-200"
+                  }`}
+                >
+                  <Trash2 size={12} /> Supprimés
+                </button>
+              </div>
             </header>
 
             <ul className="flex-1 overflow-y-auto">
@@ -393,12 +470,21 @@ export default function Mailboxes() {
               <MessageViewer
                 mailbox={current}
                 messageId={selectedId}
+                folder={folder}
                 onBack={() => setSelectedId(null)}
                 onReply={(d) => openCompose(d)}
+                onDeleted={() => {
+                  setSelectedId(null);
+                  queryClient.invalidateQueries({ queryKey: ["mailbox-messages", current.address] });
+                }}
+                onRestored={() => {
+                  setSelectedId(null);
+                  queryClient.invalidateQueries({ queryKey: ["mailbox-messages", current.address] });
+                }}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-surface-400 text-sm">
-                Sélectionne un message pour le lire
+                {folder === "trash" ? "Sélectionne un message pour le restaurer" : "Sélectionne un message pour le lire"}
               </div>
             )}
           </section>

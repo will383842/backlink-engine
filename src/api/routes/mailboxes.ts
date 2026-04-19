@@ -7,7 +7,20 @@ import { authenticateUser } from "../middleware/auth.js";
 import { MAILBOXES, listMessages, getMessage } from "../../services/mailbox/maildirReader.js";
 import { sendViaSMTP } from "../../services/outreach/smtpSender.js";
 import { getSendingDomains } from "../../services/outreach/domainRotator.js";
+import { redis } from "../../config/redis.js";
 import { createChildLogger } from "../../utils/logger.js";
+
+// Soft-delete state lives in Redis so we don't need to touch Maildir files
+// (which are owned by local mail users and outside the container's write
+// access). Key: `mailbox:trash:<address>` — a SET of message IDs. TTL 30d
+// auto-purges so the trash doesn't grow forever.
+const TRASH_KEY = (address: string) => `mailbox:trash:${address}`;
+const TRASH_TTL_SEC = 30 * 24 * 60 * 60;
+
+async function getTrashSet(address: string): Promise<Set<string>> {
+  const ids = await redis.smembers(TRASH_KEY(address));
+  return new Set(ids);
+}
 
 const log = createChildLogger("mailboxes-api");
 
@@ -35,19 +48,54 @@ export default async function mailboxesRoutes(app: FastifyInstance): Promise<voi
     return reply.send({ data: enriched });
   });
 
-  // ───── GET /:address/messages ─── List last 50 messages ───────
-  app.get<{ Params: { address: string }; Querystring: { limit?: string } }>(
+  // ───── GET /:address/messages ─── List messages ───────────────
+  //
+  // ?folder=inbox (default) excludes soft-deleted IDs.
+  // ?folder=trash returns ONLY soft-deleted IDs.
+  app.get<{
+    Params: { address: string };
+    Querystring: { limit?: string; folder?: "inbox" | "trash" };
+  }>(
     "/:address/messages",
     async (request, reply) => {
       const address = decodeURIComponent(request.params.address);
       const limit = Math.min(parseInt(request.query.limit ?? "50", 10) || 50, 200);
+      const folder = request.query.folder ?? "inbox";
       try {
-        const messages = await listMessages(address, limit);
-        return reply.send({ data: messages });
+        const messages = await listMessages(address, 200);
+        const trash = await getTrashSet(address);
+        const filtered =
+          folder === "trash"
+            ? messages.filter((m) => trash.has(m.id))
+            : messages.filter((m) => !trash.has(m.id));
+        return reply.send({ data: filtered.slice(0, limit) });
       } catch (err) {
         log.error({ err, address }, "Failed to list messages");
         return reply.status(500).send({ error: "failed_to_list", message: String(err) });
       }
+    },
+  );
+
+  // ───── POST /:address/messages/:id/delete ─── Soft delete ─────
+  app.post<{ Params: { address: string; id: string } }>(
+    "/:address/messages/:id/delete",
+    async (request, reply) => {
+      const address = decodeURIComponent(request.params.address);
+      const id = request.params.id;
+      await redis.sadd(TRASH_KEY(address), id);
+      await redis.expire(TRASH_KEY(address), TRASH_TTL_SEC);
+      return reply.send({ data: { address, id, deleted: true } });
+    },
+  );
+
+  // ───── POST /:address/messages/:id/restore ─── Un-delete ──────
+  app.post<{ Params: { address: string; id: string } }>(
+    "/:address/messages/:id/restore",
+    async (request, reply) => {
+      const address = decodeURIComponent(request.params.address);
+      const id = request.params.id;
+      await redis.srem(TRASH_KEY(address), id);
+      return reply.send({ data: { address, id, restored: true } });
     },
   );
 
