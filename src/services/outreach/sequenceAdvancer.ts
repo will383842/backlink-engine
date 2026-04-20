@@ -6,6 +6,7 @@ import { prisma } from "../../config/database.js";
 import { redis } from "../../config/redis.js";
 import { sendViaSMTP } from "./smtpSender.js";
 import { getNextSendingDomain } from "./domainRotator.js";
+import { getBestTemplate } from "../messaging/templateRenderer.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { getLlmClient } from "../../llm/index.js";
 import { shouldSendImmediately } from "./outreachMode.js";
@@ -257,11 +258,21 @@ async function advanceToNextStep(
     if (row) Object.assign(senderSettings, row.value);
   } catch { /* use defaults */ }
 
-  // Generate unique follow-up email via AI (preserving A/B variant from initial email)
+  // Generate unique follow-up email via AI, grounded on the same MessageTemplate DB
+  // (9 langs × 8 cats) + scraped prospect content used by the initial email. This
+  // ensures every follow-up preserves facts, URLs and CTAs factually.
+  const prospectExt = prospect as unknown as Record<string, unknown>;
+  const targetLanguage = prospect.language ?? "en";
+  const targetCategory = (prospectExt.category as string | null | undefined) ?? null;
+  const referenceTemplateRow = await getBestTemplate(targetLanguage, targetCategory);
+  const referenceTemplate = referenceTemplateRow
+    ? { subject: referenceTemplateRow.subject as string, body: referenceTemplateRow.body as string }
+    : undefined;
+
   const llm = getLlmClient();
   const generatedEmail = await llm.generateOutreachEmail({
     domain: prospect.domain,
-    language: prospect.language ?? "en",
+    language: targetLanguage,
     country: prospect.country ?? undefined,
     themes: prospect.thematicCategories as string[] | undefined,
     opportunityType: prospect.opportunityType ?? undefined,
@@ -272,6 +283,13 @@ async function advanceToNextStep(
     yourWebsite: senderSettings.yourWebsite,
     yourCompany: senderSettings.yourCompany,
     variant: abVariant ?? undefined,
+    referenceTemplate,
+    prospectContent: {
+      homepageTitle: (prospectExt.homepageTitle as string | null | undefined) ?? undefined,
+      homepageMeta: (prospectExt.homepageMeta as string | null | undefined) ?? undefined,
+      latestArticleTitles: (prospectExt.latestArticleTitles as string[] | null | undefined) ?? undefined,
+      aboutSnippet: (prospectExt.aboutSnippet as string | null | undefined) ?? undefined,
+    },
   });
 
   // Check outreach mode: auto vs review
