@@ -466,8 +466,8 @@ export interface SentEmail {
   bounceType: string | null;
   complainedAt: string | null;
   abVariant: string | null;
-  prospect?: { id: number; domain: string };
-  contact?: { id: number; email: string; firstName: string | null; lastName: string | null };
+  prospect?: { id: number; domain: string; language?: string | null; sourceContactType?: string | null; category?: string | null };
+  contact?: { id: number; email: string; firstName: string | null; lastName: string | null; sourceContactType?: string | null };
   campaign?: { id: number; name: string; language?: string };
   enrollment?: { id: number; status: string; currentStep: number };
 }
@@ -479,6 +479,10 @@ export interface SentEmailFilters {
   campaignId?: number;
   status?: string;
   stepNumber?: number;
+  language?: string;
+  sourceContactType?: string;
+  fromDomain?: string;
+  search?: string;
   dateFrom?: string;
   dateTo?: string;
 }

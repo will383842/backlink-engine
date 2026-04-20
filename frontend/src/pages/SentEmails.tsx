@@ -303,6 +303,10 @@ export default function SentEmails() {
     campaignId: "",
     status: "",
     stepNumber: "",
+    language: "",
+    sourceContactType: "",
+    fromDomain: "",
+    search: "",
     dateFrom: "",
     dateTo: "",
   });
@@ -318,6 +322,10 @@ export default function SentEmails() {
   if (filters.campaignId) queryFilters.campaignId = Number(filters.campaignId);
   if (filters.status) queryFilters.status = filters.status;
   if (filters.stepNumber) queryFilters.stepNumber = Number(filters.stepNumber);
+  if (filters.language) queryFilters.language = filters.language;
+  if (filters.sourceContactType) queryFilters.sourceContactType = filters.sourceContactType;
+  if (filters.fromDomain) queryFilters.fromDomain = filters.fromDomain;
+  if (filters.search) queryFilters.search = filters.search;
   if (filters.dateFrom) queryFilters.dateFrom = filters.dateFrom;
   if (filters.dateTo) queryFilters.dateTo = filters.dateTo;
 
@@ -412,8 +420,17 @@ export default function SentEmails() {
       )}
 
       {/* Filters */}
-      <div className="card">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="card space-y-3">
+        {/* Search bar (full width) */}
+        <input
+          type="text"
+          value={filters.search}
+          onChange={(e) => updateFilter("search", e.target.value)}
+          className="input-field w-full"
+          placeholder="Recherche (sujet, email destinataire, domaine du prospect)…"
+        />
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <select
             value={filters.campaignId}
             onChange={(e) => updateFilter("campaignId", e.target.value)}
@@ -438,6 +455,52 @@ export default function SentEmails() {
                 {s.charAt(0).toUpperCase() + s.slice(1)}
               </option>
             ))}
+          </select>
+
+          <select
+            value={filters.language}
+            onChange={(e) => updateFilter("language", e.target.value)}
+            className="input-field"
+          >
+            <option value="">Toutes les langues</option>
+            {["fr", "en", "es", "de", "pt", "ru", "ar", "zh", "hi"].map((l) => (
+              <option key={l} value={l}>{l.toUpperCase()}</option>
+            ))}
+          </select>
+
+          <select
+            value={filters.sourceContactType}
+            onChange={(e) => updateFilter("sourceContactType", e.target.value)}
+            className="input-field"
+          >
+            <option value="">Tous les types de contact</option>
+            <option value="blog">Blog</option>
+            <option value="blogger">Blogger</option>
+            <option value="influencer">Influencer</option>
+            <option value="youtubeur">YouTubeur</option>
+            <option value="instagrammeur">Instagrammeur</option>
+            <option value="media">Média</option>
+            <option value="presse">Presse</option>
+            <option value="partner">Partenaire</option>
+            <option value="agency">Agence</option>
+            <option value="association">Association</option>
+            <option value="corporate">Corporate</option>
+            <option value="podcast_radio">Podcast / Radio</option>
+            <option value="annuaire">Annuaire</option>
+          </select>
+
+          <select
+            value={filters.fromDomain}
+            onChange={(e) => updateFilter("fromDomain", e.target.value)}
+            className="input-field"
+          >
+            <option value="">Tous les domaines d'envoi</option>
+            <option value="plane-liberty.com">plane-liberty.com</option>
+            <option value="providers-expat.com">providers-expat.com</option>
+            <option value="emilia-mullerd.com">emilia-mullerd.com</option>
+            <option value="planevilain.com">planevilain.com</option>
+            <option value="hub-travelers.com">hub-travelers.com</option>
+            <option value="life-expat.com">life-expat.com</option>
           </select>
 
           <select

@@ -22,6 +22,12 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
       campaignId?: string;
       status?: string;
       stepNumber?: string;
+      language?: string;
+      sourceContactType?: string;
+      fromDomain?: string;
+      search?: string;
+      dateFrom?: string;
+      dateTo?: string;
       page?: string;
       limit?: string;
     };
@@ -33,6 +39,12 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
       campaignId,
       status,
       stepNumber,
+      language,
+      sourceContactType,
+      fromDomain,
+      search,
+      dateFrom,
+      dateTo,
       page = "1",
       limit = "50",
     } = request.query;
@@ -48,13 +60,36 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
     if (campaignId) where["campaignId"] = parseInt(campaignId, 10);
     if (status) where["status"] = status;
     if (stepNumber !== undefined) where["stepNumber"] = parseInt(stepNumber, 10);
+    if (language) where["prospect"] = { ...(where["prospect"] as object ?? {}), language };
+    if (sourceContactType) {
+      // sourceContactType lives on both Contact (precise) and Prospect (legacy).
+      // Accept either.
+      where["OR"] = [
+        { contact: { sourceContactType } },
+        { prospect: { sourceContactType } },
+      ];
+    }
+    if (fromDomain) where["fromEmail"] = { endsWith: `@${fromDomain}` };
+    if (search) {
+      const s = search.trim();
+      const orConditions = [
+        { subject: { contains: s, mode: "insensitive" as const } },
+        { toEmail: { contains: s, mode: "insensitive" as const } },
+        { prospect: { domain: { contains: s, mode: "insensitive" as const } } },
+      ];
+      where["OR"] = Array.isArray(where["OR"])
+        ? [...(where["OR"] as object[]), ...orConditions]
+        : orConditions;
+    }
+    if (dateFrom) where["sentAt"] = { ...(where["sentAt"] as object ?? {}), gte: new Date(dateFrom) };
+    if (dateTo) where["sentAt"] = { ...(where["sentAt"] as object ?? {}), lte: new Date(dateTo) };
 
     const [emails, total] = await Promise.all([
       prisma.sentEmail.findMany({
         where,
         include: {
-          prospect: { select: { id: true, domain: true } },
-          contact: { select: { id: true, email: true, firstName: true, lastName: true } },
+          prospect: { select: { id: true, domain: true, language: true, sourceContactType: true, category: true } },
+          contact: { select: { id: true, email: true, firstName: true, lastName: true, sourceContactType: true } },
           campaign: { select: { id: true, name: true } },
         },
         orderBy: { sentAt: "desc" },
