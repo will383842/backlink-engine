@@ -44,6 +44,24 @@ interface GeneratedMessage {
 // Constants
 // ---------------------------------------------------------------------------
 
+// Keep in sync with Prospects.tsx SOURCE_TYPE_CONFIG so the two pages show
+// identical labels for the same typeKey.
+const SOURCE_TYPE_CONFIG: Record<string, { label: string; emoji: string }> = {
+  presse: { label: "Presse", emoji: "📰" },
+  ecole: { label: "Écoles", emoji: "🏫" },
+  youtubeur: { label: "YouTubeurs", emoji: "▶️" },
+  influenceur: { label: "Influenceurs", emoji: "✨" },
+  consulat: { label: "Consulats", emoji: "🏛️" },
+  avocat: { label: "Avocats", emoji: "⚖️" },
+  association: { label: "Associations", emoji: "🤝" },
+  alliance_francaise: { label: "Alliance Fr.", emoji: "🇫🇷" },
+  ufe: { label: "UFE", emoji: "🌍" },
+  instagrammeur: { label: "Instagram", emoji: "📸" },
+  communaute_expat: { label: "Communautés", emoji: "👥" },
+  blog: { label: "Blog", emoji: "📝" },
+  partenaire: { label: "Partenaire", emoji: "🤝" },
+};
+
 const CATEGORY_LABELS: Record<string, string> = {
   blogger: "Blogueur",
   influencer: "Influenceur",
@@ -317,16 +335,25 @@ export default function FormOutreach() {
   const [folder, setFolder] = useState<"pending" | "contacted">("pending");
   const [doneIds, setDoneIds] = useState<Set<number>>(new Set());
 
-  // Load contact-type mappings so the filter can list them
-  const { data: mappingsData } = useQuery({
-    queryKey: ["contactTypeMappings"],
+  // Only list contact types that actually have prospects in the DB — avoids
+  // polluting the dropdown with the 82 synonym typeKeys from the mapping
+  // table (blog / blogger / blogueur / blogueuse etc.). Same source as the
+  // /prospects "Par type de contact" section so the two pages stay aligned.
+  const { data: statsData } = useQuery({
+    queryKey: ["prospects-stats-for-form-outreach"],
     queryFn: async () => {
-      const res = await api.get("/contact-type-mappings");
-      return res.data;
+      const res = await api.get("/prospects/stats-by-type");
+      return res.data?.data as {
+        bySourceType: { type: string; count: number }[];
+      } | undefined;
     },
+    staleTime: 60_000,
   });
-  const contactTypes =
-    (mappingsData?.data as Array<{ typeKey: string; label: string | null }>) ?? [];
+  const contactTypes = (statsData?.bySourceType ?? []).map((s) => ({
+    typeKey: s.type,
+    label: null as string | null,
+    count: s.count,
+  }));
 
   const { data, isLoading } = useQuery<{
     data: FormProspect[];
@@ -433,12 +460,16 @@ export default function FormOutreach() {
           <option value="">Tous les types de contact</option>
           {contactTypes
             .slice()
-            .sort((a, b) => (a.label ?? a.typeKey).localeCompare(b.label ?? b.typeKey))
-            .map((t) => (
-              <option key={t.typeKey} value={t.typeKey}>
-                {t.label ?? t.typeKey}
-              </option>
-            ))}
+            .sort((a, b) => b.count - a.count) // most common first
+            .map((t) => {
+              const cfg = SOURCE_TYPE_CONFIG[t.typeKey];
+              const label = cfg ? `${cfg.emoji} ${cfg.label}` : t.typeKey;
+              return (
+                <option key={t.typeKey} value={t.typeKey}>
+                  {label} ({t.count})
+                </option>
+              );
+            })}
         </select>
 
         <div className="flex-1" />
