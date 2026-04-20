@@ -17,12 +17,56 @@ import {
 import api from "@/lib/api";
 import { useTranslation } from "@/i18n";
 
+// Raw API shape (dict-keyed maps + campaign array).
+interface RawReportsData {
+  overview: {
+    totalProspects: number;
+    totalBacklinks: number;
+    liveBacklinks: number;
+    totalCampaigns: number;
+    totalReplies: number;
+    totalWon: number;
+  };
+  backlinksPerMonth: Record<string, number>;
+  pipeline: Record<string, number>;
+  sourceBreakdown: Record<string, number>;
+  countryBreakdown: Record<string, number>;
+  campaignStats: Array<{
+    id: number;
+    name: string;
+    enrolled: number;
+    replied: number;
+    won: number;
+    replyRate: number;
+  }>;
+}
+
+// Chart-friendly shape (arrays of points) — derived from RawReportsData.
 interface ReportsData {
+  overview: RawReportsData["overview"];
   backlinksPerMonth: { month: string; count: number }[];
   pipelineFunnel: { stage: string; count: number }[];
   replyRateByCampaign: { campaign: string; rate: number }[];
   prospectsBySource: { source: string; count: number }[];
   prospectsByCountry: { country: string; count: number }[];
+}
+
+function normalizeReports(raw: RawReportsData): ReportsData {
+  const mapToArray = <T extends string>(obj: Record<string, number> | undefined, keyName: T) =>
+    Object.entries(obj ?? {})
+      .map(([k, v]) => ({ [keyName]: k, count: v } as { [K in T]: string } & { count: number }))
+      .sort((a, b) => b.count - a.count);
+
+  return {
+    overview: raw.overview,
+    backlinksPerMonth: Object.entries(raw.backlinksPerMonth ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, count]) => ({ month, count })),
+    pipelineFunnel: mapToArray(raw.pipeline, "stage") as { stage: string; count: number }[],
+    prospectsBySource: mapToArray(raw.sourceBreakdown, "source") as { source: string; count: number }[],
+    prospectsByCountry: (mapToArray(raw.countryBreakdown, "country") as { country: string; count: number }[]).slice(0, 12),
+    replyRateByCampaign: (raw.campaignStats ?? []).map((c) => ({ campaign: c.name, rate: c.replyRate })),
+  };
 }
 
 const COLORS = [
@@ -43,7 +87,8 @@ export default function Reports() {
     queryKey: ["reports"],
     queryFn: async () => {
       const res = await api.get("/reports");
-      return res.data?.data ?? res.data;
+      const raw = (res.data?.data ?? res.data) as RawReportsData;
+      return normalizeReports(raw);
     },
   });
 
@@ -166,8 +211,8 @@ export default function Reports() {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ source, percent }) =>
-                    `${source} (${(percent * 100).toFixed(0)}%)`
+                  label={(entry: { source?: string; percent?: number }) =>
+                    `${entry.source ?? ""} (${((entry.percent ?? 0) * 100).toFixed(0)}%)`
                   }
                   outerRadius={90}
                   fill="#8884d8"
