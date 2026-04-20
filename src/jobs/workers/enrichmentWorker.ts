@@ -39,7 +39,12 @@ interface BatchEnrichNewJobData {
   type: "batch-enrich-new";
 }
 
-type EnrichmentJobData = AutoScoreJobData | BatchEnrichNewJobData;
+interface ScrapeHomepageJobData {
+  type: "scrape-homepage";
+  prospectId: number;
+}
+
+type EnrichmentJobData = AutoScoreJobData | BatchEnrichNewJobData | ScrapeHomepageJobData;
 
 // ---------------------------------------------------------------------------
 // External API helpers
@@ -759,6 +764,43 @@ async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> 
       const { prospectId, force } = job.data;
       log.info({ prospectId, jobId: job.id, force: !!force }, "Starting enrichment for prospect.");
       await enrichSingleProspect(prospectId, !!force);
+      await job.updateProgress(100);
+      break;
+    }
+
+    case "scrape-homepage": {
+      const { prospectId } = job.data;
+      const prospect = await prisma.prospect.findUnique({
+        where: { id: prospectId },
+        select: { id: true, domain: true, homepageTitle: true },
+      });
+      if (!prospect) {
+        log.debug({ prospectId, jobId: job.id }, "Prospect not found, skipping homepage scrape.");
+        await job.updateProgress(100);
+        break;
+      }
+      if (prospect.homepageTitle) {
+        log.debug({ prospectId, jobId: job.id }, "Homepage already scraped, skipping.");
+        await job.updateProgress(100);
+        break;
+      }
+      try {
+        const content = await scrapeHomepageContent(prospect.domain);
+        await prisma.prospect.update({
+          where: { id: prospectId },
+          data: {
+            ...(content.homepageTitle !== null && { homepageTitle: content.homepageTitle }),
+            ...(content.homepageMeta !== null && { homepageMeta: content.homepageMeta }),
+            ...(content.latestArticleTitles !== null && { latestArticleTitles: content.latestArticleTitles }),
+            ...(content.aboutSnippet !== null && { aboutSnippet: content.aboutSnippet }),
+          },
+        });
+      } catch (err) {
+        // Non-fatal: homepage scrape is best-effort. BullMQ will retry
+        // automatically based on job options (see enqueue call).
+        log.warn({ err, prospectId, domain: prospect.domain }, "Homepage scrape failed for job.");
+        throw err;
+      }
       await job.updateProgress(100);
       break;
     }

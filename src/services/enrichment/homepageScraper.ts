@@ -36,10 +36,14 @@ export interface HomepageContent {
   aboutSnippet: string | null;
 }
 
-async function fetchHtml(url: string, timeoutMs = 15000): Promise<string | null> {
+// Cap response body size so a malicious or broken site can't OOM us with a
+// multi-GB HTML stream. 2 MB is more than enough for head + first articles.
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
+
+async function fetchHtml(url: string, timeoutMs = 10_000): Promise<string | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const response = await proxyFetch(url, {
       signal: controller.signal,
       headers: {
@@ -48,12 +52,24 @@ async function fetchHtml(url: string, timeoutMs = 15000): Promise<string | null>
         "Accept-Language": "en-US,en;q=0.9,fr;q=0.8",
       },
     });
-    clearTimeout(timeoutId);
     if (!response.ok) return null;
-    return await response.text();
+
+    // Stream + size cap to prevent OOM on pathological sites.
+    const contentLength = Number(response.headers.get("content-length") ?? 0);
+    if (contentLength > MAX_BODY_BYTES) {
+      log.debug({ url, contentLength }, "Response too large, skipping");
+      return null;
+    }
+    const buf = await response.arrayBuffer();
+    if (buf.byteLength > MAX_BODY_BYTES) {
+      return null;
+    }
+    return new TextDecoder("utf-8", { fatal: false }).decode(buf);
   } catch (err) {
     log.debug({ url, err: err instanceof Error ? err.message : err }, "fetchHtml failed");
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -116,15 +132,20 @@ function extractAboutSnippet($: ReturnType<typeof load>): string | null {
 
 async function tryAboutPage(baseUrl: string): Promise<string | null> {
   const base = baseUrl.replace(/\/$/, "");
+  // Shorter timeout per about-page probe: each miss shouldn't delay us 10s.
   for (const slug of ABOUT_PAGE_SLUGS) {
     const url = base + slug;
-    const html = await fetchHtml(url, 10000);
+    const html = await fetchHtml(url, 5_000);
     if (!html) continue;
-    const $ = load(html);
-    const snippet = extractAboutSnippet($);
-    if (snippet && snippet.length >= 80) {
-      log.debug({ url, len: snippet.length }, "About page found");
-      return snippet;
+    try {
+      const $ = load(html);
+      const snippet = extractAboutSnippet($);
+      if (snippet && snippet.length >= 80) {
+        log.debug({ url, len: snippet.length }, "About page found");
+        return snippet;
+      }
+    } catch {
+      // malformed HTML — skip silently
     }
   }
   return null;
@@ -143,29 +164,37 @@ export async function scrapeHomepageContent(domain: string): Promise<HomepageCon
 
   const html = await fetchHtml(url);
   if (html) {
-    const $ = load(html);
+    // Wrap parsing in try so malformed HTML doesn't crash the worker.
+    try {
+      const $ = load(html);
 
-    const title = $("head > title").first().text().trim();
-    if (title) result.homepageTitle = truncate(title, 300);
+      const title = $("head > title").first().text().trim();
+      if (title) result.homepageTitle = truncate(title, 300);
 
-    const meta =
-      $('head > meta[name="description"]').attr("content")?.trim() ||
-      $('head > meta[property="og:description"]').attr("content")?.trim() ||
-      null;
-    if (meta) result.homepageMeta = truncate(meta, 500);
+      const meta =
+        $('head > meta[name="description"]').attr("content")?.trim() ||
+        $('head > meta[property="og:description"]').attr("content")?.trim() ||
+        null;
+      if (meta) result.homepageMeta = truncate(meta, 500);
 
-    const articles = extractArticleTitles($);
-    if (articles.length > 0) result.latestArticleTitles = articles;
+      const articles = extractArticleTitles($);
+      if (articles.length > 0) result.latestArticleTitles = articles;
 
-    // About snippet from homepage if page has an about section
-    const aboutFromHome = extractAboutSnippet($);
-    if (aboutFromHome && aboutFromHome.length >= 80) result.aboutSnippet = aboutFromHome;
+      const aboutFromHome = extractAboutSnippet($);
+      if (aboutFromHome && aboutFromHome.length >= 80) result.aboutSnippet = aboutFromHome;
+    } catch (err) {
+      log.debug({ url, err: err instanceof Error ? err.message : err }, "Homepage HTML parse failed");
+    }
   }
 
   // If About snippet not found on homepage, try dedicated /about pages
   if (!result.aboutSnippet) {
-    const aboutFromPage = await tryAboutPage(url);
-    if (aboutFromPage) result.aboutSnippet = aboutFromPage;
+    try {
+      const aboutFromPage = await tryAboutPage(url);
+      if (aboutFromPage) result.aboutSnippet = aboutFromPage;
+    } catch (err) {
+      log.debug({ url, err: err instanceof Error ? err.message : err }, "About probe failed");
+    }
   }
 
   log.info(
