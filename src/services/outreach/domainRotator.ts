@@ -1,6 +1,7 @@
 import { prisma } from "../../config/database.js";
 import { redis } from "../../config/redis.js";
 import { createChildLogger } from "../../utils/logger.js";
+import { getUnhealthyDomains } from "./domainHealthMonitor.js";
 
 const log = createChildLogger("domain-rotator");
 
@@ -55,11 +56,26 @@ export async function getSendingDomains(): Promise<SendingDomain[]> {
  * Uses Redis atomic counter for fairness across workers.
  */
 export async function getNextSendingDomain(): Promise<SendingDomain> {
-  const domains = await getSendingDomains();
+  const allDomains = await getSendingDomains();
 
-  if (domains.length === 0) {
+  if (allDomains.length === 0) {
     // Fallback to first default
     return DEFAULT_DOMAINS[0];
+  }
+
+  // Filter out unhealthy domains (bounce rate > 5% or complaint rate > 1%
+  // over the last 7 days). If ALL domains are unhealthy we still fall back
+  // to the full set — reputation is already trashed; pausing sends entirely
+  // wouldn't help, only operator intervention will.
+  const unhealthy = await getUnhealthyDomains();
+  const domains = allDomains.some((d) => !unhealthy.has(d.domain))
+    ? allDomains.filter((d) => !unhealthy.has(d.domain))
+    : allDomains;
+  if (domains.length < allDomains.length) {
+    log.warn(
+      { skipped: allDomains.length - domains.length, remaining: domains.length },
+      "Some sending domains skipped in rotation due to poor bounce/complaint rate",
+    );
   }
 
   if (domains.length === 1) {

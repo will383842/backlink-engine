@@ -6,6 +6,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../../config/database.js";
 import { authenticateUser, parseIdParam } from "../middleware/auth.js";
 import { createChildLogger } from "../../utils/logger.js";
+import { getDomainHealth } from "../../services/outreach/domainHealthMonitor.js";
 
 const log = createChildLogger("sent-emails-api");
 
@@ -93,6 +94,12 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
     }
 
     return reply.send({ data: email });
+  });
+
+  // ───── GET /domain-health ─── Per-domain deliverability (7-day rolling) ───
+  app.get("/domain-health", async (_request, reply) => {
+    const health = await getDomainHealth();
+    return reply.send({ success: true, data: health });
   });
 
   // ───── GET /stats ─── Aggregated email sending statistics ───
