@@ -69,8 +69,23 @@ export async function getBestTemplate(
       return generalTemplate;
     }
 
-    // 3. Ultimate fallback: English general template
-    log.warn({ language, category }, "No template found for language, falling back to English");
+    // 3. Fallback to English CATEGORY-specific template (preserves the right
+    //    CTA for corporate/media/partner/etc. prospects in unsupported langs).
+    //    Without this, a Croatian corporate prospect would get the EN general
+    //    template which contains /devenir-blogger as CTA — wrong for a B2B
+    //    corporate contact.
+    if (category) {
+      const englishCategory = await prisma.messageTemplate.findUnique({
+        where: { language_category: { language: "en" as any, category: category as any } },
+      });
+      if (englishCategory) {
+        log.warn({ language, category }, "No template for language, falling back to English category template");
+        return englishCategory;
+      }
+    }
+
+    // 4. Ultimate fallback: English general template
+    log.warn({ language, category }, "No template found for language, falling back to English general");
     const englishTemplate = await prisma.messageTemplate.findFirst({
       where: {
         language: "en",
