@@ -1812,4 +1812,78 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
       });
     },
   );
+
+  // ───── POST /:id/test-email-generation ─── Generate an outreach email
+  //       without sending it, so admin can preview the LLM output + validator
+  //       result before flipping outreach mode to `auto`.
+  app.post<{ Params: { id: string } }>(
+    "/:id/test-email-generation",
+    { preHandler: authenticateUser },
+    async (request, reply) => {
+      const prospectId = parseIdParam(request.params.id);
+
+      const prospect = await prisma.prospect.findUnique({ where: { id: prospectId } });
+      if (!prospect) {
+        return reply.status(404).send({ statusCode: 404, error: "Not Found", message: "Prospect not found" });
+      }
+      if (!prospect.language) {
+        return reply.status(400).send({ statusCode: 400, error: "Bad Request", message: "Prospect has no language set" });
+      }
+
+      const contact = await prisma.contact.findFirst({
+        where: { prospectId, optedOut: false, emailStatus: { not: "invalid" } },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const { getLlmClient } = await import("../../llm/index.js");
+      const { getBestTemplate } = await import("../../services/messaging/templateRenderer.js");
+      const { validateGeneratedEmail } = await import("../../services/outreach/emailValidator.js");
+
+      const senderInfo = await getSenderInfo();
+      const referenceTemplateRow = await getBestTemplate(prospect.language, prospect.category);
+      const referenceTemplate = referenceTemplateRow
+        ? { subject: referenceTemplateRow.subject as string, body: referenceTemplateRow.body as string }
+        : undefined;
+
+      const prospectExt = prospect as unknown as Record<string, unknown>;
+      const llm = getLlmClient();
+      const generated = await llm.generateOutreachEmail({
+        domain: prospect.domain,
+        language: prospect.language,
+        country: prospect.country ?? undefined,
+        themes: prospectExt.thematicCategories as string[] | undefined,
+        opportunityType: prospectExt.opportunityType as string | undefined,
+        contactName: contact?.name ?? undefined,
+        contactType: (contact as unknown as Record<string, unknown> | null)?.sourceContactType as string | undefined
+          ?? (prospectExt.sourceContactType as string | undefined),
+        stepNumber: 0,
+        yourWebsite: senderInfo.yourWebsite,
+        yourCompany: senderInfo.yourCompany,
+        referenceTemplate,
+        prospectContent: {
+          homepageTitle: (prospectExt.homepageTitle as string | null | undefined) ?? undefined,
+          homepageMeta: (prospectExt.homepageMeta as string | null | undefined) ?? undefined,
+          latestArticleTitles: (prospectExt.latestArticleTitles as string[] | null | undefined) ?? undefined,
+          aboutSnippet: (prospectExt.aboutSnippet as string | null | undefined) ?? undefined,
+        },
+      });
+
+      const validation = validateGeneratedEmail(generated, referenceTemplate, prospect.language);
+
+      return reply.send({
+        success: true,
+        data: {
+          prospectId,
+          domain: prospect.domain,
+          language: prospect.language,
+          category: prospect.category,
+          contactType: prospectExt.sourceContactType ?? null,
+          hadReferenceTemplate: !!referenceTemplate,
+          hadProspectContent: !!(prospectExt.homepageTitle || prospectExt.latestArticleTitles),
+          generated,
+          validation,
+        },
+      });
+    },
+  );
 }
