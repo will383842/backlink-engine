@@ -99,6 +99,29 @@ export interface GenerateEmailInput {
   yourCompany: string;
   /** A/B test variant. "A" = benefit-focused, "B" = curiosity-focused, undefined = no A/B test */
   variant?: AbVariant;
+  /**
+   * Reference template from MessageTemplate DB (subject + body already written
+   * by a human and translated + polished by native-speaker agents). The LLM
+   * uses this as ground truth for facts, numbers, URLs, and tone; it MUST NOT
+   * invent anything not present in the template. The LLM only personalizes
+   * references to the prospect's real site content.
+   */
+  referenceTemplate?: { subject: string; body: string };
+  /**
+   * Scraped content about the prospect's site so the LLM can mention something
+   * real (recent article, audience, niche headline) instead of generic claims.
+   */
+  prospectContent?: {
+    homepageTitle?: string;
+    homepageMeta?: string;
+    latestArticleTitles?: string[];
+    aboutSnippet?: string;
+  };
+  /**
+   * Optional corrective hint from the validator, used on retries to tell the
+   * LLM which issues were detected in the previous output.
+   */
+  validatorFeedback?: string;
 }
 
 export interface GeneratedEmail {

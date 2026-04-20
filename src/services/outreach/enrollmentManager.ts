@@ -17,6 +17,7 @@ import { getLlmClient } from "../../llm/index.js";
 import { shouldSendImmediately } from "./outreachMode.js";
 import { sendViaSMTP } from "./smtpSender.js";
 import { getNextSendingDomain } from "./domainRotator.js";
+import { getBestTemplate } from "../messaging/templateRenderer.js";
 
 const log = createChildLogger("enrollment");
 
@@ -138,21 +139,41 @@ export async function enrollProspect(
     log.info({ prospectId, campaignId, abVariant }, "A/B test: assigned variant");
   }
 
-  // 7. Generate COMPLETE personalized email via AI
+  // 7. Generate COMPLETE personalized email via AI.
+  //    Grounded on the MessageTemplate DB (72 polished templates, 9 langs ×
+  //    8 categories) for factual correctness + correct CTAs. Enriched with
+  //    scraped homepage content for prospect personalization.
   const llm = getLlmClient();
+  const prospectExt = prospect as unknown as Record<string, unknown>;
+  const targetLanguage = prospect.language ?? campaign.language;
+  const targetCategory = (prospectExt.category as string | null | undefined) ?? null;
+  const referenceTemplateRow = await getBestTemplate(targetLanguage, targetCategory);
+  const referenceTemplate = referenceTemplateRow
+    ? { subject: referenceTemplateRow.subject as string, body: referenceTemplateRow.body as string }
+    : undefined;
+
+  const prospectContent = {
+    homepageTitle: (prospectExt.homepageTitle as string | null | undefined) ?? undefined,
+    homepageMeta: (prospectExt.homepageMeta as string | null | undefined) ?? undefined,
+    latestArticleTitles: (prospectExt.latestArticleTitles as string[] | null | undefined) ?? undefined,
+    aboutSnippet: (prospectExt.aboutSnippet as string | null | undefined) ?? undefined,
+  };
+
   const generatedEmail = await llm.generateOutreachEmail({
     domain: prospect.domain,
-    language: prospect.language ?? campaign.language,
+    language: targetLanguage,
     country: prospect.country ?? undefined,
-    themes: (prospect as unknown as Record<string, unknown>).thematicCategories as string[] | undefined,
-    opportunityType: (prospect as unknown as Record<string, unknown>).opportunityType as string | undefined,
+    themes: prospectExt.thematicCategories as string[] | undefined,
+    opportunityType: prospectExt.opportunityType as string | undefined,
     contactName: contact.name ?? undefined,
     contactType: ((contact as unknown as Record<string, unknown>).sourceContactType as string | undefined)
-      ?? ((prospect as unknown as Record<string, unknown>).sourceContactType as string | undefined),
+      ?? (prospectExt.sourceContactType as string | undefined),
     stepNumber: 0,
     yourWebsite: senderSettings.yourWebsite,
     yourCompany: senderSettings.yourCompany,
     variant: abVariant,
+    referenceTemplate,
+    prospectContent,
   });
 
   // 7. Generate unique campaign reference

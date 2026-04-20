@@ -10,6 +10,7 @@ import {
   GENERATE_OUTREACH_EMAIL_FOLLOW_UP_HINT,
   AB_VARIANT_A_INSTRUCTIONS,
   AB_VARIANT_B_INSTRUCTIONS,
+  VALIDATOR_RETRY_HINT,
 } from "./prompts/generateOutreachEmail.js";
 import { GENERATE_BROADCAST_VARIATIONS_PROMPT } from "./prompts/generateBroadcastVariations.js";
 import { CONFIDENCE_THRESHOLD } from "../config/constants.js";
@@ -348,7 +349,7 @@ export class LlmClient {
     );
 
     try {
-      const userLines = [
+      const contextLines = [
         `domain: ${input.domain}`,
         `language: ${input.language}`,
         input.country ? `country: ${input.country}` : "",
@@ -361,7 +362,22 @@ export class LlmClient {
         `yourWebsite: ${input.yourWebsite}`,
         `yourCompany: ${input.yourCompany}`,
         input.variant ? `abVariant: ${input.variant}` : "",
-      ].filter(Boolean).join("\n");
+        input.prospectContent?.homepageTitle ? `homepageTitle: ${input.prospectContent.homepageTitle}` : "",
+        input.prospectContent?.homepageMeta ? `homepageMeta: ${input.prospectContent.homepageMeta}` : "",
+        input.prospectContent?.latestArticleTitles?.length
+          ? `latestArticleTitles: ${input.prospectContent.latestArticleTitles.join(" | ")}`
+          : "",
+        input.prospectContent?.aboutSnippet ? `aboutSnippet: ${input.prospectContent.aboutSnippet}` : "",
+      ].filter(Boolean);
+
+      const sections: string[] = [];
+      if (input.referenceTemplate) {
+        sections.push(
+          `<<<REFERENCE_TEMPLATE>>>\nsubject: ${input.referenceTemplate.subject}\nbody: ${input.referenceTemplate.body}\n<<<END>>>`,
+        );
+      }
+      sections.push(`<<<PROSPECT_CONTEXT>>>\n${contextLines.join("\n")}\n<<<END>>>`);
+      const userLines = sections.join("\n\n");
 
       let systemPrompt = GENERATE_OUTREACH_EMAIL_PROMPT;
 
@@ -376,6 +392,11 @@ export class LlmClient {
         systemPrompt += GENERATE_OUTREACH_EMAIL_FOLLOW_UP_HINT
           .replace("{{stepNumber}}", String(input.stepNumber))
           .replace("{{previousSubject}}", input.previousSubject);
+      }
+
+      // Validator retry hint (populated on retry calls by the outer retry wrapper)
+      if (input.validatorFeedback) {
+        systemPrompt += VALIDATOR_RETRY_HINT.replace("{{issues}}", input.validatorFeedback);
       }
 
       let raw: string;
