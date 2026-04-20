@@ -310,9 +310,11 @@ function ProspectCard({
 // ---------------------------------------------------------------------------
 
 export default function FormOutreach() {
+  const queryClient = useQueryClient();
   const [filterLanguage, setFilterLanguage] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterType, setFilterType] = useState("");
+  const [folder, setFolder] = useState<"pending" | "contacted">("pending");
   const [doneIds, setDoneIds] = useState<Set<number>>(new Set());
 
   // Load contact-type mappings so the filter can list them
@@ -330,10 +332,11 @@ export default function FormOutreach() {
     data: FormProspect[];
     total: number;
     alreadyContactedCount: number;
+    folder: "pending" | "contacted";
   }>({
-    queryKey: ["formQueue", filterLanguage, filterCategory, filterType],
+    queryKey: ["formQueue", folder, filterLanguage, filterCategory, filterType],
     queryFn: async () => {
-      const params: Record<string, string> = { limit: "50" };
+      const params: Record<string, string> = { limit: "50", folder };
       if (filterLanguage) params.language = filterLanguage;
       if (filterCategory) params.category = filterCategory;
       if (filterType) params.sourceContactType = filterType;
@@ -342,23 +345,59 @@ export default function FormOutreach() {
     },
   });
 
-  const prospects = (data?.data ?? []).filter((p) => !doneIds.has(p.id));
+  const restoreMutation = useMutation({
+    mutationFn: async (prospectId: number) => {
+      await api.delete(`/prospects/${prospectId}/manual-contact`);
+    },
+    onSuccess: () => {
+      toast.success("Prospect remis dans la file à contacter");
+      queryClient.invalidateQueries({ queryKey: ["formQueue"] });
+    },
+    onError: () => toast.error("Impossible de remettre en non contacté"),
+  });
+
+  // In pending mode, filter out the ones the user just marked done in this
+  // session (so they disappear immediately without needing a refetch).
+  // In contacted mode we show them as-is.
+  const prospects =
+    folder === "pending"
+      ? (data?.data ?? []).filter((p) => !doneIds.has(p.id))
+      : (data?.data ?? []);
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
+      {/* Stats — 3 clickable tabs. Click switches which folder is loaded.
+          Pending (amber) is the default; Contactés (emerald) lets the user
+          review past sends and un-mark any that shouldn't have been. */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border bg-amber-50 border-amber-200 p-4">
-          <p className="text-sm text-amber-700">A contacter</p>
-          <p className="text-2xl font-bold text-amber-800">{data?.total ?? 0}</p>
-        </div>
-        <div className="rounded-xl border bg-emerald-50 border-emerald-200 p-4">
-          <p className="text-sm text-emerald-700">Deja contactes</p>
-          <p className="text-2xl font-bold text-emerald-800">{data?.alreadyContactedCount ?? 0}</p>
-        </div>
+        <button
+          onClick={() => setFolder("pending")}
+          className={`rounded-xl border p-4 text-left transition ${
+            folder === "pending"
+              ? "bg-amber-50 border-amber-400 ring-2 ring-amber-300 shadow-sm"
+              : "bg-white border-surface-200 hover:border-amber-300 hover:bg-amber-50/40"
+          }`}
+        >
+          <p className="text-sm text-amber-700 font-medium">📋 À contacter</p>
+          <p className="text-2xl font-bold text-amber-800 mt-1">{folder === "pending" ? (data?.total ?? 0) : "…"}</p>
+          {folder === "pending" && <p className="text-xs text-amber-600 mt-1">Onglet actif</p>}
+        </button>
+        <button
+          onClick={() => setFolder("contacted")}
+          className={`rounded-xl border p-4 text-left transition ${
+            folder === "contacted"
+              ? "bg-emerald-50 border-emerald-400 ring-2 ring-emerald-300 shadow-sm"
+              : "bg-white border-surface-200 hover:border-emerald-300 hover:bg-emerald-50/40"
+          }`}
+        >
+          <p className="text-sm text-emerald-700 font-medium">✓ Déjà contactés</p>
+          <p className="text-2xl font-bold text-emerald-800 mt-1">{data?.alreadyContactedCount ?? 0}</p>
+          {folder === "contacted" && <p className="text-xs text-emerald-600 mt-1">Onglet actif — clique pour restaurer</p>}
+        </button>
         <div className="rounded-xl border bg-surface-50 border-surface-200 p-4">
-          <p className="text-sm text-surface-600">Session en cours</p>
-          <p className="text-2xl font-bold text-surface-800">{doneIds.size}</p>
+          <p className="text-sm text-surface-600">🕒 Session en cours</p>
+          <p className="text-2xl font-bold text-surface-800 mt-1">{doneIds.size}</p>
+          <p className="text-xs text-surface-500 mt-1">Marqués ce session</p>
         </div>
       </div>
 
@@ -415,7 +454,44 @@ export default function FormOutreach() {
         </div>
       ) : prospects.length === 0 ? (
         <div className="card text-center text-surface-500 py-12">
-          Aucun prospect avec formulaire de contact a traiter.
+          {folder === "contacted"
+            ? "Aucun prospect déjà contacté pour ces filtres."
+            : "Aucun prospect avec formulaire de contact à traiter."}
+        </div>
+      ) : folder === "contacted" ? (
+        <div className="space-y-3">
+          {prospects.map((p) => (
+            <div key={p.id} className="card flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-xl">{p.country ? getCountryFlag(p.country) : "🌍"}</span>
+                <div className="min-w-0">
+                  <div className="font-semibold text-surface-900 truncate">{p.domain}</div>
+                  <div className="text-xs text-surface-500">
+                    {p.language?.toUpperCase() ?? "—"} · {p.category ?? "—"} · Score {p.score}/100
+                  </div>
+                  <a
+                    href={p.contactFormUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-brand-600 hover:underline"
+                  >
+                    Voir le formulaire ↗
+                  </a>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (confirm(`Remettre "${p.domain}" dans la file à contacter ?`)) {
+                    restoreMutation.mutate(p.id);
+                  }
+                }}
+                disabled={restoreMutation.isPending}
+                className="flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 shrink-0"
+              >
+                ↺ Remettre en non contacté
+              </button>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="space-y-4">

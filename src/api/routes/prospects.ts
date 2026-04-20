@@ -1566,9 +1566,15 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
     });
   });
 
-  // ───── GET /form-queue ─── Prospects with contact form, not yet contacted ────
+  // ───── GET /form-queue ─── Prospects with contact form (pending or contacted) ────
   app.get<{
-    Querystring: { language?: string; category?: string; sourceContactType?: string; limit?: string };
+    Querystring: {
+      language?: string;
+      category?: string;
+      sourceContactType?: string;
+      folder?: "pending" | "contacted";
+      limit?: string;
+    };
   }>(
     "/form-queue",
     {
@@ -1579,37 +1585,46 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
             language: { type: "string" },
             category: { type: "string" },
             sourceContactType: { type: "string" },
+            folder: { type: "string", enum: ["pending", "contacted"], default: "pending" },
             limit: { type: "string", default: "50" },
           },
         },
       },
     },
     async (request, reply) => {
-      const { language, category, sourceContactType, limit } = request.query;
+      const { language, category, sourceContactType, folder = "pending", limit } = request.query;
       const take = Math.min(parseInt(limit ?? "50", 10) || 50, 200);
 
-      const where: Record<string, unknown> = {
+      // Shared base filter
+      const baseWhere: Record<string, unknown> = {
         contactFormUrl: { not: null },
-        status: { in: ["READY_TO_CONTACT", "NEW", "ENRICHING"] },
-        // Exclude prospects that have already been contacted via form
-        NOT: {
-          events: {
-            some: { eventType: "MANUAL_CONTACT_SENT" },
-          },
-        },
       };
-
       if (sourceContactType) {
-        // Match either on prospect.sourceContactType (fallback when no
-        // contact) or any contact.sourceContactType.
-        where["OR"] = [
+        baseWhere["OR"] = [
           { sourceContactType },
           { contacts: { some: { sourceContactType } } },
         ];
       }
+      if (language) baseWhere["language"] = language;
+      if (category) baseWhere["category"] = category;
 
-      if (language) where["language"] = language;
-      if (category) where["category"] = category;
+      // Pending (default) = prospect not yet contacted via form, eligible statuses.
+      // Contacted = prospect with at least one MANUAL_CONTACT_SENT event.
+      const where: Record<string, unknown> =
+        folder === "contacted"
+          ? {
+              ...baseWhere,
+              events: { some: { eventType: "MANUAL_CONTACT_SENT" } },
+            }
+          : {
+              ...baseWhere,
+              status: { in: ["READY_TO_CONTACT", "NEW", "ENRICHING"] },
+              NOT: {
+                events: {
+                  some: { eventType: "MANUAL_CONTACT_SENT" },
+                },
+              },
+            };
 
       const [prospects, total, alreadyContacted] = await Promise.all([
         prisma.prospect.findMany({
@@ -1631,12 +1646,24 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
               select: { email: true, firstName: true, lastName: true, name: true },
               take: 1,
             },
+            // For the Contacted folder, surface the most-recent manual contact
+            // event so the UI can show when it happened and who clicked.
+            events: folder === "contacted"
+              ? {
+                  where: { eventType: "MANUAL_CONTACT_SENT" },
+                  orderBy: { createdAt: "desc" },
+                  take: 1,
+                  select: { createdAt: true, data: true },
+                }
+              : false,
           },
-          orderBy: [{ score: "desc" }, { tier: "asc" }],
+          orderBy:
+            folder === "contacted"
+              ? [{ lastContactedAt: "desc" }, { id: "desc" }]
+              : [{ score: "desc" }, { tier: "asc" }],
           take,
         }),
         prisma.prospect.count({ where }),
-        // Count already contacted via form (for stats)
         prisma.event.groupBy({
           by: ["prospectId"],
           where: { eventType: "MANUAL_CONTACT_SENT" },
@@ -1648,6 +1675,7 @@ export default async function prospectsRoutes(app: FastifyInstance): Promise<voi
         data: prospects,
         total,
         alreadyContactedCount: alreadyContacted.length,
+        folder,
       });
     },
   );
