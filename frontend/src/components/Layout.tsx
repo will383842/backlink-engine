@@ -40,7 +40,6 @@ const navSections: NavSection[] = [
     labelKey: "nav.section.campaigns",
     items: [
       { to: "/campaigns", labelKey: "nav.campaigns", icon: <Megaphone size={18} /> },
-      { to: "/message-templates", labelKey: "nav.messageTemplates", icon: <MessageSquare size={18} /> },
       { to: "/ab-testing", labelKey: "nav.abTesting", icon: <SquareSplitVertical size={18} /> },
       { to: "/assets", labelKey: "nav.assets", icon: <Package size={18} /> },
     ],
@@ -49,6 +48,7 @@ const navSections: NavSection[] = [
     labelKey: "nav.section.tools",
     items: [
       { to: "/form-outreach", labelKey: "nav.formOutreach", icon: <FileText size={18} /> },
+      { to: "/message-templates", labelKey: "nav.messageTemplates", icon: <MessageSquare size={18} /> },
       { to: "/recontact", labelKey: "nav.recontact", icon: <RefreshCcw size={18} /> },
       { to: "/suppression", labelKey: "nav.suppression", icon: <ShieldOff size={18} /> },
       { to: "/mc-sync", labelKey: "nav.mcSync", icon: <Satellite size={18} /> },
