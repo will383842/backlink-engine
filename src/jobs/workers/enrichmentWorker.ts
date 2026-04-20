@@ -796,10 +796,11 @@ async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> 
           },
         });
       } catch (err) {
-        // Non-fatal: homepage scrape is best-effort. BullMQ will retry
-        // automatically based on job options (see enqueue call).
-        log.warn({ err, prospectId, domain: prospect.domain }, "Homepage scrape failed for job.");
-        throw err;
+        // Scrape is best-effort: retries won't help for permanently dead or
+        // bot-protected sites. Swallow the error so BullMQ doesn't retry 3x
+        // for nothing. The prospect row stays NULL and can be revisited
+        // later (e.g. when a scraping-proxy is configured).
+        log.debug({ err, prospectId, domain: prospect.domain }, "Homepage scrape errored — prospect left unscraped.");
       }
       await job.updateProgress(100);
       break;
