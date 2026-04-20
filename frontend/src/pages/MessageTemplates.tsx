@@ -21,14 +21,6 @@ interface MessageTemplate {
   updatedAt: string;
 }
 
-interface ContactTypeMapping {
-  id: number;
-  typeKey: string;
-  category: string;
-  label: string | null;
-  isSystem: boolean;
-}
-
 type TemplateScope = "category" | "sourceContactType";
 
 const LANGUAGES = [
@@ -80,15 +72,28 @@ export default function MessageTemplates() {
   const [autoFillProspectId, setAutoFillProspectId] = useState<number | null>(null);
   const [translating, setTranslating] = useState(false);
 
-  // Load contact-type mappings so we can populate the type selector
-  const { data: mappingsData } = useQuery({
-    queryKey: ["contactTypeMappings"],
+  // Only offer contact types that actually have prospects in DB — avoids
+  // polluting the dropdown with the 82 synonym typeKeys from the mapping
+  // table (blog / blogger / blogueur / blogueuse / backlink / etc.). Same
+  // source as /prospects and /form-outreach so the three pages agree.
+  const { data: statsData } = useQuery({
+    queryKey: ["prospects-stats-for-templates"],
     queryFn: async () => {
-      const res = await api.get("/contact-type-mappings");
-      return res.data;
+      const res = await api.get("/prospects/stats-by-type");
+      return res.data?.data as {
+        bySourceType: { type: string; count: number }[];
+      } | undefined;
     },
+    staleTime: 60_000,
   });
-  const contactTypes = (mappingsData?.data ?? []) as ContactTypeMapping[];
+  const contactTypes = (statsData?.bySourceType ?? []).map((s) => ({
+    id: 0,
+    typeKey: s.type,
+    category: "other",
+    label: null as string | null,
+    isSystem: false,
+    count: s.count,
+  }));
 
   // Fetch prospects for auto-fill dropdown
   const { data: prospectsData } = useQuery({
@@ -380,10 +385,10 @@ export default function MessageTemplates() {
                 <option value="">— Sélectionner un type —</option>
                 {contactTypes
                   .slice()
-                  .sort((a, b) => (a.label ?? a.typeKey).localeCompare(b.label ?? b.typeKey))
+                  .sort((a, b) => b.count - a.count)
                   .map((t) => (
-                    <option key={t.id} value={t.typeKey}>
-                      {t.label ?? t.typeKey} ({t.typeKey})
+                    <option key={t.typeKey} value={t.typeKey}>
+                      {t.typeKey} ({t.count} prospect{t.count !== 1 ? "s" : ""})
                     </option>
                   ))}
               </select>
