@@ -15,6 +15,7 @@ import {
 import { GENERATE_BROADCAST_VARIATIONS_PROMPT } from "./prompts/generateBroadcastVariations.js";
 import { CONFIDENCE_THRESHOLD } from "../config/constants.js";
 import type { CategoryResult, PersonalizationInput, ThematicResult, OpportunityResult, GeneratedEmail, GenerateEmailInput, GenerateBroadcastVariationsInput } from "./types.js";
+import { validateGeneratedEmail } from "../services/outreach/emailValidator.js";
 
 const log = createChildLogger("llm-client");
 
@@ -343,9 +344,66 @@ export class LlmClient {
       };
     }
 
+    // Retry loop: up to 3 attempts (1 initial + 2 retries with validator
+    // feedback). If the final attempt still fails, fall back to the reference
+    // template verbatim so the email remains factually correct.
+    const MAX_ATTEMPTS = 3;
+    let lastGenerated: GeneratedEmail | null = null;
+    let lastIssues: string[] = [];
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const attemptInput: GenerateEmailInput =
+        attempt === 1 ? input : { ...input, validatorFeedback: lastIssues.join("; ") };
+      const generated = await this._generateOutreachEmailOnce(attemptInput, attempt);
+      const validation = validateGeneratedEmail(generated, input.referenceTemplate, input.language);
+
+      if (validation.valid) {
+        if (attempt > 1) {
+          log.info({ domain: input.domain, attempt }, "Outreach email accepted after retry");
+        }
+        return generated;
+      }
+
+      log.warn(
+        { domain: input.domain, attempt, issues: validation.issues },
+        "Outreach email failed validation",
+      );
+      lastGenerated = generated;
+      lastIssues = validation.issues;
+    }
+
+    // All retries exhausted. Fall back to the reference template verbatim —
+    // loses personalization but guarantees factual correctness.
+    if (input.referenceTemplate) {
+      log.warn(
+        { domain: input.domain, finalIssues: lastIssues },
+        "All retries failed validation, falling back to reference template verbatim",
+      );
+      return {
+        subject: input.referenceTemplate.subject,
+        body: input.referenceTemplate.body,
+      };
+    }
+
+    // No template available → return the last generated (least bad option).
+    log.warn(
+      { domain: input.domain, finalIssues: lastIssues },
+      "All retries failed and no reference template — returning last generated email",
+    );
+    return lastGenerated ?? {
+      subject: `Partnership proposal - ${input.domain}`,
+      body: `Hello,\n\nI noticed your website ${input.domain} and would love to discuss a content partnership.\n\nBest regards`,
+    };
+  }
+
+  /** Single attempt at generating an outreach email. Called by the retry loop. */
+  private async _generateOutreachEmailOnce(
+    input: GenerateEmailInput,
+    attempt: number,
+  ): Promise<GeneratedEmail> {
     log.debug(
-      { domain: input.domain, step: input.stepNumber, lang: input.language, variant: input.variant },
-      "Generating outreach email...",
+      { domain: input.domain, step: input.stepNumber, lang: input.language, variant: input.variant, attempt },
+      "Generating outreach email attempt",
     );
 
     try {
