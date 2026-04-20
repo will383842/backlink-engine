@@ -39,6 +39,14 @@ interface RawReportsData {
     won: number;
     replyRate: number;
   }>;
+  dataQuality?: {
+    totalContacts: number;
+    contactableContacts: number;
+    unknownContacts: number;
+    unknownPercent: number;
+    prospectsWithoutContact: number;
+    prospectsWithoutContactPercent: number;
+  };
 }
 
 // Chart-friendly shape (arrays of points) — derived from RawReportsData.
@@ -49,6 +57,7 @@ interface ReportsData {
   replyRateByCampaign: { campaign: string; rate: number }[];
   prospectsBySource: { source: string; count: number }[];
   prospectsByCountry: { country: string; count: number }[];
+  dataQuality?: RawReportsData["dataQuality"];
 }
 
 function normalizeReports(raw: RawReportsData): ReportsData {
@@ -66,6 +75,7 @@ function normalizeReports(raw: RawReportsData): ReportsData {
     prospectsBySource: mapToArray(raw.sourceBreakdown, "source") as { source: string; count: number }[],
     prospectsByCountry: (mapToArray(raw.countryBreakdown, "country") as { country: string; count: number }[]).slice(0, 12),
     replyRateByCampaign: (raw.campaignStats ?? []).map((c) => ({ campaign: c.name, rate: c.replyRate })),
+    dataQuality: raw.dataQuality,
   };
 }
 
@@ -110,6 +120,62 @@ export default function Reports() {
 
   return (
     <div className="space-y-8">
+      {/* Data quality — surfaces two hidden issues: contacts with sct=unknown
+          (don't match any specific template) and prospects without any
+          contact row at all (not reachable by outreach). */}
+      {data.dataQuality && (
+        <section className="card">
+          <h3 className="mb-4 text-lg font-semibold text-surface-900">🔍 Qualité des données</h3>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <div className="text-xs uppercase tracking-wide text-surface-500">Contacts total</div>
+              <div className="text-2xl font-bold text-surface-900 mt-1">
+                {data.dataQuality.totalContacts.toLocaleString()}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                {data.dataQuality.contactableContacts.toLocaleString()} contactables
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-surface-500">Type "unknown"</div>
+              <div className={`text-2xl font-bold mt-1 ${data.dataQuality.unknownPercent > 30 ? "text-amber-600" : "text-surface-900"}`}>
+                {data.dataQuality.unknownContacts.toLocaleString()}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                {data.dataQuality.unknownPercent}% non classés — template par défaut
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-surface-500">Prospects sans contact</div>
+              <div className={`text-2xl font-bold mt-1 ${data.dataQuality.prospectsWithoutContactPercent > 20 ? "text-amber-600" : "text-surface-900"}`}>
+                {data.dataQuality.prospectsWithoutContact.toLocaleString()}
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                {data.dataQuality.prospectsWithoutContactPercent}% du stock — injoignables
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wide text-surface-500">Ratio contactable</div>
+              <div className="text-2xl font-bold text-surface-900 mt-1">
+                {data.overview.totalProspects > 0
+                  ? Math.round((data.dataQuality.contactableContacts / data.overview.totalProspects) * 100)
+                  : 0}%
+              </div>
+              <div className="text-xs text-surface-500 mt-1">
+                contacts valides / prospects
+              </div>
+            </div>
+          </div>
+          {(data.dataQuality.unknownPercent > 30 || data.dataQuality.prospectsWithoutContactPercent > 20) && (
+            <p className="mt-3 text-xs text-amber-700 bg-amber-50 rounded p-2">
+              ⚠️ Des jobs de re-enrichissement et de reclassification peuvent être lancés via
+              les scripts <code>queue-deep-enrich</code> et <code>queue-reclassify-unknown</code>
+              pour améliorer ces chiffres.
+            </p>
+          )}
+        </section>
+      )}
+
       {/* Backlinks per month */}
       <section className="card">
         <h3 className="mb-4 text-lg font-semibold text-surface-900">

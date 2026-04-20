@@ -44,7 +44,16 @@ interface ScrapeHomepageJobData {
   prospectId: number;
 }
 
-type EnrichmentJobData = AutoScoreJobData | BatchEnrichNewJobData | ScrapeHomepageJobData;
+interface ReclassifyContactTypeJobData {
+  type: "reclassify-contact-type";
+  contactId: number;
+}
+
+type EnrichmentJobData =
+  | AutoScoreJobData
+  | BatchEnrichNewJobData
+  | ScrapeHomepageJobData
+  | ReclassifyContactTypeJobData;
 
 // ---------------------------------------------------------------------------
 // External API helpers
@@ -801,6 +810,45 @@ async function processEnrichmentJob(job: Job<EnrichmentJobData>): Promise<void> 
         // for nothing. The prospect row stays NULL and can be revisited
         // later (e.g. when a scraping-proxy is configured).
         log.debug({ err, prospectId, domain: prospect.domain }, "Homepage scrape errored — prospect left unscraped.");
+      }
+      await job.updateProgress(100);
+      break;
+    }
+
+    case "reclassify-contact-type": {
+      const { contactId } = job.data;
+      const contact = await prisma.contact.findUnique({
+        where: { id: contactId },
+        include: { prospect: true },
+      });
+      if (!contact || !contact.prospect) {
+        log.debug({ contactId, jobId: job.id }, "Contact not found, skipping reclassify.");
+        await job.updateProgress(100);
+        break;
+      }
+      // Skip if no longer "unknown" (someone else fixed it already)
+      if (contact.sourceContactType && contact.sourceContactType !== "unknown") {
+        log.debug({ contactId }, "Contact already has a type, skipping reclassify.");
+        await job.updateProgress(100);
+        break;
+      }
+      const pExt = contact.prospect as unknown as Record<string, unknown>;
+      const llm = getLlmClient();
+      const inferred = await llm.classifyContactType({
+        domain: contact.prospect.domain,
+        language: contact.prospect.language ?? "en",
+        emailLocalPart: (contact.email ?? "").split("@")[0],
+        contactName: contact.name ?? contact.firstName ?? undefined,
+        homepageTitle: (pExt.homepageTitle as string | null | undefined) ?? undefined,
+        homepageMeta: (pExt.homepageMeta as string | null | undefined) ?? undefined,
+        aboutSnippet: (pExt.aboutSnippet as string | null | undefined) ?? undefined,
+      });
+      if (inferred && inferred !== "unknown") {
+        await prisma.contact.update({
+          where: { id: contactId },
+          data: { sourceContactType: inferred },
+        });
+        log.info({ contactId, from: contact.sourceContactType, to: inferred }, "Contact type reclassified");
       }
       await job.updateProgress(100);
       break;

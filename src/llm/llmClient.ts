@@ -13,6 +13,7 @@ import {
   VALIDATOR_RETRY_HINT,
 } from "./prompts/generateOutreachEmail.js";
 import { GENERATE_BROADCAST_VARIATIONS_PROMPT } from "./prompts/generateBroadcastVariations.js";
+import { CLASSIFY_CONTACT_TYPE_PROMPT } from "./prompts/classifyContactType.js";
 import { CONFIDENCE_THRESHOLD } from "../config/constants.js";
 import type { CategoryResult, PersonalizationInput, ThematicResult, OpportunityResult, GeneratedEmail, GenerateEmailInput, GenerateBroadcastVariationsInput } from "./types.js";
 import { validateGeneratedEmail } from "../services/outreach/emailValidator.js";
@@ -511,6 +512,51 @@ export class LlmClient {
   // -----------------------------------------------------------------------
   // Language detection
   // -----------------------------------------------------------------------
+
+  // -----------------------------------------------------------------------
+  // Classify a contact into a sourceContactType (used to reclassify
+  // contacts currently stored with sourceContactType="unknown").
+  // -----------------------------------------------------------------------
+
+  async classifyContactType(input: {
+    domain: string;
+    language: string;
+    emailLocalPart: string;
+    contactName?: string;
+    homepageTitle?: string;
+    homepageMeta?: string;
+    aboutSnippet?: string;
+  }): Promise<string> {
+    if (!this.enabled) return "unknown";
+    try {
+      const userLines = [
+        `domain: ${input.domain}`,
+        `language: ${input.language}`,
+        `emailLocalPart: ${input.emailLocalPart}`,
+        input.contactName ? `contactName: ${input.contactName}` : "",
+        input.homepageTitle ? `homepageTitle: ${input.homepageTitle}` : "",
+        input.homepageMeta ? `homepageMeta: ${input.homepageMeta}` : "",
+        input.aboutSnippet ? `aboutSnippet: ${input.aboutSnippet}` : "",
+      ].filter(Boolean).join("\n");
+
+      const completion = await this.client.chat.completions.create({
+        model: this.model,
+        max_tokens: 12,
+        messages: [
+          { role: "system", content: CLASSIFY_CONTACT_TYPE_PROMPT },
+          { role: "user", content: userLines },
+        ],
+      });
+      const raw = completion.choices[0]?.message?.content?.trim().toLowerCase() ?? "unknown";
+      // Strip any accidental quotes or trailing punctuation from the LLM.
+      const cleaned = raw.replace(/[^a-z_-]/g, "");
+      log.debug({ domain: input.domain, result: cleaned }, "contact type classified");
+      return cleaned || "unknown";
+    } catch (err) {
+      log.error({ err, domain: input.domain }, "Failed to classify contact type");
+      return "unknown";
+    }
+  }
 
   async detectLanguage(text: string): Promise<string> {
     if (!this.enabled) return "en";

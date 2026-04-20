@@ -87,6 +87,38 @@ export default async function reportsRoutes(app: FastifyInstance): Promise<void>
         : 0,
     }));
 
+    // Data quality — reveals the two hidden issues (unknown contact types,
+    // prospects with no contact row at all). Admin can't see these from
+    // the regular pipeline view.
+    const [
+      totalContacts,
+      contactableContacts,
+      unknownContacts,
+      prospectsWithoutContact,
+    ] = await Promise.all([
+      prisma.contact.count(),
+      prisma.contact.count({ where: { optedOut: false, emailStatus: { not: "invalid" } } }),
+      prisma.contact.count({
+        where: { sourceContactType: "unknown", optedOut: false, emailStatus: { not: "invalid" } },
+      }),
+      prisma.prospect.count({
+        where: { contacts: { none: {} } },
+      }),
+    ]);
+
+    const dataQuality = {
+      totalContacts,
+      contactableContacts,
+      unknownContacts,
+      unknownPercent: contactableContacts > 0
+        ? Math.round((unknownContacts / contactableContacts) * 1000) / 10
+        : 0,
+      prospectsWithoutContact,
+      prospectsWithoutContactPercent: totalProspects > 0
+        ? Math.round((prospectsWithoutContact / totalProspects) * 1000) / 10
+        : 0,
+    };
+
     return reply.send({
       data: {
         overview: {
@@ -102,6 +134,7 @@ export default async function reportsRoutes(app: FastifyInstance): Promise<void>
         sourceBreakdown,
         countryBreakdown,
         campaignStats,
+        dataQuality,
       },
     });
   });
