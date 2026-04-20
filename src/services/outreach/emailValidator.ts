@@ -103,9 +103,14 @@ function extractUrls(text: string): string[] {
 // ---------------------------------------------------------------------------
 
 function wordCount(text: string): number {
-  // Split on whitespace; for CJK/AR this under-counts, but we use a wider
-  // range for non-Latin to avoid false rejects.
-  return text.trim().split(/\s+/).filter(Boolean).length;
+  // Split on whitespace for Latin/Cyrillic/Devanagari/Arabic.
+  const whitespaceWords = text.trim().split(/\s+/).filter(Boolean).length;
+
+  // For CJK (Chinese/Japanese), whitespace is rare — so we add one "virtual
+  // word" per Han/Hiragana/Katakana character so CJK emails aren't under-counted.
+  const cjkChars = (text.match(/[\u4E00-\u9FFF\u3040-\u30FF]/g) ?? []).length;
+
+  return whitespaceWords + cjkChars;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,11 +138,13 @@ export function validateGeneratedEmail(
     issues.push(`subject too short (${generated.subject.length} chars, min 10)`);
   }
 
-  // 2. Body word count — wider range for non-Latin scripts that pack more per word
+  // 2. Body word count — wider range for non-Latin scripts that pack more per
+  //    word. Target range is intentionally permissive; the LLM sometimes hits
+  //    90 words on FR but still produces a tight, complete pitch.
   const words = wordCount(generated.body);
   const nonLatin = /[\u0400-\u09FF\u4E00-\u9FFF\u0600-\u06FF]/.test(generated.body);
-  const minWords = nonLatin ? 50 : 100;
-  const maxWords = nonLatin ? 500 : 400;
+  const minWords = nonLatin ? 60 : 80;
+  const maxWords = nonLatin ? 600 : 500;
   if (words < minWords || words > maxWords) {
     issues.push(`body word count ${words} outside [${minWords}, ${maxWords}]`);
   }

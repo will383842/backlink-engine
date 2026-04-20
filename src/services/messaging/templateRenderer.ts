@@ -39,20 +39,28 @@ export async function getBestTemplate(
   category?: string | null
 ): Promise<any | null> {
   try {
-    // 1. Try to find category-specific template (e.g., fr+blogger)
+    // 1. Try to find category-specific template (e.g., fr+blogger).
+    //    Wrapped in its own try/catch: findUnique with an invalid enum
+    //    value (unknown category string) throws PrismaClientValidationError
+    //    instead of returning null, so we swallow it and fall through to
+    //    the language-only fallback.
     if (category) {
-      const categoryTemplate = await prisma.messageTemplate.findUnique({
-        where: {
-          language_category: {
-            language: language as any,
-            category: category as any,
+      try {
+        const categoryTemplate = await prisma.messageTemplate.findUnique({
+          where: {
+            language_category: {
+              language: language as any,
+              category: category as any,
+            },
           },
-        },
-      });
+        });
 
-      if (categoryTemplate) {
-        log.debug({ language, category }, "Found category-specific template");
-        return categoryTemplate;
+        if (categoryTemplate) {
+          log.debug({ language, category }, "Found category-specific template");
+          return categoryTemplate;
+        }
+      } catch (err) {
+        log.debug({ language, category, err: err instanceof Error ? err.message : err }, "category-specific lookup failed (invalid enum?), falling through");
       }
     }
 
@@ -75,12 +83,17 @@ export async function getBestTemplate(
     //    template which contains /devenir-blogger as CTA — wrong for a B2B
     //    corporate contact.
     if (category) {
-      const englishCategory = await prisma.messageTemplate.findUnique({
-        where: { language_category: { language: "en" as any, category: category as any } },
-      });
-      if (englishCategory) {
-        log.warn({ language, category }, "No template for language, falling back to English category template");
-        return englishCategory;
+      try {
+        const englishCategory = await prisma.messageTemplate.findUnique({
+          where: { language_category: { language: "en" as any, category: category as any } },
+        });
+        if (englishCategory) {
+          log.warn({ language, category }, "No template for language, falling back to English category template");
+          return englishCategory;
+        }
+      } catch (err) {
+        // invalid category enum → fall through to general english template
+        log.debug({ language, category, err: err instanceof Error ? err.message : err }, "en+category lookup failed, falling through to en general");
       }
     }
 
