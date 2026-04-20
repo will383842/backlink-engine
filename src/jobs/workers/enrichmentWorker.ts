@@ -10,6 +10,7 @@ import { getTimezoneForCountry } from "../../data/countries.js";
 import { detectAndAssignTags } from "../../services/tags/tagDetector.js";
 import { scrapeAndValidateEmails, scrapeEmailsDeep, extractNameFromEmailContext } from "../../services/scraping/emailScraper.js";
 import { detectContactForm, findContactFormUrl } from "../../services/scraping/contactFormDetector.js";
+import { scrapeHomepageContent } from "../../services/enrichment/homepageScraper.js";
 import { canAutoEnroll, isProspectEligible } from "../../services/autoEnrollment/config.js";
 import { findBestCampaign, isAlreadyEnrolled } from "../../services/autoEnrollment/campaignSelector.js";
 import { enrollProspect } from "../../services/outreach/enrollmentManager.js";
@@ -470,7 +471,20 @@ async function enrichSingleProspect(prospectId: number, force = false): Promise<
     checkGoogleSafeBrowsing(domain),
   ]);
 
-  // 4b. LLM-based thematic classification & opportunity detection
+  // 4b. Homepage content scrape (fed to LLM for personalized email generation)
+  let homepageContent: Awaited<ReturnType<typeof scrapeHomepageContent>> = {
+    homepageTitle: null,
+    homepageMeta: null,
+    latestArticleTitles: null,
+    aboutSnippet: null,
+  };
+  try {
+    homepageContent = await scrapeHomepageContent(domain);
+  } catch (err) {
+    log.warn({ err, prospectId, domain }, "Homepage scrape failed, continuing without.");
+  }
+
+  // 4c. LLM-based thematic classification & opportunity detection
   let thematicRelevance: number | null = null;
   let thematicCategories: string[] | null = null;
   let opportunityType: OpportunityType | null = null;
@@ -549,6 +563,10 @@ async function enrichSingleProspect(prospectId: number, force = false): Promise<
     ...(thematicCategories !== null && { thematicCategories }),
     ...(opportunityType !== null && { opportunityType }),
     ...(opportunityNotes !== null && { opportunityNotes }),
+    ...(homepageContent.homepageTitle !== null && { homepageTitle: homepageContent.homepageTitle }),
+    ...(homepageContent.homepageMeta !== null && { homepageMeta: homepageContent.homepageMeta }),
+    ...(homepageContent.latestArticleTitles !== null && { latestArticleTitles: homepageContent.latestArticleTitles }),
+    ...(homepageContent.aboutSnippet !== null && { aboutSnippet: homepageContent.aboutSnippet }),
   };
 
   // ALWAYS update language, country, and timezone (override user input if detection is better)

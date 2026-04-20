@@ -229,6 +229,11 @@ model Prospect {
   opportunityNotes      String?
   thematicRelevance     Int? // 0-10 relevance to expat niche
   thematicCategories    Json? // array of detected themes
+  // Homepage content scraped for LLM personalization (grounded generation)
+  homepageTitle         String?          @db.VarChar(300)
+  homepageMeta          String?          @db.VarChar(500)
+  latestArticleTitles   Json? // array of up to 5 recent article H2/H3 titles
+  aboutSnippet          String?          @db.VarChar(500) // first 500 chars of About page
   assignedToId          Int?
   verificationTier      VerificationTier @default(T3)
   createdAt             DateTime         @default(now())
