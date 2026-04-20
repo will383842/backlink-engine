@@ -26,6 +26,7 @@ const navSections: NavSection[] = [
       { to: "/reports", labelKey: "nav.reports", icon: <BarChart3 size={18} /> },
       { to: "/mailbox-monitor", labelKey: "nav.mailboxMonitor", icon: <Mail size={18} /> },
       { to: "/vps-health", labelKey: "nav.vpsHealth", icon: <Activity size={18} /> },
+      { to: "/deliverability", labelKey: "nav.deliverability", icon: <Mail size={18} /> },
     ],
   },
   {

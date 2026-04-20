@@ -137,6 +137,48 @@ export default async function sentEmailsRoutes(app: FastifyInstance): Promise<vo
     return reply.send({ success: true, data: health });
   });
 
+  // ───── GET /deliverability-overview ─── One-shot dashboard data ──────
+  //       Combines domain health + homepage-scrape coverage + queue state
+  //       so the Deliverability page can render in a single round-trip.
+  app.get("/deliverability-overview", async (_request, reply) => {
+    const [health, totalReady, withHomepage] = await Promise.all([
+      getDomainHealth(),
+      prisma.prospect.count({ where: { status: "READY_TO_CONTACT" } }),
+      prisma.prospect.count({
+        where: { status: "READY_TO_CONTACT", homepageTitle: { not: null } },
+      }),
+    ]);
+
+    // Aggregate global stats over the same 7-day window as domain health
+    const cutoff = new Date(Date.now() - 7 * 86_400_000);
+    const [sent7d, bounced7d, complained7d] = await Promise.all([
+      prisma.sentEmail.count({
+        where: { sentAt: { gte: cutoff }, status: { notIn: ["draft", "failed"] } },
+      }),
+      prisma.sentEmail.count({ where: { bouncedAt: { gte: cutoff } } }),
+      prisma.sentEmail.count({ where: { complainedAt: { gte: cutoff } } }),
+    ]);
+
+    return reply.send({
+      success: true,
+      data: {
+        domains: health,
+        scrapeCoverage: {
+          totalReady,
+          withHomepage,
+          percentage: totalReady > 0 ? (withHomepage / totalReady) * 100 : 0,
+        },
+        window7d: {
+          sent: sent7d,
+          bounced: bounced7d,
+          complained: complained7d,
+          bounceRate: sent7d > 0 ? bounced7d / sent7d : 0,
+          complaintRate: sent7d > 0 ? complained7d / sent7d : 0,
+        },
+      },
+    });
+  });
+
   // ───── GET /stats ─── Aggregated email sending statistics ───
   app.get("/stats", async (_request, reply) => {
     const [

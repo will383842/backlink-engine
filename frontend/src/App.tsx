@@ -23,6 +23,7 @@ const Reports = lazy(() => import("./pages/Reports"));
 const MailboxMonitor = lazy(() => import("./pages/MailboxMonitor"));
 const Mailboxes = lazy(() => import("./pages/Mailboxes"));
 const VpsHealth = lazy(() => import("./pages/VpsHealth"));
+const Deliverability = lazy(() => import("./pages/Deliverability"));
 const RecontactSuggestions = lazy(() => import("./pages/RecontactSuggestions"));
 const SentEmails = lazy(() => import("./pages/SentEmails"));
 const AbTestResults = lazy(() => import("./pages/AbTestResults"));
@@ -113,6 +114,7 @@ export default function App() {
             <Route path="mailbox-monitor" element={<MailboxMonitor />} />
             <Route path="mailboxes" element={<Mailboxes />} />
             <Route path="vps-health" element={<VpsHealth />} />
+            <Route path="deliverability" element={<Deliverability />} />
           {/* Unified Campaigns hub (outreach + broadcast) */}
           <Route path="campaigns" element={<CampaignsHub />} />
           <Route path="campaigns/outreach" element={<Campaigns />} />

@@ -65,6 +65,7 @@ export const fr = {
     mailboxMonitor: "Monitoring boites mail",
     mailboxes: "Boites mail",
     vpsHealth: "Sante du VPS",
+    deliverability: "Delivrabilite",
     logout: "Deconnexion",
     section: {
       overview: "Vue d'ensemble",
