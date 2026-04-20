@@ -10,9 +10,10 @@
 // or in the BullMQ dashboard (Bull Board) if running.
 
 import { PrismaClient } from "@prisma/client";
-import { enrichmentQueue } from "../src/jobs/queue.js";
+import { enrichmentQueue, setupQueues } from "../src/jobs/queue.js";
 
 const prisma = new PrismaClient();
+setupQueues();
 
 const BATCH_SIZE = 500;
 
@@ -55,7 +56,7 @@ async function main() {
         opts: {
           // Dedupe: if a job for the same prospect is already in the queue,
           // BullMQ will skip the new one (same jobId).
-          jobId: `scrape-homepage:${p.id}`,
+          jobId: `scrape-homepage-${p.id}`,
           attempts: 3,
           backoff: { type: "exponential", delay: 30_000 },
           removeOnComplete: { count: 1000, age: 86_400 },
