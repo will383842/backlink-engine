@@ -12,10 +12,11 @@
  *   POST   /api/press/verify-inboxes       Health check SMTP inboxes
  */
 import type { FastifyInstance, FastifyPluginOptions } from "fastify";
-import { PressContactStatus, PressLang, PressAngle } from "@prisma/client";
+import { PressContactStatus, PressLang, PressAngle, ProspectCategory } from "@prisma/client";
 import { prisma } from "../../config/database.js";
 import { pressOutreachQueue } from "../../jobs/queue.js";
 import { verifyPressInboxes } from "../../services/press/sender.js";
+import { renderPitchEmail } from "../../services/press/pitchRenderer.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { sendTelegramMessage } from "../../services/notifications/telegramService.js";
 
@@ -306,5 +307,151 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
   fastify.post("/api/press/verify-inboxes", async (_request, reply) => {
     const results = await verifyPressInboxes();
     return reply.send(results);
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/press/templates
+  // Return all 9 press pitch templates (rendered with placeholder values) so
+  // the admin can review each language before launching the campaign.
+  // -------------------------------------------------------------------------
+  fastify.get<{
+    Querystring: { angle?: PressAngle; template?: "initial" | "follow_up_1" | "follow_up_2" };
+  }>("/api/press/templates", async (request, reply) => {
+    const angle = request.query.angle ?? "launch";
+    const template = request.query.template ?? "initial";
+    const langs: PressLang[] = ["fr", "en", "es", "de", "pt", "ru", "zh", "hi", "ar", "et"];
+
+    const rendered = await Promise.all(
+      langs.map(async (lang) => {
+        const pitch = await renderPitchEmail({
+          lang,
+          angle,
+          template,
+          firstName: "[Prénom Journaliste]",
+          mediaName: "[Nom du média]",
+          mediaUrl: null,
+        });
+        return {
+          lang,
+          subject: pitch.subject,
+          text: pitch.text,
+          html: pitch.html,
+          pdfUrl: pitch.pdfUrl,
+        };
+      }),
+    );
+
+    return reply.send({ angle, template, templates: rendered });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/press/sync-from-prospects
+  // Imports existing Prospect rows (category=media OR sourceContactType
+  // matching presse/journaliste/media) into PressContact.  Dry-run by default.
+  // Set { confirm: true, wipeExisting: true } to replace the current set.
+  // -------------------------------------------------------------------------
+  fastify.post<{
+    Body: { confirm?: boolean; wipeExisting?: boolean };
+  }>("/api/press/sync-from-prospects", async (request, reply) => {
+    const { confirm = false, wipeExisting = false } = request.body ?? {};
+
+    const prospects = await prisma.prospect.findMany({
+      where: {
+        OR: [
+          { category: ProspectCategory.media },
+          { sourceContactType: { in: ["presse", "journaliste", "journalist", "media"] } },
+        ],
+      },
+      include: {
+        contacts: {
+          where: { optedOut: false },
+          orderBy: { id: "asc" },
+          take: 1,
+        },
+      },
+    });
+
+    const candidates = prospects
+      .filter((p) => p.contacts.length > 0)
+      .map((p) => {
+        const contact = p.contacts[0];
+        const langRaw = (p.language ?? "en").toLowerCase();
+        const validLangs: PressLang[] = ["fr", "en", "es", "de", "pt", "ru", "zh", "hi", "ar", "et"];
+        const lang = (validLangs.includes(langRaw as PressLang) ? langRaw : "en") as PressLang;
+        const angle: PressAngle = (p.sourceContactType ?? "").toLowerCase().includes("juridi")
+          ? "ymyl"
+          : "launch";
+        return {
+          prospectId: p.id,
+          email: contact.email.toLowerCase().trim(),
+          mediaName: p.homepageTitle ?? p.domain,
+          mediaUrl: `https://${p.domain}`,
+          mediaDr: p.mozDa ?? null,
+          lang,
+          angle,
+          firstName: contact.firstName ?? null,
+          lastName: contact.lastName ?? null,
+          market: p.country ?? null,
+        };
+      });
+
+    if (!confirm) {
+      return reply.send({
+        dryRun: true,
+        prospectsMatched: prospects.length,
+        withContact: candidates.length,
+        byLang: candidates.reduce<Record<string, number>>((acc, c) => {
+          acc[c.lang] = (acc[c.lang] ?? 0) + 1;
+          return acc;
+        }, {}),
+        sample: candidates.slice(0, 10).map((c) => ({
+          email: c.email,
+          media: c.mediaName,
+          lang: c.lang,
+          angle: c.angle,
+        })),
+      });
+    }
+
+    let deleted = 0;
+    if (wipeExisting) {
+      const result = await prisma.pressContact.deleteMany({
+        where: { status: PressContactStatus.PENDING },
+      });
+      deleted = result.count;
+    }
+
+    let upserted = 0;
+    for (const c of candidates) {
+      await prisma.pressContact.upsert({
+        where: { email: c.email },
+        create: {
+          email: c.email,
+          mediaName: c.mediaName,
+          mediaUrl: c.mediaUrl,
+          mediaDr: c.mediaDr ?? undefined,
+          lang: c.lang,
+          angle: c.angle,
+          firstName: c.firstName ?? undefined,
+          lastName: c.lastName ?? undefined,
+          market: c.market ?? undefined,
+          notes: `[imported from prospect #${c.prospectId}]`,
+        },
+        update: {
+          mediaName: c.mediaName,
+          mediaUrl: c.mediaUrl,
+          mediaDr: c.mediaDr ?? undefined,
+          lang: c.lang,
+          angle: c.angle,
+          firstName: c.firstName ?? undefined,
+          lastName: c.lastName ?? undefined,
+          market: c.market ?? undefined,
+        },
+      });
+      upserted++;
+    }
+
+    log.info({ deleted, upserted, wipeExisting }, "Sync prospects → press_contacts done");
+    return reply.send({ deleted, upserted, total: candidates.length });
   });
 }

@@ -48,6 +48,7 @@ export const fr = {
     bulkImport: "Import en masse",
     campaigns: "Campagnes",
     press: "Presse",
+    pressTemplates: "Templates presse",
     templates: "Templates Outreach",
     messageTemplates: "Templates Formulaires",
     backlinks: "Backlinks",
