@@ -311,8 +311,14 @@ export async function renderPitchEmail(args: RenderPitchArgs): Promise<RenderedP
     .replace(/\n/g, "<br>\n")
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>');
 
-  // PDF attachment URL (per language)
-  const pdfUrl = `${PDF_BASE_URL}/${args.lang}-xx/presse/communique-main-${args.lang}.pdf`;
+  // PDF attachment URL — only if PRESS_ATTACH_PDF=true AND the file
+  // exists on sos-expat.com.  By default disabled: the CDN doesn't
+  // host these PDFs yet, and attaching a 404 HTML response as a .pdf
+  // produces a corrupt "pièce jointe qui ne s'ouvre pas" in the
+  // recipient's mail client.
+  const pdfUrl = process.env.PRESS_ATTACH_PDF === "true"
+    ? `${PDF_BASE_URL}/${args.lang}-${args.lang}/presse/communique-main-${args.lang}.pdf`
+    : null;
 
   return { subject, text: body, html, pdfUrl };
 }
