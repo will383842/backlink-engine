@@ -25,7 +25,7 @@ SOS-Expat.com est la première plateforme mondiale qui connecte voyageurs, vacan
 Ces chiffres sont issus de notre Grand Sondage Expat & Voyageur 2026 — 9 563 participants, 54 pays, données librement réutilisables (CC BY 4.0) :
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-Je suis disponible pour une interview, une tribune ou une mention dans un article ressource. Communiqués de presse, dossier, logos et visuels sont téléchargeables directement sur : sos-expat.com/presse
+Je suis disponible pour une interview, une tribune ou une mention dans un article ressource. Communiqués de presse, dossier, logos et visuels sont téléchargeables directement sur : https://sos-expat.com/presse
 
 Seriez-vous disponible pour un échange de 10 minutes ?
 
@@ -45,7 +45,7 @@ These figures come from our Grand Expat & Traveler Survey 2026 — 9,563 partici
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Press releases, press kit, logos and visuals available for download at:
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 Would you be open to covering this story?
 
@@ -64,7 +64,7 @@ Estas cifras provienen de nuestra Gran Encuesta Expat & Viajero 2026 — 9.563 p
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Comunicados de prensa, dossier, logotipos e imágenes disponibles para descarga en:
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 ¿Estaría abierto/a a cubrir esta historia?
 
@@ -83,7 +83,7 @@ Diese Zahlen stammen aus unserer Großen Expat & Reisenden-Umfrage 2026 — 9.56
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Pressemitteilungen, Pressemappe, Logos und Bildmaterial stehen zum Download bereit:
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 Wären Sie offen, darüber zu berichten?
 
@@ -102,7 +102,7 @@ Estes dados provêm do nosso Grande Inquérito Expat & Viajante 2026 — 9.563 p
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Comunicados de imprensa, dossier, logotipos e imagens disponíveis para download em:
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 Estaria aberto/a a cobrir esta história?
 
@@ -121,7 +121,7 @@ SOS-Expat.com — первая в мире платформа, которая с
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Пресс-релизы, пресс-кит, логотипы и визуальные материалы доступны для скачивания по адресу:
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 Были бы вы готовы осветить эту тему?
 
@@ -140,7 +140,7 @@ SOS-Expat.com是全球首个平台，能在5分钟内通过电话将旅行者、
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 新闻稿、媒体资料包、标志及视觉素材可在以下地址下载：
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 您是否愿意报道这一话题？
 
@@ -159,7 +159,7 @@ SOS-Expat.com दुनिया का पहला प्लेटफ़ॉर
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 प्रेस विज्ञप्तियाँ, प्रेस किट, लोगो और विज़ुअल सामग्री यहाँ से डाउनलोड की जा सकती है:
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 क्या आप इस विषय को कवर करने में रुचि रखते हैं?
 
@@ -178,7 +178,7 @@ SOS-Expat.com هي أول منصة عالمية تربط المسافرين وا
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 البيانات الصحفية، حقيبة الصحافة، الشعارات والمواد المرئية متاحة للتنزيل على:
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 هل أنتم مستعدون لتغطية هذا الموضوع؟
 
@@ -197,7 +197,7 @@ Need andmed pärinevad meie 2026. aasta suurest välismaalaste ja reisijate uuri
 https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Pressiteated, pressipakett, logod ja visuaalid on allalaaditavad aadressil:
-sos-expat.com/presse
+https://sos-expat.com/presse
 
 Kas oleksite valmis sellel teemal kirjutama?
 
