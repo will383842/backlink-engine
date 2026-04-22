@@ -160,6 +160,29 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
         ...(campaignTag ? { "X-Press-Campaign": campaignTag } : {}),
       },
     });
+
+    // Persist in sent_emails so the per-inbox health monitor, the
+    // MailboxMonitor dashboard, and the Deliverability page can see
+    // the press traffic.  stepNumber: 0=initial, 1=follow_up_1, 2=follow_up_2
+    try {
+      const stepNumber = template === "initial" ? 0 : template === "follow_up_1" ? 1 : 2;
+      await prisma.sentEmail.create({
+        data: {
+          pressContactId: contact.id,
+          stepNumber,
+          fromEmail: fromInbox,
+          subject,
+          body: text,
+          language: contact.lang,
+          generatedBy: "template",
+          status: "sent",
+          sentAt: new Date(),
+        },
+      });
+    } catch (err) {
+      // Non-blocking — the email was delivered, only the tracking row failed
+      log.warn({ err: (err as Error).message, contactId }, "Failed to persist sent_emails row");
+    }
   } catch (err) {
     log.error({ err, contactId, fromInbox }, "sendPressEmail failed");
     // Bubble up so BullMQ applies the 3-attempt retry with exponential backoff

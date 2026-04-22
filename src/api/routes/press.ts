@@ -60,19 +60,44 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       dryRun?: boolean;
       /** Bypass warmup scheduler — NOT recommended, used only for tests. */
       ignoreWarmup?: boolean;
+      /** Remove all delayed press-outreach jobs before enqueuing — used
+       *  when re-ordering the queue (e.g. priority language change). */
+      clearBeforeEnqueue?: boolean;
     };
   }>("/api/press/outreach/start", async (request, reply) => {
-    const { lang, angle, status, campaignTag, limit, dryRun, ignoreWarmup } = request.body;
+    const { lang, angle, status, campaignTag, limit, dryRun, ignoreWarmup, clearBeforeEnqueue } = request.body;
 
-    const contacts = await prisma.pressContact.findMany({
-      where: {
-        ...(lang && { lang }),
-        ...(angle && { angle }),
-        status: status ?? PressContactStatus.PENDING,
-      },
-      take: limit ?? 2000,
-      orderBy: { mediaDr: "desc" }, // prioritize high-DR media
-    });
+    // Language priority: FR first, then EN, then the rest.  Within each
+    // language bucket, highest DR media first.  Explicit lang filter
+    // short-circuits this ordering (single-lang batch).
+    const LANG_PRIORITY: PressLang[] = ["fr", "en", "es", "de", "pt", "ru", "zh", "hi", "ar", "et"];
+    const baseWhere = {
+      ...(angle && { angle }),
+      status: status ?? PressContactStatus.PENDING,
+    };
+
+    let contacts;
+    if (lang) {
+      // Single-lang explicit filter
+      contacts = await prisma.pressContact.findMany({
+        where: { ...baseWhere, lang },
+        take: limit ?? 2000,
+        orderBy: { mediaDr: "desc" },
+      });
+    } else {
+      // Multi-lang: fetch each priority bucket in order, concat, then cap
+      const perBucket: Array<typeof prisma.pressContact extends { findMany: (...a: infer _A) => infer R } ? Awaited<R> : never> = [];
+      for (const l of LANG_PRIORITY) {
+        const rows = await prisma.pressContact.findMany({
+          where: { ...baseWhere, lang: l },
+          orderBy: { mediaDr: "desc" },
+        });
+        if (rows.length > 0) perBucket.push(rows);
+      }
+      contacts = perBucket.flat();
+      if (typeof limit === "number") contacts = contacts.slice(0, limit);
+      else contacts = contacts.slice(0, 2000);
+    }
 
     // Build warmup-aware schedule unless explicitly bypassed
     const schedule = ignoreWarmup ? null : await buildPressSchedule(contacts.length);
@@ -95,6 +120,21 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       });
     }
 
+    let cleared = 0;
+    if (clearBeforeEnqueue) {
+      // Wipe all delayed initial-template jobs so we can re-enqueue with
+      // the new priority ordering.  Already-running jobs (active) are
+      // left alone.  Follow-ups (J+5, J+10) are kept too.
+      const delayedJobs = await pressOutreachQueue.getJobs(["delayed", "waiting"]);
+      for (const job of delayedJobs) {
+        if (job.data?.template === "initial") {
+          await job.remove();
+          cleared++;
+        }
+      }
+      log.info({ cleared }, "Cleared existing press-outreach delayed/waiting initial jobs");
+    }
+
     let enqueued = 0;
     for (let i = 0; i < contacts.length; i++) {
       const contact = contacts[i]!;
@@ -115,11 +155,12 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
     }
 
     log.info(
-      { enqueued, lang, angle, campaignTag, daysNeeded: schedule?.daysNeeded, ignoreWarmup },
+      { enqueued, cleared, lang, angle, campaignTag, daysNeeded: schedule?.daysNeeded, ignoreWarmup },
       "Press outreach batch enqueued (warmup-aware)",
     );
     return reply.send({
       enqueued,
+      cleared,
       totalMatched: contacts.length,
       warmup: {
         currentDay: warmupState.currentDay,

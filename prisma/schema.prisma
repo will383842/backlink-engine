@@ -418,10 +418,16 @@ model Enrollment {
 
 model SentEmail {
   id              Int      @id @default(autoincrement())
-  enrollmentId    Int
-  prospectId      Int
-  contactId       Int
-  campaignId      Int
+  // Nullable since 2026-04-22: press-outreach emails have no enrollment/
+  // prospect/contact/campaign row — they come from PressContact directly.
+  // The standard netlinking outreach still populates all 4.
+  enrollmentId    Int?
+  prospectId      Int?
+  contactId       Int?
+  campaignId      Int?
+  // Optional pointer back to PressContact when this row was created by
+  // the press-outreach worker (NULL for netlinking outreach).
+  pressContactId  String?
   stepNumber      Int      // 0 = initial, 1+ = follow-ups
   // Sending inbox (for per-inbox deliverability analytics)
   fromEmail       String?  @db.VarChar(255)
@@ -450,14 +456,16 @@ model SentEmail {
   complainedAt    DateTime?
   abVariant       String?  @db.VarChar(1) // "A" or "B" or null (no A/B test)
 
-  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  prospect   Prospect   @relation(fields: [prospectId], references: [id], onDelete: Cascade)
-  contact    Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  campaign   Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  enrollment   Enrollment?   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  prospect     Prospect?     @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaign     Campaign?     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  pressContact PressContact? @relation(fields: [pressContactId], references: [id], onDelete: SetNull)
 
   @@index([enrollmentId])
   @@index([prospectId])
   @@index([contactId])
+  @@index([pressContactId])
   @@index([status])
   @@index([sentAt])
   @@index([campaignId, stepNumber])
@@ -1127,6 +1135,8 @@ model PressContact {
 
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
+
+  sentEmails      SentEmail[]
 
   @@index([lang, status])
   @@index([angle])
