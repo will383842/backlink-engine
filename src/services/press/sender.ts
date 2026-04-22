@@ -127,6 +127,7 @@ export interface SendPressEmailArgs {
   text: string;
   attachments?: Array<{ filename: string; url: string }>;
   headers?: Record<string, string>;
+  replyTo?: string;
 }
 
 export async function sendPressEmail(args: SendPressEmailArgs): Promise<{ messageId: string }> {
@@ -148,8 +149,9 @@ export async function sendPressEmail(args: SendPressEmailArgs): Promise<{ messag
   ).then((arr) => arr.filter((a): a is { filename: string; content: Buffer } => Boolean(a)));
 
   const info = await transporter.sendMail({
-    from: `"SOS-Expat" <${args.from}>`,
+    from: `"Williams Jullin — SOS-Expat" <${args.from}>`,
     to: args.to,
+    replyTo: args.replyTo ?? "contact@sos-expat.com",
     subject: args.subject,
     text: args.text,
     html: args.html,

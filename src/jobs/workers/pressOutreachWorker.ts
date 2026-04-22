@@ -208,6 +208,13 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
         // without leaving the mail client.
         "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe-${contact.id}@${fromInbox.split("@")[1]}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        // List-ID tags the email as belonging to a well-defined mailing
+        // list — Gmail / Outlook use this to properly categorize (not
+        // flag as random cold spam).
+        "List-ID": `SOS-Expat Press Outreach <press.${fromInbox.split("@")[1]}>`,
+        // Precedence:bulk is the canonical mailing-list signal.  It
+        // also tells auto-responders (OOO, vacation) to NOT reply.
+        "Precedence": "bulk",
       },
     });
 
