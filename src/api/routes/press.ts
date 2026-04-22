@@ -31,6 +31,15 @@ import {
   advancePressWarmupDay,
   PRESS_WARMUP_KEY,
 } from "../../services/press/pressWarmup.js";
+import {
+  runPressHealthCheck,
+  getAllInboxesHealth,
+  getPausedInboxes,
+  pauseInbox,
+  resumeInbox,
+  isPressGloballyPaused,
+  setPressGlobalPause,
+} from "../../services/press/pressHealthMonitor.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { sendTelegramMessage } from "../../services/notifications/telegramService.js";
 
@@ -519,6 +528,64 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
     const result = await advancePressWarmupDay();
     return reply.send(result);
   });
+
+  // -------------------------------------------------------------------------
+  // GET /api/press/health
+  // 24h health report per inbox + paused inboxes list + global pause flag.
+  // Updated live by the hourly monitor cron.
+  // -------------------------------------------------------------------------
+  fastify.get("/api/press/health", async (_request, reply) => {
+    const [reports, paused, globalPaused] = await Promise.all([
+      getAllInboxesHealth(24),
+      getPausedInboxes(),
+      isPressGloballyPaused(),
+    ]);
+    return reply.send({ reports, paused, globalPaused });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/press/health/check-now
+  // Trigger the hourly monitor on-demand (used by the admin UI "Refresh").
+  // -------------------------------------------------------------------------
+  fastify.post("/api/press/health/check-now", async (_request, reply) => {
+    const result = await runPressHealthCheck();
+    return reply.send(result);
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/press/pause and /api/press/resume
+  // Manual kill switch for the whole press campaign.  Jobs already
+  // enqueued stay queued — they will skip themselves via the worker
+  // global-pause check.
+  // -------------------------------------------------------------------------
+  fastify.post<{ Body: { reason?: string } }>("/api/press/pause", async (request, reply) => {
+    await setPressGlobalPause(true, request.body?.reason ?? "manual");
+    return reply.send({ paused: true });
+  });
+  fastify.post("/api/press/resume", async (_request, reply) => {
+    await setPressGlobalPause(false);
+    return reply.send({ paused: false });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/press/inboxes/:inbox/pause and /resume
+  // Manually pause or resume a single presse@* inbox.  Worker
+  // pickInboxForContact() will route around paused inboxes.
+  // -------------------------------------------------------------------------
+  fastify.post<{
+    Params: { inbox: string };
+    Body: { reason?: string };
+  }>("/api/press/inboxes/:inbox/pause", async (request, reply) => {
+    await pauseInbox(request.params.inbox, request.body?.reason ?? "manual");
+    return reply.send({ paused: request.params.inbox });
+  });
+  fastify.post<{ Params: { inbox: string } }>(
+    "/api/press/inboxes/:inbox/resume",
+    async (request, reply) => {
+      await resumeInbox(request.params.inbox);
+      return reply.send({ resumed: request.params.inbox });
+    },
+  );
 
   // -------------------------------------------------------------------------
   // POST /api/press/audit-contacts

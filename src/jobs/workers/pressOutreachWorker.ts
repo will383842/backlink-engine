@@ -25,6 +25,7 @@ import { QUEUE_NAMES, pressOutreachQueue } from "../queue.js";
 import { isWorkerEnabled } from "../../services/automation/automationToggles.js";
 import { sendPressEmail, PRESSE_INBOXES } from "../../services/press/sender.js";
 import { renderPitchEmail } from "../../services/press/pitchRenderer.js";
+import { isPressGloballyPaused, getPausedInboxes } from "../../services/press/pressHealthMonitor.js";
 
 const log = createChildLogger("press-outreach-worker");
 
@@ -53,12 +54,19 @@ const FOLLOW_UP_2_DELAY_MS = 10 * 24 * 60 * 60 * 1000; // J+10
 // same inbox, so reply threads stay coherent)
 // ---------------------------------------------------------------------------
 
-function pickInboxForContact(contactId: string, lang: PressLang): string {
-  // Prefer language-specific inbox if configured, otherwise rotate
+async function pickInboxForContact(contactId: string, lang: PressLang): Promise<string> {
+  const paused = new Set(await getPausedInboxes());
+  // Prefer language-specific inbox if configured AND not paused
   const langInbox = PRESSE_INBOXES.byLang[lang];
-  if (langInbox) return langInbox;
+  if (langInbox && !paused.has(langInbox)) return langInbox;
+
+  // Rotation excluding paused inboxes
+  const available = PRESSE_INBOXES.rotation.filter((i) => !paused.has(i));
+  if (available.length === 0) {
+    throw new Error("No available press inbox — all paused by health monitor");
+  }
   const hash = [...contactId].reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return PRESSE_INBOXES.rotation[hash % PRESSE_INBOXES.rotation.length];
+  return available[hash % available.length]!;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +107,13 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
     return { skipped: true, reason: "worker_disabled" };
   }
 
+  // Global kill switch — set automatically when 3+ inboxes are unhealthy
+  // (pressHealthMonitor) or manually via POST /api/press/pause.
+  if (await isPressGloballyPaused()) {
+    log.info({ jobId: job.id }, "Press outreach globally paused, skipping");
+    return { skipped: true, reason: "globally_paused" };
+  }
+
   const contact = await prisma.pressContact.findUnique({ where: { id: contactId } });
   if (!contact) {
     log.warn({ contactId }, "Contact not found, skipping job");
@@ -127,7 +142,7 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
     mediaUrl: contact.mediaUrl,
   });
 
-  const fromInbox = pickInboxForContact(contact.id, contact.lang);
+  const fromInbox = await pickInboxForContact(contact.id, contact.lang);
 
   try {
     await sendPressEmail({

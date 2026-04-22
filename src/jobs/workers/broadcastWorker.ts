@@ -33,7 +33,11 @@ interface AdvanceBroadcastSequenceData {
   type: "advance-broadcast-sequence";
 }
 
-type BroadcastJobData = ProcessBroadcastData | AdvanceWarmupData | AdvanceBroadcastSequenceData;
+interface PressHealthCheckData {
+  type: "press-health-check";
+}
+
+type BroadcastJobData = ProcessBroadcastData | AdvanceWarmupData | AdvanceBroadcastSequenceData | PressHealthCheckData;
 
 // ---------------------------------------------------------------------------
 // Main processor
@@ -71,6 +75,18 @@ async function processBroadcastJob(job: Job<BroadcastJobData>): Promise<void> {
 
   if (type === "process-broadcast") {
     await processActiveBroadcasts();
+    return;
+  }
+
+  if (type === "press-health-check") {
+    log.info("Running press inbox health check...");
+    try {
+      const { runPressHealthCheck } = await import("../../services/press/pressHealthMonitor.js");
+      const result = await runPressHealthCheck();
+      log.info(result, "Press health check complete");
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "Press health check failed");
+    }
     return;
   }
 

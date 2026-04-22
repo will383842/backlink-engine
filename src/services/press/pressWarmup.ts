@@ -31,7 +31,26 @@ const log = createChildLogger("press-warmup");
 
 export const PRESS_WARMUP_KEY = "press_warmup";
 
-export const DEFAULT_PRESS_WARMUP_SCHEDULE = [25, 50, 100, 150, 200, 250];
+// Ultra-conservative schedule (2026-04-22).  The 5 presse@* inboxes have
+// only been in Mailflow auto-warmup since 2026-04-17 — too fresh for an
+// aggressive ramp.  This 13-step schedule takes a 651-contact campaign
+// over ~10 days instead of the previous 6.  Each inbox tops out at 50
+// cold sends/day — under half of industry-safe reputable-warm maxima.
+//
+// Day 1:  5    (1/inbox)
+// Day 2:  10   (2/inbox)
+// Day 3:  15   (3/inbox)
+// Day 4:  25   (5/inbox)
+// Day 5:  40   (8/inbox)
+// Day 6:  60   (12/inbox)
+// Day 7:  80   (16/inbox)
+// Day 8:  100  (20/inbox)
+// Day 9:  125  (25/inbox)
+// Day 10: 150  (30/inbox)
+// Day 11: 175  (35/inbox)
+// Day 12: 200  (40/inbox)
+// Day 13+: 250 (50/inbox — steady state)
+export const DEFAULT_PRESS_WARMUP_SCHEDULE = [5, 10, 15, 25, 40, 60, 80, 100, 125, 150, 175, 200, 250];
 export const DEFAULT_PRESS_PER_INBOX_CAP = 50;
 
 interface PressWarmupState {

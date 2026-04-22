@@ -283,6 +283,28 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: broadcast warmup advance (daily 00:05 UTC).");
 
   // -----------------------------------------------------------------------
+  // Press inbox health check — every hour at :15
+  // Checks bounce/complaint rate per presse@* inbox, auto-pauses any
+  // that crosses the threshold (3% bounce / 0.1% complaint on 24h).
+  // Global pause triggered if 3+ inboxes unhealthy at once.
+  // -----------------------------------------------------------------------
+  await broadcastQueue.upsertJobScheduler(
+    "press-health-check",
+    {
+      pattern: "15 * * * *", // every hour at :15
+    },
+    {
+      name: "press-health-check",
+      data: { type: "press-health-check" },
+      opts: {
+        removeOnComplete: { count: 24 },
+        removeOnFail: { count: 48 },
+      },
+    }
+  );
+  log.info("Scheduled: press inbox health check (hourly at :15).");
+
+  // -----------------------------------------------------------------------
   // 14. Daily broadcast report: every day at 21:00 UTC
   // -----------------------------------------------------------------------
   await reportingQueue.upsertJobScheduler(
