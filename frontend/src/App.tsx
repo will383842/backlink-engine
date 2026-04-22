@@ -33,6 +33,7 @@ const Broadcast = lazy(() => import("./pages/Broadcast"));
 const Campaigns = lazy(() => import("./pages/Campaigns"));
 const CampaignsHub = lazy(() => import("./pages/CampaignsHub"));
 const ContactTypeMappings = lazy(() => import("./pages/ContactTypeMappings"));
+const PressCampaign = lazy(() => import("./pages/PressCampaign"));
 
 function PageFallback() {
   return (
@@ -119,6 +120,8 @@ export default function App() {
           <Route path="campaigns" element={<CampaignsHub />} />
           <Route path="campaigns/outreach" element={<Campaigns />} />
           <Route path="campaigns/broadcast" element={<Broadcast />} />
+          {/* Press campaign (brand entity Vague 4.3) */}
+          <Route path="press" element={<PressCampaign />} />
           {/* Legacy redirect: /broadcast → /campaigns?type=broadcast */}
           <Route
             path="broadcast"

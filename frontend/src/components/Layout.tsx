@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { LayoutDashboard, Users, PlusCircle, Upload, MessageSquare, Link as LinkIcon, Package, Mail, Send, SquareSplitVertical, ShieldOff, Settings, BarChart3, Menu, X, LogOut, RefreshCcw, FileText, Satellite, Megaphone, Activity } from "lucide-react";
+import { LayoutDashboard, Users, PlusCircle, Upload, MessageSquare, Link as LinkIcon, Package, Mail, Send, SquareSplitVertical, ShieldOff, Settings, BarChart3, Menu, X, LogOut, RefreshCcw, FileText, Satellite, Megaphone, Activity, Newspaper } from "lucide-react";
 import { useTranslation } from "@/i18n";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 
@@ -41,6 +41,7 @@ const navSections: NavSection[] = [
     labelKey: "nav.section.campaigns",
     items: [
       { to: "/campaigns", labelKey: "nav.campaigns", icon: <Megaphone size={18} /> },
+      { to: "/press", labelKey: "nav.press", icon: <Newspaper size={18} /> },
       { to: "/ab-testing", labelKey: "nav.abTesting", icon: <SquareSplitVertical size={18} /> },
       { to: "/assets", labelKey: "nav.assets", icon: <Package size={18} /> },
     ],
@@ -85,6 +86,7 @@ const pageTitleKeys: Record<string, string> = {
   "/sent-emails": "pageTitles.sentEmails",
   "/ab-testing": "pageTitles.abTesting",
   "/campaigns": "pageTitles.campaigns",
+  "/press": "Campagne presse",
   "/mc-sync": "pageTitles.mcSync",
   "/recontact": "pageTitles.recontact",
   "/suppression": "pageTitles.suppression",

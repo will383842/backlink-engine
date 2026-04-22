@@ -47,6 +47,7 @@ export const fr = {
     addProspects: "Ajouter des prospects",
     bulkImport: "Import en masse",
     campaigns: "Campagnes",
+    press: "Presse",
     templates: "Templates Outreach",
     messageTemplates: "Templates Formulaires",
     backlinks: "Backlinks",
