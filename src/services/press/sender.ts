@@ -77,21 +77,32 @@ function inboxKey(fromEmail: string): string {
 function getTransporter(fromEmail: string): nodemailer.Transporter {
   if (transporters.has(fromEmail)) return transporters.get(fromEmail)!;
 
-  const key = inboxKey(fromEmail);
-  const user = envInbox(key) ?? envInbox("DEFAULT");
-  const pass = envPass(key) ?? envPass("DEFAULT");
+  const noAuth = process.env.PRESS_SMTP_NOAUTH === "true";
 
-  if (!user || !pass) {
-    throw new Error(
-      `Missing SMTP credentials for inbox ${fromEmail}: set PRESS_INBOX_${key}_USER and PRESS_INBOX_${key}_PASS (or PRESS_INBOX_DEFAULT_*)`,
-    );
+  // 2026-04-22: relay-mode (PRESS_SMTP_NOAUTH=true) skips SMTP auth entirely
+  // — we trust the local Postfix on host.docker.internal / 172.17.0.1:25 which
+  // is configured with mynetworks including the Docker bridge. This removes
+  // the need to manage 5 Dovecot passwords.
+  let auth: { user: string; pass: string } | undefined;
+
+  if (!noAuth) {
+    const key = inboxKey(fromEmail);
+    const user = envInbox(key) ?? envInbox("DEFAULT");
+    const pass = envPass(key) ?? envPass("DEFAULT");
+    if (!user || !pass) {
+      throw new Error(
+        `Missing SMTP credentials for inbox ${fromEmail}: set PRESS_INBOX_${key}_USER and PRESS_INBOX_${key}_PASS (or PRESS_INBOX_DEFAULT_*), or enable PRESS_SMTP_NOAUTH=true for local relay.`,
+      );
+    }
+    auth = { user, pass };
   }
 
   const transporter = nodemailer.createTransport({
     host: process.env.PRESS_SMTP_HOST,
     port: Number(process.env.PRESS_SMTP_PORT ?? 587),
     secure: process.env.PRESS_SMTP_SECURE === "true",
-    auth: { user, pass },
+    ignoreTLS: noAuth, // local relay, encryption handled by hop-to-hop
+    ...(auth ? { auth } : {}),
     // Delivery tuning for press — longer timeout, small pool per inbox
     pool: true,
     maxConnections: 1,
