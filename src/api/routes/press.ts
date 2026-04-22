@@ -23,7 +23,8 @@ import {
 } from "../../services/press/pitchRenderer.js";
 import { EMBEDDED_PITCHES } from "../../services/press/templates/pitches.js";
 import { auditPressContacts } from "../../services/press/emailAudit.js";
-import { verifyUnsubscribeToken } from "../../services/press/unsubscribeToken.js";
+import { verifyUnsubscribeToken, buildUnsubscribeUrl } from "../../services/press/unsubscribeToken.js";
+import { getUnsubscribeFooter } from "../../services/press/unsubscribeFooter.js";
 import {
   buildPressSchedule,
   getPressWarmupState,
@@ -352,6 +353,10 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       mediaUrl: contact.mediaUrl,
     });
 
+    // Include the localized unsubscribe footer (what actually ships).
+    const unsubscribeUrl = await buildUnsubscribeUrl(contact.id);
+    const footer = getUnsubscribeFooter(contact.lang, unsubscribeUrl);
+
     return reply.send({
       contact: {
         id: contact.id,
@@ -368,9 +373,14 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       },
       template,
       subject: rendered.subject,
-      text: rendered.text,
-      html: rendered.html,
+      text: rendered.text + footer.text,
+      html: rendered.html + footer.html,
       pdfUrl: rendered.pdfUrl,
+      unsubscribeFooter: {
+        text: footer.text,
+        html: footer.html,
+        url: unsubscribeUrl,
+      },
     });
   });
 
