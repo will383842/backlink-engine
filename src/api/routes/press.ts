@@ -23,6 +23,14 @@ import {
 } from "../../services/press/pitchRenderer.js";
 import { EMBEDDED_PITCHES } from "../../services/press/templates/pitches.js";
 import { auditPressContacts } from "../../services/press/emailAudit.js";
+import {
+  buildPressSchedule,
+  getPressWarmupState,
+  getPressDailyCap,
+  getPressRemainingToday,
+  advancePressWarmupDay,
+  PRESS_WARMUP_KEY,
+} from "../../services/press/pressWarmup.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { sendTelegramMessage } from "../../services/notifications/telegramService.js";
 
@@ -41,9 +49,11 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       campaignTag?: string;
       limit?: number;
       dryRun?: boolean;
+      /** Bypass warmup scheduler — NOT recommended, used only for tests. */
+      ignoreWarmup?: boolean;
     };
   }>("/api/press/outreach/start", async (request, reply) => {
-    const { lang, angle, status, campaignTag, limit, dryRun } = request.body;
+    const { lang, angle, status, campaignTag, limit, dryRun, ignoreWarmup } = request.body;
 
     const contacts = await prisma.pressContact.findMany({
       where: {
@@ -51,34 +61,64 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
         ...(angle && { angle }),
         status: status ?? PressContactStatus.PENDING,
       },
-      take: limit ?? 200,
+      take: limit ?? 2000,
       orderBy: { mediaDr: "desc" }, // prioritize high-DR media
     });
+
+    // Build warmup-aware schedule unless explicitly bypassed
+    const schedule = ignoreWarmup ? null : await buildPressSchedule(contacts.length);
+    const warmupState = await getPressWarmupState();
+    const todayCap = await getPressDailyCap();
+    const remainingToday = await getPressRemainingToday();
 
     if (dryRun) {
       return reply.send({
         dryRun: true,
         wouldEnqueue: contacts.length,
+        warmup: {
+          currentDay: warmupState.currentDay,
+          todayCap,
+          remainingToday,
+          daysNeeded: schedule?.daysNeeded ?? 1,
+          daysBreakdown: schedule?.daysBreakdown ?? [],
+        },
         sample: contacts.slice(0, 5).map((c) => ({ id: c.id, media: c.mediaName, lang: c.lang })),
       });
     }
 
     let enqueued = 0;
-    for (const contact of contacts) {
+    for (let i = 0; i < contacts.length; i++) {
+      const contact = contacts[i]!;
+      let delay: number;
+      if (ignoreWarmup) {
+        // Legacy staggered behavior: 2-6s between sends
+        delay = i * (2000 + Math.floor(Math.random() * 4000));
+      } else {
+        delay = schedule!.entries[i]!.delayMs;
+      }
+
       await pressOutreachQueue.add(
         `initial:${contact.id}`,
         { contactId: contact.id, template: "initial", campaignTag },
-        {
-          // Stagger 2-6 seconds between sends to avoid rate-limiting at the
-          // SMTP server level (even with 5 rotating inboxes)
-          delay: enqueued * (2000 + Math.floor(Math.random() * 4000)),
-        },
+        { delay },
       );
       enqueued++;
     }
 
-    log.info({ enqueued, lang, angle, campaignTag }, "Press outreach batch enqueued");
-    return reply.send({ enqueued, totalMatched: contacts.length });
+    log.info(
+      { enqueued, lang, angle, campaignTag, daysNeeded: schedule?.daysNeeded, ignoreWarmup },
+      "Press outreach batch enqueued (warmup-aware)",
+    );
+    return reply.send({
+      enqueued,
+      totalMatched: contacts.length,
+      warmup: {
+        currentDay: warmupState.currentDay,
+        todayCap,
+        daysNeeded: schedule?.daysNeeded ?? 1,
+        daysBreakdown: schedule?.daysBreakdown ?? [],
+      },
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -424,6 +464,60 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       source: body.trim().length === 0 ? "embedded" : "db",
       bodyLength: body.length,
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/press/warmup
+  // Current warmup state: day, schedule, today's cap and remaining.
+  // -------------------------------------------------------------------------
+  fastify.get("/api/press/warmup", async (_request, reply) => {
+    const [state, todayCap, remaining] = await Promise.all([
+      getPressWarmupState(),
+      getPressDailyCap(),
+      getPressRemainingToday(),
+    ]);
+    return reply.send({
+      ...state,
+      todayCap,
+      remainingToday: remaining,
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // PATCH /api/press/warmup
+  // Update schedule / currentDay / perInboxCap (admin override).
+  // -------------------------------------------------------------------------
+  fastify.patch<{
+    Body: {
+      currentDay?: number;
+      schedule?: number[];
+      perInboxCap?: number;
+    };
+  }>("/api/press/warmup", async (request, reply) => {
+    const current = await getPressWarmupState();
+    const next = {
+      ...current,
+      ...(typeof request.body.currentDay === "number" ? { currentDay: request.body.currentDay } : {}),
+      ...(Array.isArray(request.body.schedule) && request.body.schedule.every((n) => typeof n === "number" && n >= 0)
+        ? { schedule: request.body.schedule }
+        : {}),
+      ...(typeof request.body.perInboxCap === "number" ? { perInboxCap: request.body.perInboxCap } : {}),
+    };
+    await prisma.appSetting.upsert({
+      where: { key: PRESS_WARMUP_KEY },
+      create: { key: PRESS_WARMUP_KEY, value: next as unknown as object },
+      update: { value: next as unknown as object },
+    });
+    return reply.send(next);
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/press/warmup/advance
+  // Force-advance the warmup day by 1 (normally done by daily cron).
+  // -------------------------------------------------------------------------
+  fastify.post("/api/press/warmup/advance", async (_request, reply) => {
+    const result = await advancePressWarmupDay();
+    return reply.send(result);
   });
 
   // -------------------------------------------------------------------------

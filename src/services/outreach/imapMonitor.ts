@@ -261,6 +261,21 @@ export async function processReply(reply: ParsedReply): Promise<void> {
 
   const normalizedEmail = reply.from.toLowerCase().trim();
 
+  // Press-outreach matching — look up PressContact by sender email BEFORE
+  // the main Contact lookup.  Press campaigns are isolated from netlinking
+  // outreach, so we process them here and return early.
+  try {
+    const pressContact = await prisma.pressContact.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (pressContact) {
+      await processPressReply(pressContact.id, reply);
+      return;
+    }
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, "Press-reply lookup failed (non-blocking)");
+  }
+
   // Find the contact by email
   const contact = await prisma.contact.findUnique({
     where: { emailNormalized: normalizedEmail },
@@ -556,4 +571,65 @@ function extractSenderEmail(from: string): string | null {
   if (emailMatch?.[0]) return emailMatch[0].toLowerCase().trim();
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Press-outreach reply path — 2026-04-22
+// PressContact is a parallel table to the main Contact/Prospect one, used
+// for the brand-entity press campaign.  When a journalist replies, we want
+// the same RESPONDED state machine + follow-up cancellation + Telegram
+// notification that the press router's /api/press/reply-received endpoint
+// provides.  Rather than duplicate logic, we call straight into Prisma +
+// the pressOutreachQueue here, mirroring the route's behavior.
+// ---------------------------------------------------------------------------
+
+async function processPressReply(pressContactId: string, reply: ParsedReply): Promise<void> {
+  const contact = await prisma.pressContact.findUnique({ where: { id: pressContactId } });
+  if (!contact) return;
+
+  // Move to RESPONDED
+  await prisma.pressContact.update({
+    where: { id: contact.id },
+    data: {
+      respondedAt: new Date(),
+      status: "RESPONDED",
+      notes: `[AUTO IMAP] Reply: ${reply.subject}\n---\n${reply.body.slice(0, 2000)}`,
+    },
+  });
+
+  // Cancel pending follow-ups in BullMQ
+  try {
+    const { pressOutreachQueue } = await import("../../jobs/queue.js");
+    const delayed = await pressOutreachQueue.getJobs(["delayed"]);
+    for (const job of delayed) {
+      if (job.data?.contactId === contact.id) {
+        await job.remove();
+      }
+    }
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, "Could not cancel press follow-ups");
+  }
+
+  // Telegram notif
+  try {
+    const setting = await prisma.appSetting.findUnique({ where: { key: "telegram_notifications" } });
+    const cfg = setting?.value as
+      | { enabled?: boolean; botToken?: string; chatId?: string; pressChatId?: string }
+      | undefined;
+    if (cfg?.enabled && cfg.botToken) {
+      const chatId = cfg.pressChatId ?? cfg.chatId ?? process.env.TELEGRAM_PRESS_CHAT_ID ?? "7560535072";
+      const { sendTelegramMessage } = await import("../notifications/telegramService.js");
+      const message = [
+        `📰 <b>Nouvelle réponse presse</b> — ${contact.mediaName}`,
+        `Langue : ${contact.lang.toUpperCase()} · Angle : ${contact.angle}`,
+        `De : ${reply.from}`,
+        `Sujet : ${reply.subject}`,
+      ].join("\n");
+      await sendTelegramMessage(cfg.botToken, chatId, message, "HTML");
+    }
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, "Press Telegram notif failed");
+  }
+
+  log.info({ pressContactId, from: reply.from }, "Press reply processed");
 }

@@ -50,6 +50,15 @@ async function processBroadcastJob(job: Job<BroadcastJobData>): Promise<void> {
   if (type === "advance-warmup") {
     log.info("Advancing warmup days for all active broadcast campaigns...");
     await advanceAllWarmups();
+    // Also advance the press warmup (single global state) — called from
+    // the same daily cron so we don't need a second scheduled job.
+    try {
+      const { advancePressWarmupDay } = await import("../../services/press/pressWarmup.js");
+      const pressResult = await advancePressWarmupDay();
+      log.info(pressResult, "Press warmup advance executed");
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "Press warmup advance failed");
+    }
     return;
   }
 

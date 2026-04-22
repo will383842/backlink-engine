@@ -203,6 +203,13 @@ export function startPressOutreachWorker(): Worker {
         db: redis.options.db ?? 0,
       },
       concurrency: 3,
+      // Global cap at the worker level: max 5 sends per minute across ALL
+      // 5 inboxes combined.  The warmup scheduler (`buildPressSchedule`)
+      // already spreads sends across 12h windows per day; this is a safety
+      // net in case multiple start calls stack up or a cron bug enqueues
+      // too many at once.  5/min = 300/h, still well below any realistic
+      // daily cap (250 max in the default schedule).
+      limiter: { max: 5, duration: 60_000 },
     },
   );
 
