@@ -301,6 +301,30 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
   });
 
   // -------------------------------------------------------------------------
+  // POST /api/press/contacts/:id/send-now
+  // Send ONE email to a specific contact immediately, bypassing the
+  // warmup scheduler.  Meant for deliverability tests (send to your own
+  // address to verify footer, List-Unsubscribe header, rendering…).
+  // Accepts optional { template: initial|follow_up_1|follow_up_2 }.
+  // -------------------------------------------------------------------------
+  fastify.post<{
+    Params: { id: string };
+    Body: { template?: "initial" | "follow_up_1" | "follow_up_2" };
+  }>("/api/press/contacts/:id/send-now", async (request, reply) => {
+    const contact = await prisma.pressContact.findUnique({ where: { id: request.params.id } });
+    if (!contact) return reply.code(404).send({ error: "contact_not_found" });
+
+    const template = request.body?.template ?? "initial";
+    await pressOutreachQueue.add(
+      `send-now:${contact.id}:${template}`,
+      { contactId: contact.id, template, campaignTag: "test-send-now" },
+      { delay: 0 },
+    );
+    log.info({ contactId: contact.id, email: contact.email, template }, "send-now job enqueued");
+    return reply.send({ enqueued: true, contactId: contact.id, email: contact.email, template });
+  });
+
+  // -------------------------------------------------------------------------
   // GET /api/press/contacts/:id/preview
   // Renders the exact email that would be sent (or was sent) to this
   // contact — subject, text, html, pdfUrl — with real placeholder values
