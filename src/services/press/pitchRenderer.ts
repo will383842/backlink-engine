@@ -11,10 +11,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { PressLang, PressAngle } from "@prisma/client";
+import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { EMBEDDED_PITCHES } from "./templates/pitches.js";
 
 const log = createChildLogger("press-pitch-renderer");
+
+export const PRESS_PITCH_TEMPLATES_KEY = "press_pitch_templates";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -88,19 +91,22 @@ const ANGLE_LABELS: Record<PressAngle, Record<PressLang, string>> = {
 
 let cachedTemplates: Map<PressLang, string> | null = null;
 
+/** Invalidate cache — called after DB edits so next render picks up changes. */
+export function invalidateTemplatesCache(): void {
+  cachedTemplates = null;
+}
+
 async function loadTemplates(): Promise<Map<PressLang, string>> {
   if (cachedTemplates) return cachedTemplates;
 
   const templates = new Map<PressLang, string>();
 
-  // Start from the embedded TS templates — guaranteed to have all 10 langs
+  // Layer 1 — embedded TS templates: guaranteed to have all 10 langs.
   for (const lang of Object.keys(EMBEDDED_PITCHES) as PressLang[]) {
     templates.set(lang, EMBEDDED_PITCHES[lang]);
   }
 
-  // Optional override from markdown file (for dev/content-team editing
-  // without code redeploy).  Only override langs that parse successfully;
-  // missing sections keep the embedded template.
+  // Layer 2 — markdown file (dev-only, may not exist in container).
   try {
     const content = await fs.readFile(PITCH_TEMPLATES_PATH, "utf8");
     const langHeaders: Array<{ lang: PressLang; marker: string }> = [
@@ -120,9 +126,27 @@ async function loadTemplates(): Promise<Map<PressLang, string>> {
       const body = content.slice(codeStart + 3, codeEnd).trim();
       if (body.length > 0) templates.set(lang, body);
     }
-    log.info({ path: PITCH_TEMPLATES_PATH }, "Overlayed pitch templates from markdown file");
   } catch {
-    // Markdown not available — embedded templates already loaded, nothing to do.
+    // Markdown not on disk — fine, embedded templates cover it.
+  }
+
+  // Layer 3 — AppSetting DB overrides: final authority so admins can edit
+  // the copy via the UI without a redeploy.  Missing langs fall through
+  // to earlier layers.
+  try {
+    const setting = await prisma.appSetting.findUnique({
+      where: { key: PRESS_PITCH_TEMPLATES_KEY },
+    });
+    if (setting?.value && typeof setting.value === "object") {
+      const dbTemplates = setting.value as Partial<Record<PressLang, string>>;
+      for (const [lang, body] of Object.entries(dbTemplates)) {
+        if (typeof body === "string" && body.length > 0) {
+          templates.set(lang as PressLang, body);
+        }
+      }
+    }
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, "Could not load pitch templates from AppSetting");
   }
 
   cachedTemplates = templates;

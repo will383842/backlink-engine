@@ -16,7 +16,12 @@ import { PressContactStatus, PressLang, PressAngle, ProspectCategory } from "@pr
 import { prisma } from "../../config/database.js";
 import { pressOutreachQueue } from "../../jobs/queue.js";
 import { verifyPressInboxes } from "../../services/press/sender.js";
-import { renderPitchEmail } from "../../services/press/pitchRenderer.js";
+import {
+  renderPitchEmail,
+  invalidateTemplatesCache,
+  PRESS_PITCH_TEMPLATES_KEY,
+} from "../../services/press/pitchRenderer.js";
+import { EMBEDDED_PITCHES } from "../../services/press/templates/pitches.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { sendTelegramMessage } from "../../services/notifications/telegramService.js";
 
@@ -342,6 +347,82 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
     );
 
     return reply.send({ angle, template, templates: rendered });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/press/templates/raw
+  // Returns the raw pitch bodies (embedded + DB overrides) so the admin UI
+  // can prefill its edit forms.  Each entry has `lang`, `body`, and
+  // `source` ("db" = overridden, "embedded" = default).
+  // -------------------------------------------------------------------------
+  fastify.get("/api/press/templates/raw", async (_request, reply) => {
+    const langs: PressLang[] = ["fr", "en", "es", "de", "pt", "ru", "zh", "hi", "ar", "et"];
+    const setting = await prisma.appSetting.findUnique({
+      where: { key: PRESS_PITCH_TEMPLATES_KEY },
+    });
+    const overrides = (setting?.value ?? {}) as Partial<Record<PressLang, string>>;
+
+    const items = langs.map((lang) => {
+      const dbBody = overrides[lang];
+      return {
+        lang,
+        body: typeof dbBody === "string" && dbBody.length > 0 ? dbBody : EMBEDDED_PITCHES[lang],
+        source: typeof dbBody === "string" && dbBody.length > 0 ? ("db" as const) : ("embedded" as const),
+        embeddedBody: EMBEDDED_PITCHES[lang],
+      };
+    });
+
+    return reply.send({ templates: items });
+  });
+
+  // -------------------------------------------------------------------------
+  // PATCH /api/press/templates/:lang
+  // Updates the pitch body for ONE language.  Stored as an AppSetting
+  // override so the embedded defaults stay available in case of rollback.
+  // Body can be empty string "" to reset the override (fall back to
+  // embedded template).
+  // -------------------------------------------------------------------------
+  fastify.patch<{
+    Params: { lang: string };
+    Body: { body: string };
+  }>("/api/press/templates/:lang", async (request, reply) => {
+    const validLangs: PressLang[] = ["fr", "en", "es", "de", "pt", "ru", "zh", "hi", "ar", "et"];
+    const lang = request.params.lang as PressLang;
+    if (!validLangs.includes(lang)) {
+      return reply.code(400).send({ error: "invalid_lang", validLangs });
+    }
+
+    const { body } = request.body;
+    if (typeof body !== "string") {
+      return reply.code(400).send({ error: "body_must_be_string" });
+    }
+
+    const existing = await prisma.appSetting.findUnique({
+      where: { key: PRESS_PITCH_TEMPLATES_KEY },
+    });
+    const current = (existing?.value ?? {}) as Partial<Record<PressLang, string>>;
+
+    if (body.trim().length === 0) {
+      // Reset = remove override → revert to embedded
+      delete current[lang];
+    } else {
+      current[lang] = body;
+    }
+
+    await prisma.appSetting.upsert({
+      where: { key: PRESS_PITCH_TEMPLATES_KEY },
+      create: { key: PRESS_PITCH_TEMPLATES_KEY, value: current as object },
+      update: { value: current as object },
+    });
+
+    invalidateTemplatesCache();
+    log.info({ lang, bodyLength: body.length }, "Press pitch template updated");
+
+    return reply.send({
+      lang,
+      source: body.trim().length === 0 ? "embedded" : "db",
+      bodyLength: body.length,
+    });
   });
 
   // -------------------------------------------------------------------------
