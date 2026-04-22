@@ -54,13 +54,20 @@ const FOLLOW_UP_2_DELAY_MS = 10 * 24 * 60 * 60 * 1000; // J+10
 // same inbox, so reply threads stay coherent)
 // ---------------------------------------------------------------------------
 
-async function pickInboxForContact(contactId: string, lang: PressLang): Promise<string> {
+async function pickInboxForContact(contactId: string, _lang: PressLang): Promise<string> {
+  // ROUND-ROBIN across all 5 inboxes (hash-based for determinism = same
+  // contact always uses the same inbox = reply threading stays coherent).
+  //
+  // Rationale: language-specific inboxes (byLang.fr → one fixed inbox)
+  // sent 100% of the 196 FR contacts to a single domain, defeating the
+  // whole point of having 5 warmed domains.  Round-robin gives ~130
+  // emails per inbox over the full 651-contact campaign — balanced load
+  // that keeps each domain's reputation growing at the same safe pace.
+  //
+  // The language only drives the email body + subject (pitchRenderer),
+  // not the sending inbox.  Journalists get their native language
+  // content no matter which presse@* address it comes from.
   const paused = new Set(await getPausedInboxes());
-  // Prefer language-specific inbox if configured AND not paused
-  const langInbox = PRESSE_INBOXES.byLang[lang];
-  if (langInbox && !paused.has(langInbox)) return langInbox;
-
-  // Rotation excluding paused inboxes
   const available = PRESSE_INBOXES.rotation.filter((i) => !paused.has(i));
   if (available.length === 0) {
     throw new Error("No available press inbox — all paused by health monitor");
