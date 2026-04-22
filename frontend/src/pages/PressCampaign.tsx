@@ -22,6 +22,9 @@ import {
   Rocket,
   Eye,
   RefreshCw,
+  Pause,
+  Play,
+  Clock,
 } from "lucide-react";
 
 type Status =
@@ -130,6 +133,34 @@ export default function PressCampaign() {
     refetchInterval: 30_000,
   });
 
+  const { data: health } = useQuery<{
+    globalPaused: boolean;
+    paused: string[];
+    reports: Array<{ inbox: string; sent: number; bounced: number; healthy: boolean; paused: boolean }>;
+  }>({
+    queryKey: ["press-health"],
+    queryFn: async () => (await api.get("/press/health")).data,
+    refetchInterval: 30_000,
+  });
+
+  const pauseGlobalMutation = useMutation({
+    mutationFn: async () => (await api.post("/press/pause", { reason: "manual-via-ui" })).data,
+    onSuccess: () => {
+      toast.success("Campagne mise en pause");
+      queryClient.invalidateQueries({ queryKey: ["press-health"] });
+    },
+    onError: () => toast.error("Échec de la pause"),
+  });
+
+  const resumeGlobalMutation = useMutation({
+    mutationFn: async () => (await api.post("/press/resume")).data,
+    onSuccess: () => {
+      toast.success("Campagne reprise");
+      queryClient.invalidateQueries({ queryKey: ["press-health"] });
+    },
+    onError: () => toast.error("Échec de la reprise"),
+  });
+
   const { data: contacts, isLoading: loadingContacts } = useQuery<ContactsResponse>({
     queryKey: ["press-contacts", filterLang, filterStatus, filterAngle, page],
     queryFn: async () => {
@@ -193,7 +224,7 @@ export default function PressCampaign() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Campagne presse</h1>
           <p className="text-sm text-slate-500">
-            Vague 4.3 brand entity — 91 journalistes ciblés, 9 langues, 5 inboxes presse@
+            Vague 4.3 brand entity — priorité FR → EN → reste, 5 inboxes presse@, warmup 13 jours
           </p>
         </div>
         <div className="flex gap-2">
@@ -205,21 +236,110 @@ export default function PressCampaign() {
             {verifyMutation.isPending ? "Test..." : "Vérifier SMTP"}
           </button>
           <button
-            onClick={() => launchMutation.mutate({ dryRun: true, lang: launchOptions.lang, angle: launchOptions.angle })}
+            onClick={() => setShowLaunchModal(true)}
             disabled={launchMutation.isPending}
             className="flex items-center gap-2 rounded-md border border-blue-600 bg-white px-3 py-2 text-sm font-medium text-blue-700 shadow-sm transition hover:bg-blue-50 disabled:opacity-50"
           >
-            <Eye size={16} /> Dry-run
-          </button>
-          <button
-            onClick={() => setShowLaunchModal(true)}
-            disabled={launchMutation.isPending}
-            className="flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
-          >
-            <Rocket size={16} /> Lancer campagne
+            <Rocket size={16} /> Reconfigurer / Re-enqueue
           </button>
         </div>
       </div>
+
+      {/* Campaign status banner — live pause/resume control */}
+      {health && (() => {
+        const pendingCount = stats?.byStatus?.PENDING ?? 0;
+        const sentCount = stats?.byStatus?.SENT ?? 0;
+        const isPaused = health.globalPaused;
+        const someInboxPaused = health.paused.length > 0;
+        return (
+          <div className={`rounded-lg border p-4 shadow-sm ${
+            isPaused
+              ? "border-red-300 bg-red-50"
+              : someInboxPaused
+                ? "border-amber-300 bg-amber-50"
+                : pendingCount === 0 && sentCount === 0
+                  ? "border-slate-200 bg-slate-50"
+                  : "border-emerald-300 bg-emerald-50"
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                {isPaused ? (
+                  <>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-200">
+                      <XCircle size={22} className="text-red-700" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-red-900">Campagne en pause globale</div>
+                      <div className="text-xs text-red-800">Aucun email ne sera envoyé. Reprends pour continuer.</div>
+                    </div>
+                  </>
+                ) : someInboxPaused ? (
+                  <>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-200">
+                      <AlertTriangle size={22} className="text-amber-700" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-amber-900">
+                        Campagne active • {health.paused.length}/5 inbox(es) en pause
+                      </div>
+                      <div className="text-xs text-amber-800">
+                        {health.paused.map((i) => i.split("@")[1]).join(", ")} désactivée(s) automatiquement
+                      </div>
+                    </div>
+                  </>
+                ) : pendingCount === 0 && sentCount === 0 ? (
+                  <>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200">
+                      <Clock size={22} className="text-slate-700" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-slate-900">Aucune campagne en cours</div>
+                      <div className="text-xs text-slate-600">Clique "Reconfigurer" pour démarrer.</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-200">
+                      <CheckCircle2 size={22} className="text-emerald-700" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-emerald-900">
+                        Campagne active · {sentCount} envoyé(s) / {pendingCount} en attente
+                      </div>
+                      <div className="text-xs text-emerald-800">
+                        Les 5 inboxes sont saines. Envois étalés selon le warmup.
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {isPaused ? (
+                  <button
+                    onClick={() => resumeGlobalMutation.mutate()}
+                    disabled={resumeGlobalMutation.isPending}
+                    className="flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    <Play size={16} /> Reprendre la campagne
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (confirm("Mettre la campagne en pause ? Les emails déjà en queue ne seront pas envoyés tant que pas de 'Reprendre'.")) {
+                        pauseGlobalMutation.mutate();
+                      }
+                    }}
+                    disabled={pauseGlobalMutation.isPending}
+                    className="flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                  >
+                    <Pause size={16} /> Mettre en pause
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
