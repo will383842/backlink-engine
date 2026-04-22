@@ -33,18 +33,19 @@ const PITCH_TEMPLATES_PATH = process.env.PRESS_PITCH_TEMPLATES_PATH ??
 
 const PDF_BASE_URL = process.env.PRESS_PDF_BASE_URL ?? "https://sos-expat.com";
 
-// Subject line patterns per language (short + punchy, avoids spam filters)
+// Subject line patterns per language (aligned with the 2026-04-22 pitch
+// rewrite: Grand Survey 2026 data + "80+ lawyers in 2 months" launch angle).
 const SUBJECT_TEMPLATES: Record<PressLang, string> = {
-  fr: "{ANGLE_FR} — SOS-Expat : 5 min pour parler à un avocat ou expatrié aidant",
-  en: "{ANGLE_EN} — SOS-Expat: 5 min to talk to a lawyer or helpful expat",
-  es: "{ANGLE_ES} — SOS-Expat: 5 min para hablar con un abogado o expatriado ayudante",
-  de: "{ANGLE_DE} — SOS-Expat: 5 Min, um mit einem Anwalt oder Expat-Helfer zu sprechen",
-  pt: "{ANGLE_PT} — SOS-Expat: 5 min para falar com advogado ou expatriado ajudante",
-  ru: "{ANGLE_RU} — SOS-Expat: 5 мин для разговора с юристом или помогающим экспатом",
-  zh: "{ANGLE_ZH} — SOS-Expat: 5分钟与律师或帮助的外籍人士通话",
-  hi: "{ANGLE_HI} — SOS-Expat: 5 मिनट में वकील या सहायक प्रवासी से बात करें",
-  ar: "{ANGLE_AR} — SOS-Expat: 5 دقائق للتحدث مع محامٍ أو مغترب مساعد",
-  et: "{ANGLE_ET} — SOS-Expat: 5 min advokaadi või abivalmis välismaalasega rääkimiseks",
+  fr: "SOS-Expat : 80+ avocats en 2 mois — 304M d'expatriés, nos données (CC BY) [{ANGLE_FR}]",
+  en: "SOS-Expat: 80+ lawyers in 2 months — 304M expats, open data (CC BY) [{ANGLE_EN}]",
+  es: "SOS-Expat: 80+ abogados en 2 meses — 304M expatriados, datos abiertos (CC BY) [{ANGLE_ES}]",
+  de: "SOS-Expat: 80+ Anwälte in 2 Monaten — 304 Mio Expats, offene Daten (CC BY) [{ANGLE_DE}]",
+  pt: "SOS-Expat: 80+ advogados em 2 meses — 304M expatriados, dados abertos (CC BY) [{ANGLE_PT}]",
+  ru: "SOS-Expat: 80+ юристов за 2 месяца — 304 млн экспатов, открытые данные (CC BY) [{ANGLE_RU}]",
+  zh: "SOS-Expat：2个月80+律师 — 3.04亿海外人士，开放数据（CC BY）[{ANGLE_ZH}]",
+  hi: "SOS-Expat: 2 महीने में 80+ वकील — 30 करोड़ प्रवासी, मुक्त डेटा (CC BY) [{ANGLE_HI}]",
+  ar: "SOS-Expat: +80 محامٍ في شهرين — 304 مليون مغترب، بيانات مفتوحة (CC BY) [{ANGLE_AR}]",
+  et: "SOS-Expat: 80+ advokaati 2 kuuga — 304 mln välismaalast, avaandmed (CC BY) [{ANGLE_ET}]",
 };
 
 const ANGLE_LABELS: Record<PressAngle, Record<PressLang, string>> = {

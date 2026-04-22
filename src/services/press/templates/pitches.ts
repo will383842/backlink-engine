@@ -1,275 +1,206 @@
 /**
  * Embedded press pitch templates — 10 languages.
  *
- * Mirror of brand-entity-kit/presse/pitch-emails-9-langues.md, embedded
- * directly in TypeScript so the backend does not need filesystem access
- * to the parent sos-expat-project repo (which is not copied into the
- * Docker image).
+ * Reworked 2026-04-22 with the new angle centered on the Grand Expat
+ * & Traveler Survey 2026 (9 563 participants, 54 countries, CC BY 4.0)
+ * and the "80+ lawyers onboarded in under 2 months" launch milestone.
  *
- * Positioning: SOS-Expat is "lawyer OR helpful expat" — covered across
- * all 10 languages. Update here AND in the markdown file together to
- * keep them in sync (the markdown is the human-editable reference).
+ * Positioning: SOS-Expat = lawyer OR expat expert, 5-min phone connection,
+ * 197 countries, 24/7.  Signed by Williams Jullin, Founder.
+ *
+ * These bodies are the embedded defaults.  Admins can override any of them
+ * via the press/templates admin UI (stored in AppSetting DB row).
  */
 import type { PressLang } from "@prisma/client";
 
 export const EMBEDDED_PITCHES: Record<PressLang, string> = {
-  fr: `Bonjour [Prénom Journaliste],
+  fr: `Bonjour,
 
-Je vous contacte car votre travail sur [sujet récent écrit par le journaliste — une phrase pour montrer que vous avez lu] m'a fait penser à une actualité qui pourrait intéresser vos lecteurs.
+304 millions de personnes vivent ou voyagent à l'étranger. 17% n'ont aucune couverture santé. 57% seraient prêts à payer pour une aide juridique ou administrative. Et pourtant, jusqu'à il y a 2 mois, personne ne répondait à ce besoin.
 
-SOS-Expat (sos-expat.com) est une plateforme lancée [date] depuis Tallinn qui résout un problème très concret : les 280 millions d'expatriés et voyageurs qui, chaque année, se retrouvent bloqués à l'étranger dans une situation juridique ou administrative sans savoir à qui s'adresser — dans leur langue.
+Nous l'avons fait.
 
-En quelques chiffres :
-  • 197 pays couverts
-  • 9 langues (FR, EN, ES, DE, PT, RU, ZH, HI, AR)
-  • Mise en relation téléphonique vérifiée en < 5 min avec un avocat OU un expatrié aidant
-  • Consultation à l'acte $19-49, sans abonnement
-  • 24h/24, 7j/7
-  • Conforme RGPD + eIDAS
+SOS-Expat.com est la première plateforme mondiale qui connecte voyageurs, vacanciers et expatriés à un avocat local ou un expert expat en moins de 5 minutes, par téléphone. 197 pays, toutes langues, 24h/24. En moins de 2 mois : plus de 80 avocats inscrits.
 
-Je serais heureux·se de vous fournir :
-  • Un communiqué de presse détaillé (PDF ci-joint)
-  • Des visuels HD (logo, bannière, screenshots)
-  • Un entretien avec [fondateur] sous 48h si un angle vous intéresse
+Ces chiffres sont issus de notre Grand Sondage Expat & Voyageur 2026 — 9 563 participants, 54 pays, données librement réutilisables (CC BY 4.0) :
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-Page presse : https://sos-expat.com/fr-fr/presse
+Je suis disponible pour une interview, une tribune ou une mention dans un article ressource. Communiqués de presse, dossier, logos et visuels sont téléchargeables directement sur : sos-expat.com/presse
+
+Seriez-vous disponible pour un échange de 10 minutes ?
 
 Bien cordialement,
-[Ton nom]
-SOS-Expat
-contact@sos-expat.com`,
+Williams Jullin – Fondateur, SOS-Expat.com
++33 7 43 33 12 01`,
 
-  en: `Hello [Journalist's First Name],
+  en: `Hello,
 
-I'm reaching out because your recent piece on [topic — one line] reminded me of news that might interest your readers.
+304 million people live or travel abroad. 17% have no health coverage. 57% would be willing to pay for legal or administrative assistance. Yet until 2 months ago, no platform was addressing this need in real time.
 
-SOS-Expat (sos-expat.com) is a platform launched [date] from Tallinn that solves a very concrete problem: the 280 million expats and travelers who, every year, find themselves stuck abroad in a legal or administrative situation without knowing whom to call — in their own language.
+We built it.
 
-Key figures:
-  • 197 countries covered
-  • 9 languages (EN, FR, ES, DE, PT, RU, ZH, HI, AR)
-  • Verified phone connection in under 5 min with a lawyer OR a helpful expat
-  • Pay-per-consultation $19-49, no subscription
-  • 24/7, worldwide
-  • GDPR + eIDAS compliant
+SOS-Expat.com is the world's first platform connecting travelers, tourists and expats to a local lawyer or expat expert in under 5 minutes, by phone. 197 countries, all languages, 24/7. In under 2 months: over 80 lawyers already on board.
 
-I'd be happy to provide:
-  • A detailed press release (PDF attached)
-  • HD visuals (logo, banner, screenshots)
-  • An interview with [founder] within 48h
+These figures come from our Grand Expat & Traveler Survey 2026 — 9,563 participants, 54 countries, freely reusable data (CC BY 4.0):
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-Press page: https://sos-expat.com/en-us/press
+Press releases, press kit, logos and visuals available for download at:
+sos-expat.com/presse
+
+Would you be open to covering this story?
 
 Best regards,
-[Your name]
-SOS-Expat
-contact@sos-expat.com`,
+Williams Jullin – Founder, SOS-Expat.com`,
 
-  es: `Hola [Nombre del periodista],
+  es: `Estimado/a,
 
-Le contacto porque su reciente artículo sobre [tema — una frase] me hizo pensar en una noticia que podría interesar a sus lectores.
+304 millones de personas viven o viajan en el extranjero. El 17% no tiene cobertura médica. El 57% estaría dispuesto a pagar por asistencia jurídica o administrativa. Y sin embargo, hasta hace 2 meses, ninguna plataforma respondía a esta necesidad en tiempo real.
 
-SOS-Expat (sos-expat.com) es una plataforma lanzada [fecha] desde Tallin que resuelve un problema muy concreto: los 280 millones de expatriados y viajeros que cada año se encuentran bloqueados en el extranjero en una situación jurídica o administrativa sin saber a quién llamar — en su idioma.
+Nosotros lo hemos creado.
 
-Cifras clave:
-  • 197 países cubiertos
-  • 9 idiomas (ES, EN, FR, DE, PT, RU, ZH, HI, AR)
-  • Conexión telefónica verificada en menos de 5 min con un abogado O un expatriado ayudante
-  • Consulta por acto $19-49, sin suscripción
-  • 24/7, en todo el mundo
-  • Conforme RGPD + eIDAS
+SOS-Expat.com es la primera plataforma mundial que conecta a viajeros, turistas y expatriados con un abogado local o un experto expatriado en menos de 5 minutos, por teléfono. 197 países, todos los idiomas, 24/7. En menos de 2 meses: más de 80 abogados registrados.
 
-Me encantaría proporcionarle:
-  • Una nota de prensa detallada (PDF adjunto)
-  • Visuales HD (logotipo, banner, capturas)
-  • Una entrevista con [fundador] en 48h
+Estas cifras provienen de nuestra Gran Encuesta Expat & Viajero 2026 — 9.563 participantes, 54 países, datos de libre uso (CC BY 4.0):
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-Página de prensa: https://sos-expat.com/es-es/prensa
+Comunicados de prensa, dossier, logotipos e imágenes disponibles para descarga en:
+sos-expat.com/presse
+
+¿Estaría abierto/a a cubrir esta historia?
 
 Atentamente,
-[Tu nombre]
-SOS-Expat
-contact@sos-expat.com`,
+Williams Jullin – Fundador, SOS-Expat.com`,
 
-  de: `Guten Tag [Vorname des Journalisten],
+  de: `Guten Tag,
 
-ich schreibe Ihnen, weil Ihr jüngster Beitrag zu [Thema — ein Satz] mich an eine Neuigkeit erinnert hat, die Ihre Leser interessieren könnte.
+304 Millionen Menschen leben oder reisen im Ausland. 17% haben keinen Krankenversicherungsschutz. 57% wären bereit, für rechtliche oder administrative Unterstützung zu zahlen. Und dennoch hat bis vor 2 Monaten keine Plattform diesen Bedarf in Echtzeit gedeckt.
 
-SOS-Expat (sos-expat.com) ist eine Plattform, die [Datum] von Tallinn aus gestartet wurde und ein ganz konkretes Problem löst: die 280 Millionen Expats und Reisenden, die jedes Jahr im Ausland in einer rechtlichen oder administrativen Situation feststecken, ohne zu wissen, an wen sie sich wenden können — in ihrer eigenen Sprache.
+Wir haben es gebaut.
 
-Kennzahlen:
-  • 197 abgedeckte Länder
-  • 9 Sprachen (DE, EN, FR, ES, PT, RU, ZH, HI, AR)
-  • Verifizierte Telefonverbindung in unter 5 Min mit einem Anwalt ODER einem hilfsbereiten Expat
-  • Abrechnung pro Beratung $19-49, kein Abonnement
-  • 24/7, weltweit
-  • DSGVO + eIDAS konform
+SOS-Expat.com ist die erste weltweite Plattform, die Reisende, Urlauber und Expats in weniger als 5 Minuten telefonisch mit einem lokalen Anwalt oder Expat-Experten verbindet. 197 Länder, alle Sprachen, 24/7. In weniger als 2 Monaten: über 80 registrierte Anwälte.
 
-Gerne stelle ich Ihnen zur Verfügung:
-  • Eine detaillierte Pressemitteilung (PDF anbei)
-  • HD-Visuals (Logo, Banner, Screenshots)
-  • Ein Interview mit [Gründer] innerhalb von 48 Std
+Diese Zahlen stammen aus unserer Großen Expat & Reisenden-Umfrage 2026 — 9.563 Teilnehmer, 54 Länder, frei verwendbare Daten (CC BY 4.0):
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-Pressebereich: https://sos-expat.com/de-de/presse
+Pressemitteilungen, Pressemappe, Logos und Bildmaterial stehen zum Download bereit:
+sos-expat.com/presse
+
+Wären Sie offen, darüber zu berichten?
 
 Mit freundlichen Grüßen,
-[Dein Name]
-SOS-Expat
-contact@sos-expat.com`,
+Williams Jullin – Gründer, SOS-Expat.com`,
 
-  pt: `Olá [Nome do jornalista],
+  pt: `Caro/a,
 
-Entro em contacto consigo porque o seu recente artigo sobre [tópico — uma frase] me fez pensar numa notícia que poderia interessar aos seus leitores.
+304 milhões de pessoas vivem ou viajam no estrangeiro. 17% não têm qualquer cobertura de saúde. 57% estariam dispostos a pagar por assistência jurídica ou administrativa. No entanto, até há 2 meses, nenhuma plataforma respondia a esta necessidade em tempo real.
 
-SOS-Expat (sos-expat.com) é uma plataforma lançada [data] a partir de Tallinn que resolve um problema muito concreto: os 280 milhões de expatriados e viajantes que, todos os anos, se encontram bloqueados no estrangeiro numa situação jurídica ou administrativa sem saber a quem recorrer — no seu idioma.
+Nós criamos isso.
 
-Alguns números:
-  • 197 países cobertos
-  • 9 idiomas (PT, EN, FR, ES, DE, RU, ZH, HI, AR)
-  • Ligação telefónica verificada em menos de 5 min com um advogado OU um expatriado ajudante
-  • Consulta por acto $19-49, sem subscrição
-  • 24/7, em todo o mundo
-  • Em conformidade com o RGPD + eIDAS
+SOS-Expat.com é a primeira plataforma mundial que liga viajantes, turistas e expatriados a um advogado local ou a um especialista expatriado em menos de 5 minutos, por telefone. 197 países, todos os idiomas, 24/7. Em menos de 2 meses: mais de 80 advogados registados.
 
-Teria todo o gosto em fornecer-lhe:
-  • Um comunicado de imprensa detalhado (PDF em anexo)
-  • Visuais HD (logo, banner, capturas de ecrã)
-  • Uma entrevista com [fundador] em 48h
+Estes dados provêm do nosso Grande Inquérito Expat & Viajante 2026 — 9.563 participantes, 54 países, dados de livre utilização (CC BY 4.0):
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-Página de imprensa: https://sos-expat.com/pt-pt/imprensa
+Comunicados de imprensa, dossier, logotipos e imagens disponíveis para download em:
+sos-expat.com/presse
+
+Estaria aberto/a a cobrir esta história?
 
 Com os melhores cumprimentos,
-[O seu nome]
-SOS-Expat
-contact@sos-expat.com`,
+Williams Jullin – Fundador, SOS-Expat.com`,
 
-  ru: `Здравствуйте, [Имя журналиста],
+  ru: `Здравствуйте,
 
-Я пишу Вам, потому что Ваша недавняя статья о [тема — одна фраза] напомнила мне о новости, которая может заинтересовать Ваших читателей.
+304 миллиона человек живут или путешествуют за рубежом. 17% не имеют медицинской страховки. 57% готовы платить за юридическую или административную помощь. И тем не менее, ещё два месяца назад ни одна платформа не отвечала на эту потребность в режиме реального времени.
 
-SOS-Expat (sos-expat.com) — это платформа, запущенная [дата] из Таллина, которая решает очень конкретную проблему: 280 миллионов экспатов и путешественников, которые каждый год оказываются заблокированными за границей в юридической или административной ситуации, не зная, к кому обратиться — на своем языке.
+Мы это создали.
 
-Ключевые цифры:
-  • 197 охваченных стран
-  • 9 языков (RU, EN, FR, ES, DE, PT, ZH, HI, AR)
-  • Проверенное телефонное соединение менее чем за 5 минут с юристом ИЛИ помогающим экспатом
-  • Оплата за консультацию $19-49, без подписки
-  • 24/7, по всему миру
-  • Соответствие GDPR + eIDAS
+SOS-Expat.com — первая в мире платформа, которая соединяет путешественников, туристов и экспатов с местным адвокатом или экспертом-экспатом менее чем за 5 минут по телефону. 197 стран, все языки, круглосуточно. Менее чем за 2 месяца: уже более 80 зарегистрированных адвокатов.
 
-Я был бы рад предоставить Вам:
-  • Подробный пресс-релиз (PDF приложен)
-  • Визуальные материалы HD (логотип, баннер, скриншоты)
-  • Интервью с [основатель] в течение 48 часов
+Эти данные получены в ходе нашего Большого опроса экспатов и путешественников 2026 года — 9 563 участника, 54 страны, данные в свободном доступе (CC BY 4.0):
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-Страница прессы: https://sos-expat.com/ru-ru/pressa
+Пресс-релизы, пресс-кит, логотипы и визуальные материалы доступны для скачивания по адресу:
+sos-expat.com/presse
+
+Были бы вы готовы осветить эту тему?
 
 С уважением,
-[Ваше имя]
-SOS-Expat
-contact@sos-expat.com`,
+Williams Jullin – основатель, SOS-Expat.com`,
 
-  zh: `您好，[记者姓名]，
+  zh: `您好，
 
-我写信给您，因为您最近关于[主题——一句话]的报道让我想到了一条可能引起您读者兴趣的新闻。
+全球有3.04亿人在海外生活或旅行。17%没有任何医疗保障。57%愿意为法律或行政协助付费。然而，就在两个月前，没有任何平台能够实时满足这一需求。
 
-SOS-Expat（sos-expat.com）是一个于[日期]从塔林推出的平台，它解决了一个非常具体的问题：每年有2.8亿海外人士和旅行者在海外陷入法律或行政困境，不知道该联系谁——用他们自己的语言。
+我们做到了。
 
-关键数字：
-  • 覆盖197个国家
-  • 9种语言（中文、英语、法语、西班牙语、德语、葡萄牙语、俄语、印地语、阿拉伯语）
-  • 5分钟内完成经过验证的电话连接，可与律师或热心的外籍人士通话
-  • 按次咨询19-49美元，无需订阅
-  • 24/7全球服务
-  • 符合GDPR + eIDAS
+SOS-Expat.com是全球首个平台，能在5分钟内通过电话将旅行者、游客和海外华人与当地律师或海外专家对接。覆盖197个国家，支持所有语言，全天候24/7服务。不到两个月：已有超过80名律师入驻。
 
-我很乐意为您提供：
-  • 详细的新闻稿（PDF附件）
-  • 高清视觉素材（徽标、横幅、截图）
-  • 48小时内与[创始人]的访谈
+以上数据来自我们的《2026年海外侨民与旅行者大调查》——9,563名参与者，54个国家，数据可免费使用（CC BY 4.0）：
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-新闻页面：https://sos-expat.com/zh-cn/xinwen
+新闻稿、媒体资料包、标志及视觉素材可在以下地址下载：
+sos-expat.com/presse
 
-此致
-[您的名字]
-SOS-Expat
-contact@sos-expat.com`,
+您是否愿意报道这一话题？
 
-  hi: `नमस्ते [पत्रकार का पहला नाम],
+此致敬礼，
+Williams Jullin — SOS-Expat.com创始人`,
 
-मैं आपसे संपर्क कर रहा/रही हूँ क्योंकि [विषय — एक पंक्ति] पर आपके हाल के लेख ने मुझे एक ऐसी खबर के बारे में सोचने पर मजबूर किया जो आपके पाठकों को रुचिकर लग सकती है।
+  hi: `नमस्ते,
 
-SOS-Expat (sos-expat.com) एक ऐसा मंच है जिसे [तारीख] को टालिन से लॉन्च किया गया था और जो एक बहुत ही ठोस समस्या को हल करता है: 28 करोड़ प्रवासी और यात्री हर साल विदेश में कानूनी या प्रशासनिक स्थिति में फंस जाते हैं और नहीं जानते कि किसको कॉल करें — अपनी भाषा में।
+30 करोड़ 40 लाख लोग विदेश में रहते या यात्रा करते हैं। 17% के पास कोई स्वास्थ्य बीमा नहीं है। 57% कानूनी या प्रशासनिक सहायता के लिए भुगतान करने को तैयार हैं। फिर भी, केवल 2 महीने पहले तक, कोई भी प्लेटफ़ॉर्म इस ज़रूरत को वास्तविक समय में पूरा नहीं कर रहा था।
 
-मुख्य आँकड़े:
-  • 197 देशों में उपलब्धता
-  • 9 भाषाएँ (HI, EN, FR, ES, DE, PT, RU, ZH, AR)
-  • 5 मिनट से भी कम समय में सत्यापित फोन कनेक्शन वकील या सहायक प्रवासी के साथ
-  • प्रति परामर्श $19-49, बिना सदस्यता
-  • 24/7, विश्वव्यापी
-  • GDPR + eIDAS अनुपालन
+हमने यह बनाया।
 
-मुझे प्रदान करने में खुशी होगी:
-  • एक विस्तृत प्रेस विज्ञप्ति (PDF संलग्न)
-  • HD विज़ुअल (लोगो, बैनर, स्क्रीनशॉट)
-  • [संस्थापक] के साथ 48 घंटे के भीतर एक साक्षात्कार
+SOS-Expat.com दुनिया का पहला प्लेटफ़ॉर्म है जो यात्रियों, पर्यटकों और प्रवासियों को 5 मिनट से कम समय में फ़ोन पर एक स्थानीय वकील या प्रवासी विशेषज्ञ से जोड़ता है। 197 देश, सभी भाषाएँ, 24/7। 2 महीने से भी कम समय में: 80 से अधिक वकील पंजीकृत।
 
-प्रेस पेज: https://sos-expat.com/hi-in/press
+ये आंकड़े हमारे ग्रैंड एक्सपैट और ट्रैवलर सर्वे 2026 से लिए गए हैं — 9,563 प्रतिभागी, 54 देश, स्वतंत्र रूप से उपयोग योग्य डेटा (CC BY 4.0):
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+
+प्रेस विज्ञप्तियाँ, प्रेस किट, लोगो और विज़ुअल सामग्री यहाँ से डाउनलोड की जा सकती है:
+sos-expat.com/presse
+
+क्या आप इस विषय को कवर करने में रुचि रखते हैं?
 
 सादर,
-[आपका नाम]
-SOS-Expat
-contact@sos-expat.com`,
+Williams Jullin — संस्थापक, SOS-Expat.com`,
 
-  ar: `مرحبًا [الاسم الأول للصحفي]،
+  ar: `مرحبا،
 
-أتواصل معك لأن مقالك الأخير عن [الموضوع — جملة واحدة] ذكرني بخبر قد يهم قراءك.
+304 ملايين شخص يعيشون أو يسافرون خارج بلدانهم. 17% ليس لديهم أي تغطية صحية. 57% مستعدون للدفع مقابل مساعدة قانونية أو إدارية. ومع ذلك، حتى قبل شهرين، لم تكن هناك منصة واحدة تستجيب لهذه الحاجة في الوقت الفعلي.
 
-SOS-Expat (sos-expat.com) هي منصة أُطلقت في [التاريخ] من تالين وتحل مشكلة ملموسة: 280 مليون مغترب ومسافر يجدون أنفسهم كل عام عالقين في الخارج في موقف قانوني أو إداري دون معرفة من يتصلون به — بلغتهم الأم.
+نحن بنيناها.
 
-أرقام رئيسية:
-  • 197 دولة مغطاة
-  • 9 لغات (AR, EN, FR, ES, DE, PT, RU, ZH, HI)
-  • اتصال هاتفي موثق في أقل من 5 دقائق مع محامٍ أو مغترب مساعد
-  • استشارة بالجلسة 19-49 دولارًا، بدون اشتراك
-  • 24/7، في جميع أنحاء العالم
-  • متوافق مع GDPR و eIDAS
+SOS-Expat.com هي أول منصة عالمية تربط المسافرين والسياح والمغتربين بمحامٍ محلي أو خبير مغترب في أقل من 5 دقائق عبر الهاتف. 197 دولة، جميع اللغات، 24/7. في أقل من شهرين: أكثر من 80 محامٍ مسجل.
 
-يسعدني أن أقدم لك:
-  • بيان صحفي مفصل (PDF مرفق)
-  • صور عالية الدقة (شعار، لافتة، لقطات شاشة)
-  • مقابلة مع [المؤسس] خلال 48 ساعة
+هذه الأرقام مستقاة من استطلاعنا الكبير للمغتربين والمسافرين 2026 — 9 563 مشاركاً، 54 دولة، بيانات متاحة للاستخدام بحرية (CC BY 4.0):
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
-صفحة الصحافة: https://sos-expat.com/ar-sa/sahafah
+البيانات الصحفية، حقيبة الصحافة، الشعارات والمواد المرئية متاحة للتنزيل على:
+sos-expat.com/presse
 
-مع أطيب التحيات،
-[اسمك]
-SOS-Expat
-contact@sos-expat.com`,
+هل أنتم مستعدون لتغطية هذا الموضوع؟
 
-  et: `Tere [Ajakirjaniku eesnimi],
+مع التقدير،
+ويليامس جولين — مؤسس SOS-Expat.com`,
 
-Võtan ühendust, sest teie hiljutine artikkel teemal [teema — üks lause] tuletas mulle meelde uudise, mis võiks teie lugejaid huvitada.
+  et: `Tere,
 
-SOS-Expat (sos-expat.com) on Tallinnast [kuupäev] käivitatud platvorm, mis lahendab väga konkreetse probleemi: 280 miljonit välismaalast ja reisijat jäävad igal aastal välismaal juriidilises või administratiivses olukorras kinni, teadmata, kellele helistada — oma emakeeles.
+304 miljonit inimest elab või reisib välismaal. 17%-l ei ole tervisekindlustust. 57% oleks valmis maksma õigusliku või haldusabi eest. Ja ometi, veel kaks kuud tagasi, ükski platvorm ei vastanud sellele vajadusele reaalajas.
 
-Põhinäitajad:
-  • 197 kaetud riiki
-  • 9 keelt (ET, EN, FR, ES, DE, PT, RU, ZH, HI, AR)
-  • Verifitseeritud telefoniühendus alla 5 min advokaadi või abivalmis välismaalasega
-  • Konsultatsioon korra kohta $19-49, ilma tellimuseta
-  • 24/7, üle kogu maailma
-  • GDPR + eIDAS nõuetele vastav
+Meie ehitasime selle.
 
-Meelsasti pakun:
-  • Üksikasjalikku pressiteadet (PDF lisatud)
-  • HD visuaale (logo, bänner, ekraanikuvad)
-  • Intervjuud [asutaja] 48 tunni jooksul
+SOS-Expat.com on maailma esimene platvorm, mis ühendab reisijaid, turiste ja välismaalasi kohaliku advokaadi või välismaalaste eksperdiga alla 5 minutiga telefoni teel. 197 riiki, kõik keeled, 24/7. Alla kahe kuuga: üle 80 registreeritud advokaadi.
 
-Pressileht: https://sos-expat.com/et-ee/press
+Need andmed pärinevad meie 2026. aasta suurest välismaalaste ja reisijate uuringust — 9 563 osalejat, 54 riiki, vabalt kasutatavad andmed (CC BY 4.0):
+https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+
+Pressiteated, pressipakett, logod ja visuaalid on allalaaditavad aadressil:
+sos-expat.com/presse
+
+Kas oleksite valmis sellel teemal kirjutama?
 
 Lugupidamisega,
-[Sinu nimi]
-SOS-Expat
-contact@sos-expat.com`,
+Williams Jullin — asutaja, SOS-Expat.com`,
 };
