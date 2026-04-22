@@ -150,13 +150,44 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
   });
 
   const fromInbox = await pickInboxForContact(contact.id, contact.lang);
+  const stepNumber = template === "initial" ? 0 : template === "follow_up_1" ? 1 : 2;
+
+  // Create-before-send pattern — lets us inject the open-tracking pixel
+  // with a sentEmailId, and mirrors what broadcastManager does.  Row
+  // starts in status="pending" and gets flipped to "sent" after SMTP.
+  let sentEmailId: number | null = null;
+  try {
+    const row = await prisma.sentEmail.create({
+      data: {
+        pressContactId: contact.id,
+        stepNumber,
+        fromEmail: fromInbox,
+        subject,
+        body: text,
+        language: contact.lang,
+        generatedBy: "template",
+        status: "pending",
+      },
+    });
+    sentEmailId = row.id;
+  } catch (err) {
+    log.warn({ err: (err as Error).message, contactId }, "Failed to pre-create sent_emails row — continuing without tracking pixel");
+  }
+
+  // Inject 1x1 tracking pixel (same endpoint as the broadcast system)
+  const trackingBase = process.env.TRACKING_BASE_URL ?? "https://backlinks.life-expat.com";
+  let htmlWithPixel = html;
+  if (sentEmailId !== null) {
+    const pixelUrl = `${trackingBase}/api/track/open/${sentEmailId}.gif?t=${Date.now()}`;
+    htmlWithPixel = html + `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;" />`;
+  }
 
   try {
     await sendPressEmail({
       from: fromInbox,
       to: contact.email,
       subject,
-      html,
+      html: htmlWithPixel,
       text,
       attachments: pdfUrl ? [{ filename: `SOS-Expat-press-${contact.lang}.pdf`, url: pdfUrl }] : [],
       // Custom headers for Mailflow reply tracking — the webhook handler
@@ -164,34 +195,35 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
       headers: {
         "X-Press-Contact-Id": contact.id,
         "X-Press-Template": template,
+        ...(sentEmailId !== null ? { "X-Press-Sent-Email-Id": String(sentEmailId) } : {}),
         ...(campaignTag ? { "X-Press-Campaign": campaignTag } : {}),
       },
     });
 
-    // Persist in sent_emails so the per-inbox health monitor, the
-    // MailboxMonitor dashboard, and the Deliverability page can see
-    // the press traffic.  stepNumber: 0=initial, 1=follow_up_1, 2=follow_up_2
-    try {
-      const stepNumber = template === "initial" ? 0 : template === "follow_up_1" ? 1 : 2;
-      await prisma.sentEmail.create({
-        data: {
-          pressContactId: contact.id,
-          stepNumber,
-          fromEmail: fromInbox,
-          subject,
-          body: text,
-          language: contact.lang,
-          generatedBy: "template",
-          status: "sent",
-          sentAt: new Date(),
-        },
-      });
-    } catch (err) {
-      // Non-blocking — the email was delivered, only the tracking row failed
-      log.warn({ err: (err as Error).message, contactId }, "Failed to persist sent_emails row");
+    // Flip sent_email to status=sent with timestamp
+    if (sentEmailId !== null) {
+      try {
+        await prisma.sentEmail.update({
+          where: { id: sentEmailId },
+          data: { status: "sent", sentAt: new Date() },
+        });
+      } catch (err) {
+        log.warn({ err: (err as Error).message, sentEmailId }, "Failed to flip sent_emails to sent — non-blocking");
+      }
     }
   } catch (err) {
     log.error({ err, contactId, fromInbox }, "sendPressEmail failed");
+    // Mark the pre-created row as failed so it doesn't count as delivered
+    if (sentEmailId !== null) {
+      try {
+        await prisma.sentEmail.update({
+          where: { id: sentEmailId },
+          data: { status: "failed" },
+        });
+      } catch {
+        // best-effort
+      }
+    }
     // Bubble up so BullMQ applies the 3-attempt retry with exponential backoff
     throw err;
   }

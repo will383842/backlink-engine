@@ -422,6 +422,52 @@ async function processBounce(reply: ParsedReply): Promise<void> {
     return;
   }
 
+  // Press-outreach bounce path — handle first, exit early if matched.
+  // PressContact table is separate from Contact; press bounces need to
+  // flip the PressContact to BOUNCED, update the matching sent_emails
+  // row (status=bounced + bouncedAt), and cancel any pending follow-ups.
+  try {
+    const pressContact = await prisma.pressContact.findUnique({
+      where: { email: bouncedAddr },
+    });
+    if (pressContact) {
+      const hardP = isHardBounce(reply.body);
+      await prisma.pressContact.update({
+        where: { id: pressContact.id },
+        data: {
+          status: "BOUNCED",
+          bounceCount: { increment: 1 },
+          notes: `[AUTO IMAP bounce ${hardP ? "hard" : "soft"}] ${reply.subject}`,
+        },
+      });
+      // Flag the most recent sent_email row for this contact
+      await prisma.sentEmail.updateMany({
+        where: { pressContactId: pressContact.id },
+        data: {
+          status: "bounced",
+          bouncedAt: new Date(),
+          bounceType: hardP ? "hard" : "soft",
+        },
+      });
+      // Cancel pending follow-ups
+      try {
+        const { pressOutreachQueue } = await import("../../jobs/queue.js");
+        const delayed = await pressOutreachQueue.getJobs(["delayed"]);
+        for (const job of delayed) {
+          if (job.data?.contactId === pressContact.id) {
+            await job.remove();
+          }
+        }
+      } catch (err) {
+        log.warn({ err: (err as Error).message }, "Failed to cancel press follow-ups after bounce");
+      }
+      log.info({ bouncedAddr, pressContactId: pressContact.id, hard: hardP }, "Press bounce processed");
+      return;
+    }
+  } catch (err) {
+    log.warn({ err: (err as Error).message, bouncedAddr }, "Press bounce lookup failed (non-blocking)");
+  }
+
   const contact = await prisma.contact.findUnique({
     where: { emailNormalized: bouncedAddr },
     include: {
