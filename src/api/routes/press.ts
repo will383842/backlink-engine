@@ -23,6 +23,7 @@ import {
 } from "../../services/press/pitchRenderer.js";
 import { EMBEDDED_PITCHES } from "../../services/press/templates/pitches.js";
 import { auditPressContacts } from "../../services/press/emailAudit.js";
+import { verifyUnsubscribeToken } from "../../services/press/unsubscribeToken.js";
 import {
   buildPressSchedule,
   getPressWarmupState,
@@ -44,6 +45,17 @@ import { createChildLogger } from "../../utils/logger.js";
 import { sendTelegramMessage } from "../../services/notifications/telegramService.js";
 
 const log = createChildLogger("press-api");
+
+/** HTML confirmation page shown after the unsubscribe link is clicked. */
+function renderUnsubscribePage(opts: { state: "success" | "error"; message?: string }): string {
+  const isSuccess = opts.state === "success";
+  const title = isSuccess ? "Désinscription confirmée" : "Erreur";
+  const color = isSuccess ? "#059669" : "#dc2626";
+  const body = isSuccess
+    ? "Vous ne recevrez plus aucun email de notre part. Votre adresse a été retirée de toutes nos listes de diffusion."
+    : opts.message ?? "Ce lien de désinscription est invalide ou a expiré.";
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title} — SOS-Expat</title><style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:80px auto;padding:0 24px;color:#111827;line-height:1.55}h1{color:${color};font-size:22px;margin:0 0 16px 0}p{color:#374151;margin:0 0 12px 0}.badge{display:inline-block;background:${color};color:#fff;padding:4px 12px;border-radius:99px;font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;margin-bottom:20px}a{color:#2563eb}footer{margin-top:48px;padding-top:24px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280}</style></head><body><span class="badge">${isSuccess ? "OK" : "ERREUR"}</span><h1>${title}</h1><p>${body}</p>${isSuccess ? `<p>Si vous avez reçu ce message par erreur ou souhaitez reprendre contact, écrivez-nous à <a href="mailto:contact@sos-expat.com">contact@sos-expat.com</a>.</p>` : ""}<footer>SOS-Expat — contact@sos-expat.com</footer></body></html>`;
+}
 
 export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPluginOptions) {
   // -------------------------------------------------------------------------
@@ -688,6 +700,95 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       return reply.send({ resumed: request.params.inbox });
     },
   );
+
+  // -------------------------------------------------------------------------
+  // GET + POST /api/press/unsubscribe
+  // GDPR/CAN-SPAM unsubscribe endpoint.  GET is hit when the journalist
+  // clicks the footer link (renders a confirmation HTML page).  POST
+  // supports the List-Unsubscribe-Post header (RFC 8058 One-Click) so
+  // Gmail/Yahoo can desubscribe without the recipient leaving the mail
+  // client.  Both paths flip the contact to UNSUBSCRIBED + add to the
+  // suppression list and cancel any pending follow-ups.
+  // -------------------------------------------------------------------------
+  async function handleUnsubscribe(contactId: string, token: string): Promise<{ ok: boolean; reason?: string }> {
+    const valid = await verifyUnsubscribeToken(contactId, token);
+    if (!valid) return { ok: false, reason: "invalid_token" };
+
+    const contact = await prisma.pressContact.findUnique({ where: { id: contactId } });
+    if (!contact) return { ok: false, reason: "contact_not_found" };
+
+    await prisma.pressContact.update({
+      where: { id: contactId },
+      data: {
+        status: PressContactStatus.UNSUBSCRIBED,
+        notes: `[AUTO] Unsubscribed via link at ${new Date().toISOString()}`,
+      },
+    });
+
+    // Cancel pending follow-ups
+    try {
+      const delayed = await pressOutreachQueue.getJobs(["delayed"]);
+      for (const job of delayed) {
+        if (job.data?.contactId === contactId) {
+          await job.remove();
+        }
+      }
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "Failed to cancel press follow-ups after unsubscribe");
+    }
+
+    // Add to the global suppression list so the email is permanently
+    // excluded from ALL future campaigns (press + outreach + broadcast).
+    try {
+      const emailNormalized = contact.email.toLowerCase().trim();
+      await prisma.suppressionEntry.upsert({
+        where: { emailNormalized },
+        create: {
+          emailNormalized,
+          reason: "press_unsubscribe",
+          source: "press_campaign",
+        },
+        update: {
+          reason: "press_unsubscribe",
+        },
+      });
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "Failed to add to suppression list (non-blocking)");
+    }
+
+    return { ok: true };
+  }
+
+  fastify.get<{
+    Querystring: { id?: string; token?: string };
+  }>("/api/press/unsubscribe", async (request, reply) => {
+    const { id, token } = request.query;
+    if (!id || !token) {
+      reply.type("text/html");
+      return reply.send(renderUnsubscribePage({ state: "error", message: "Lien invalide." }));
+    }
+
+    const result = await handleUnsubscribe(id, token);
+    reply.type("text/html");
+    if (!result.ok) {
+      return reply.send(renderUnsubscribePage({ state: "error", message: "Lien invalide ou expiré." }));
+    }
+    return reply.send(renderUnsubscribePage({ state: "success" }));
+  });
+
+  fastify.post<{
+    Querystring: { id?: string; token?: string };
+  }>("/api/press/unsubscribe", async (request, reply) => {
+    // List-Unsubscribe-Post One-Click (RFC 8058).  Params may arrive in
+    // query or form body; check both.
+    const bodyUnknown = (request.body ?? {}) as Record<string, unknown>;
+    const id = request.query.id ?? (typeof bodyUnknown.id === "string" ? bodyUnknown.id : undefined);
+    const token = request.query.token ?? (typeof bodyUnknown.token === "string" ? bodyUnknown.token : undefined);
+    if (!id || !token) return reply.code(400).send({ error: "missing_params" });
+    const result = await handleUnsubscribe(id, token);
+    if (!result.ok) return reply.code(400).send(result);
+    return reply.send({ ok: true });
+  });
 
   // -------------------------------------------------------------------------
   // POST /api/press/audit-contacts

@@ -633,6 +633,56 @@ async function processPressReply(pressContactId: string, reply: ParsedReply): Pr
   const contact = await prisma.pressContact.findUnique({ where: { id: pressContactId } });
   if (!contact) return;
 
+  // Detect unsubscribe intent in the reply body — triggers permanent opt-out
+  // instead of RESPONDED so the journalist is removed from all future
+  // campaigns (not just press).
+  const bodyLower = (reply.body ?? "").toLowerCase();
+  const subjectLower = (reply.subject ?? "").toLowerCase();
+  const UNSUB_KEYWORDS = [
+    "unsubscribe", "désinscri", "desinscri", "désabonn", "desabonn",
+    "retirez-moi", "retirez moi", "remove me", "stop sending", "ne plus m'envoyer",
+    "ne plus m envoyer", "do not email", "take me off",
+    "darse de baja", "cancelar suscrip", "abmelden", "austragen",
+    "отпис", "退订", "取消订阅", "सदस्यता समाप्त", "إلغاء الاشتراك",
+  ];
+  const isUnsub = UNSUB_KEYWORDS.some((kw) => bodyLower.includes(kw) || subjectLower.includes(kw));
+
+  if (isUnsub) {
+    await prisma.pressContact.update({
+      where: { id: contact.id },
+      data: {
+        respondedAt: new Date(),
+        status: "UNSUBSCRIBED",
+        notes: `[AUTO IMAP unsubscribe keyword] Reply: ${reply.subject}\n---\n${reply.body.slice(0, 2000)}`,
+      },
+    });
+    // Add to global suppression list
+    try {
+      const emailNormalized = contact.email.toLowerCase().trim();
+      await prisma.suppressionEntry.upsert({
+        where: { emailNormalized },
+        create: { emailNormalized, reason: "press_unsubscribe_keyword", source: "press_reply" },
+        update: { reason: "press_unsubscribe_keyword" },
+      });
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "Failed to add press unsub to suppression (non-blocking)");
+    }
+    // Cancel pending follow-ups
+    try {
+      const { pressOutreachQueue } = await import("../../jobs/queue.js");
+      const delayed = await pressOutreachQueue.getJobs(["delayed"]);
+      for (const job of delayed) {
+        if (job.data?.contactId === contact.id) {
+          await job.remove();
+        }
+      }
+    } catch {
+      // best-effort
+    }
+    log.info({ pressContactId, from: reply.from }, "Press unsubscribe detected from reply keywords");
+    return;
+  }
+
   // Move to RESPONDED
   await prisma.pressContact.update({
     where: { id: contact.id },

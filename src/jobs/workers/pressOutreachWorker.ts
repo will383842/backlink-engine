@@ -26,6 +26,8 @@ import { isWorkerEnabled } from "../../services/automation/automationToggles.js"
 import { sendPressEmail, PRESSE_INBOXES } from "../../services/press/sender.js";
 import { renderPitchEmail } from "../../services/press/pitchRenderer.js";
 import { isPressGloballyPaused, getPausedInboxes } from "../../services/press/pressHealthMonitor.js";
+import { buildUnsubscribeUrl } from "../../services/press/unsubscribeToken.js";
+import { getUnsubscribeFooter } from "../../services/press/unsubscribeFooter.js";
 
 const log = createChildLogger("press-outreach-worker");
 
@@ -174,12 +176,17 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
     log.warn({ err: (err as Error).message, contactId }, "Failed to pre-create sent_emails row — continuing without tracking pixel");
   }
 
-  // Inject 1x1 tracking pixel (same endpoint as the broadcast system)
+  // Unsubscribe link (GDPR/CAN-SPAM/CASL compliance + List-Unsubscribe header)
+  const unsubscribeUrl = await buildUnsubscribeUrl(contact.id);
+  const footer = getUnsubscribeFooter(contact.lang, unsubscribeUrl);
+  const textWithFooter = text + footer.text;
+
+  // Inject 1x1 tracking pixel + unsubscribe footer in the HTML
   const trackingBase = process.env.TRACKING_BASE_URL ?? "https://backlinks.life-expat.com";
-  let htmlWithPixel = html;
+  let htmlFinal = html + footer.html;
   if (sentEmailId !== null) {
     const pixelUrl = `${trackingBase}/api/track/open/${sentEmailId}.gif?t=${Date.now()}`;
-    htmlWithPixel = html + `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;" />`;
+    htmlFinal += `<img src="${pixelUrl}" width="1" height="1" alt="" style="display:block;border:0;width:1px;height:1px;" />`;
   }
 
   try {
@@ -187,16 +194,20 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
       from: fromInbox,
       to: contact.email,
       subject,
-      html: htmlWithPixel,
-      text,
+      html: htmlFinal,
+      text: textWithFooter,
       attachments: pdfUrl ? [{ filename: `SOS-Expat-press-${contact.lang}.pdf`, url: pdfUrl }] : [],
-      // Custom headers for Mailflow reply tracking — the webhook handler
-      // extracts `X-Press-Contact-Id` from the reply to close the loop.
       headers: {
+        // Press tracking headers
         "X-Press-Contact-Id": contact.id,
         "X-Press-Template": template,
         ...(sentEmailId !== null ? { "X-Press-Sent-Email-Id": String(sentEmailId) } : {}),
         ...(campaignTag ? { "X-Press-Campaign": campaignTag } : {}),
+        // RFC 2369 + RFC 8058: clickable "Unsubscribe" button in Gmail,
+        // Yahoo, Outlook web.  One-Click support lets them unsubscribe
+        // without leaving the mail client.
+        "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe-${contact.id}@${fromInbox.split("@")[1]}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
     });
 
