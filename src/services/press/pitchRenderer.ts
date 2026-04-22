@@ -33,19 +33,21 @@ const PITCH_TEMPLATES_PATH = process.env.PRESS_PITCH_TEMPLATES_PATH ??
 
 const PDF_BASE_URL = process.env.PRESS_PDF_BASE_URL ?? "https://sos-expat.com";
 
-// Subject line patterns per language (aligned with the 2026-04-22 pitch
-// rewrite: Grand Survey 2026 data + "80+ lawyers in 2 months" launch angle).
+// Subject line patterns per language — rewrite 2026-04-22 v2.
+// Hook: pain-point stat (57% WTP) + gap insight ("no one was meeting
+// this need") to trigger journalist curiosity.  No angle suffix in the
+// subject — cleaner visual, higher open rate.
 const SUBJECT_TEMPLATES: Record<PressLang, string> = {
-  fr: "SOS-Expat : 80+ avocats en 2 mois — 304M d'expatriés, nos données (CC BY) [{ANGLE_FR}]",
-  en: "SOS-Expat: 80+ lawyers in 2 months — 304M expats, open data (CC BY) [{ANGLE_EN}]",
-  es: "SOS-Expat: 80+ abogados en 2 meses — 304M expatriados, datos abiertos (CC BY) [{ANGLE_ES}]",
-  de: "SOS-Expat: 80+ Anwälte in 2 Monaten — 304 Mio Expats, offene Daten (CC BY) [{ANGLE_DE}]",
-  pt: "SOS-Expat: 80+ advogados em 2 meses — 304M expatriados, dados abertos (CC BY) [{ANGLE_PT}]",
-  ru: "SOS-Expat: 80+ юристов за 2 месяца — 304 млн экспатов, открытые данные (CC BY) [{ANGLE_RU}]",
-  zh: "SOS-Expat：2个月80+律师 — 3.04亿海外人士，开放数据（CC BY）[{ANGLE_ZH}]",
-  hi: "SOS-Expat: 2 महीने में 80+ वकील — 30 करोड़ प्रवासी, मुक्त डेटा (CC BY) [{ANGLE_HI}]",
-  ar: "SOS-Expat: +80 محامٍ في شهرين — 304 مليون مغترب، بيانات مفتوحة (CC BY) [{ANGLE_AR}]",
-  et: "SOS-Expat: 80+ advokaati 2 kuuga — 304 mln välismaalast, avaandmed (CC BY) [{ANGLE_ET}]",
+  fr: "57% des voyageurs et expatriés prêts à payer — et personne ne répondait à ce besoin",
+  en: "57% of travelers and expats ready to pay — and no one was meeting this need",
+  es: "El 57% de viajeros y expatriados dispuestos a pagar — y nadie respondía a esta necesidad",
+  de: "57% der Reisenden und Expats zahlungsbereit — und niemand bediente diesen Bedarf",
+  pt: "57% de viajantes e expatriados dispostos a pagar — e ninguém respondia a esta necessidade",
+  ru: "57% путешественников и экспатов готовы платить — и никто не отвечал на эту потребность",
+  zh: "57%的旅行者和外籍人士愿意付费 — 却无人满足这一需求",
+  hi: "57% यात्री और प्रवासी भुगतान करने को तैयार — और कोई इस ज़रूरत का जवाब नहीं दे रहा था",
+  ar: "57٪ من المسافرين والمغتربين مستعدون للدفع — ولم يكن أحد يستجيب لهذه الحاجة",
+  et: "57% reisijatest ja välismaalastest on valmis maksma — ja keegi ei vastanud sellele vajadusele",
 };
 
 const ANGLE_LABELS: Record<PressAngle, Record<PressLang, string>> = {

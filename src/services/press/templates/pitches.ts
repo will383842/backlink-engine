@@ -23,7 +23,7 @@ Nous l'avons fait.
 SOS-Expat.com est la première plateforme mondiale qui connecte voyageurs, vacanciers et expatriés à un avocat local ou un expert expat en moins de 5 minutes, par téléphone. 197 pays, toutes langues, 24h/24. En moins de 2 mois : plus de 80 avocats inscrits.
 
 Ces chiffres sont issus de notre Grand Sondage Expat & Voyageur 2026 — 9 563 participants, 54 pays, données librement réutilisables (CC BY 4.0) :
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Je suis disponible pour une interview, une tribune ou une mention dans un article ressource. Communiqués de presse, dossier, logos et visuels sont téléchargeables directement sur : sos-expat.com/presse
 
@@ -42,7 +42,7 @@ We built it.
 SOS-Expat.com is the world's first platform connecting travelers, tourists and expats to a local lawyer or expat expert in under 5 minutes, by phone. 197 countries, all languages, 24/7. In under 2 months: over 80 lawyers already on board.
 
 These figures come from our Grand Expat & Traveler Survey 2026 — 9,563 participants, 54 countries, freely reusable data (CC BY 4.0):
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Press releases, press kit, logos and visuals available for download at:
 sos-expat.com/presse
@@ -61,7 +61,7 @@ Nosotros lo hemos creado.
 SOS-Expat.com es la primera plataforma mundial que conecta a viajeros, turistas y expatriados con un abogado local o un experto expatriado en menos de 5 minutos, por teléfono. 197 países, todos los idiomas, 24/7. En menos de 2 meses: más de 80 abogados registrados.
 
 Estas cifras provienen de nuestra Gran Encuesta Expat & Viajero 2026 — 9.563 participantes, 54 países, datos de libre uso (CC BY 4.0):
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Comunicados de prensa, dossier, logotipos e imágenes disponibles para descarga en:
 sos-expat.com/presse
@@ -80,7 +80,7 @@ Wir haben es gebaut.
 SOS-Expat.com ist die erste weltweite Plattform, die Reisende, Urlauber und Expats in weniger als 5 Minuten telefonisch mit einem lokalen Anwalt oder Expat-Experten verbindet. 197 Länder, alle Sprachen, 24/7. In weniger als 2 Monaten: über 80 registrierte Anwälte.
 
 Diese Zahlen stammen aus unserer Großen Expat & Reisenden-Umfrage 2026 — 9.563 Teilnehmer, 54 Länder, frei verwendbare Daten (CC BY 4.0):
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Pressemitteilungen, Pressemappe, Logos und Bildmaterial stehen zum Download bereit:
 sos-expat.com/presse
@@ -99,7 +99,7 @@ Nós criamos isso.
 SOS-Expat.com é a primeira plataforma mundial que liga viajantes, turistas e expatriados a um advogado local ou a um especialista expatriado em menos de 5 minutos, por telefone. 197 países, todos os idiomas, 24/7. Em menos de 2 meses: mais de 80 advogados registados.
 
 Estes dados provêm do nosso Grande Inquérito Expat & Viajante 2026 — 9.563 participantes, 54 países, dados de livre utilização (CC BY 4.0):
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Comunicados de imprensa, dossier, logotipos e imagens disponíveis para download em:
 sos-expat.com/presse
@@ -118,7 +118,7 @@ Williams Jullin – Fundador, SOS-Expat.com`,
 SOS-Expat.com — первая в мире платформа, которая соединяет путешественников, туристов и экспатов с местным адвокатом или экспертом-экспатом менее чем за 5 минут по телефону. 197 стран, все языки, круглосуточно. Менее чем за 2 месяца: уже более 80 зарегистрированных адвокатов.
 
 Эти данные получены в ходе нашего Большого опроса экспатов и путешественников 2026 года — 9 563 участника, 54 страны, данные в свободном доступе (CC BY 4.0):
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Пресс-релизы, пресс-кит, логотипы и визуальные материалы доступны для скачивания по адресу:
 sos-expat.com/presse
@@ -137,7 +137,7 @@ Williams Jullin – основатель, SOS-Expat.com`,
 SOS-Expat.com是全球首个平台，能在5分钟内通过电话将旅行者、游客和海外华人与当地律师或海外专家对接。覆盖197个国家，支持所有语言，全天候24/7服务。不到两个月：已有超过80名律师入驻。
 
 以上数据来自我们的《2026年海外侨民与旅行者大调查》——9,563名参与者，54个国家，数据可免费使用（CC BY 4.0）：
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 新闻稿、媒体资料包、标志及视觉素材可在以下地址下载：
 sos-expat.com/presse
@@ -156,7 +156,7 @@ Williams Jullin — SOS-Expat.com创始人`,
 SOS-Expat.com दुनिया का पहला प्लेटफ़ॉर्म है जो यात्रियों, पर्यटकों और प्रवासियों को 5 मिनट से कम समय में फ़ोन पर एक स्थानीय वकील या प्रवासी विशेषज्ञ से जोड़ता है। 197 देश, सभी भाषाएँ, 24/7। 2 महीने से भी कम समय में: 80 से अधिक वकील पंजीकृत।
 
 ये आंकड़े हमारे ग्रैंड एक्सपैट और ट्रैवलर सर्वे 2026 से लिए गए हैं — 9,563 प्रतिभागी, 54 देश, स्वतंत्र रूप से उपयोग योग्य डेटा (CC BY 4.0):
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 प्रेस विज्ञप्तियाँ, प्रेस किट, लोगो और विज़ुअल सामग्री यहाँ से डाउनलोड की जा सकती है:
 sos-expat.com/presse
@@ -175,7 +175,7 @@ Williams Jullin — संस्थापक, SOS-Expat.com`,
 SOS-Expat.com هي أول منصة عالمية تربط المسافرين والسياح والمغتربين بمحامٍ محلي أو خبير مغترب في أقل من 5 دقائق عبر الهاتف. 197 دولة، جميع اللغات، 24/7. في أقل من شهرين: أكثر من 80 محامٍ مسجل.
 
 هذه الأرقام مستقاة من استطلاعنا الكبير للمغتربين والمسافرين 2026 — 9 563 مشاركاً، 54 دولة، بيانات متاحة للاستخدام بحرية (CC BY 4.0):
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 البيانات الصحفية، حقيبة الصحافة، الشعارات والمواد المرئية متاحة للتنزيل على:
 sos-expat.com/presse
@@ -194,7 +194,7 @@ Meie ehitasime selle.
 SOS-Expat.com on maailma esimene platvorm, mis ühendab reisijaid, turiste ja välismaalasi kohaliku advokaadi või välismaalaste eksperdiga alla 5 minutiga telefoni teel. 197 riiki, kõik keeled, 24/7. Alla kahe kuuga: üle 80 registreeritud advokaadi.
 
 Need andmed pärinevad meie 2026. aasta suurest välismaalaste ja reisijate uuringust — 9 563 osalejat, 54 riiki, vabalt kasutatavad andmed (CC BY 4.0):
-https://sos-expat.com/fr-fr/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
+https://sos-expat.com/sondages-expatries/le-grand-sondage-expatries-voyageurs/resultats
 
 Pressiteated, pressipakett, logod ja visuaalid on allalaaditavad aadressil:
 sos-expat.com/presse
