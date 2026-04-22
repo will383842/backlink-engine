@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { PressLang, PressAngle } from "@prisma/client";
 import { createChildLogger } from "../../utils/logger.js";
+import { EMBEDDED_PITCHES } from "./templates/pitches.js";
 
 const log = createChildLogger("press-pitch-renderer");
 
@@ -19,6 +20,11 @@ const log = createChildLogger("press-pitch-renderer");
 // Constants
 // ---------------------------------------------------------------------------
 
+// Optional override: if PRESS_PITCH_TEMPLATES_PATH points at a real markdown
+// file (same format as brand-entity-kit/presse/pitch-emails-9-langues.md),
+// we parse and use it at runtime.  Otherwise we fall back to the embedded
+// TypeScript templates — safer default so the Docker image doesn't depend
+// on sibling repos being mounted.
 const PITCH_TEMPLATES_PATH = process.env.PRESS_PITCH_TEMPLATES_PATH ??
   path.join(process.cwd(), "..", "brand-entity-kit", "presse", "pitch-emails-9-langues.md");
 
@@ -85,9 +91,18 @@ let cachedTemplates: Map<PressLang, string> | null = null;
 async function loadTemplates(): Promise<Map<PressLang, string>> {
   if (cachedTemplates) return cachedTemplates;
 
+  const templates = new Map<PressLang, string>();
+
+  // Start from the embedded TS templates — guaranteed to have all 10 langs
+  for (const lang of Object.keys(EMBEDDED_PITCHES) as PressLang[]) {
+    templates.set(lang, EMBEDDED_PITCHES[lang]);
+  }
+
+  // Optional override from markdown file (for dev/content-team editing
+  // without code redeploy).  Only override langs that parse successfully;
+  // missing sections keep the embedded template.
   try {
     const content = await fs.readFile(PITCH_TEMPLATES_PATH, "utf8");
-    // Parse markdown with section headers per language, e.g. "## 🇫🇷 Français"
     const langHeaders: Array<{ lang: PressLang; marker: string }> = [
       { lang: "fr", marker: "🇫🇷" }, { lang: "en", marker: "🇬🇧" },
       { lang: "es", marker: "🇪🇸" }, { lang: "de", marker: "🇩🇪" },
@@ -95,24 +110,23 @@ async function loadTemplates(): Promise<Map<PressLang, string>> {
       { lang: "zh", marker: "🇨🇳" }, { lang: "hi", marker: "🇮🇳" },
       { lang: "ar", marker: "🇸🇦" }, { lang: "et", marker: "🇪🇪" },
     ];
-    const templates = new Map<PressLang, string>();
     for (const { lang, marker } of langHeaders) {
       const sectionStart = content.indexOf(marker);
       if (sectionStart === -1) continue;
-      // Find the ``` code block after the header
       const codeStart = content.indexOf("```", sectionStart);
       if (codeStart === -1) continue;
       const codeEnd = content.indexOf("```", codeStart + 3);
       if (codeEnd === -1) continue;
       const body = content.slice(codeStart + 3, codeEnd).trim();
-      templates.set(lang, body);
+      if (body.length > 0) templates.set(lang, body);
     }
-    cachedTemplates = templates;
-    return templates;
-  } catch (err) {
-    log.warn({ err: (err as Error).message }, "Could not load pitch templates file, using fallback");
-    return new Map();
+    log.info({ path: PITCH_TEMPLATES_PATH }, "Overlayed pitch templates from markdown file");
+  } catch {
+    // Markdown not available — embedded templates already loaded, nothing to do.
   }
+
+  cachedTemplates = templates;
+  return templates;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +190,10 @@ export interface RenderedPitch {
 
 export async function renderPitchEmail(args: RenderPitchArgs): Promise<RenderedPitch> {
   const templates = await loadTemplates();
-  const rawPitch = templates.get(args.lang) ?? FALLBACK_PITCH[args.lang] ?? FALLBACK_PITCH.en;
+  // Embedded templates already cover all 10 langs, so `get(args.lang)` is
+  // always a non-empty string.  FALLBACK_PITCH kept only as ultimate safety
+  // net for a hypothetical schema extension.
+  const rawPitch = templates.get(args.lang) || FALLBACK_PITCH[args.lang] || FALLBACK_PITCH.en;
 
   // Personalize
   const firstNameSafe = args.firstName?.trim() || (
