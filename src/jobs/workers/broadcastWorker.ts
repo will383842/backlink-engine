@@ -37,7 +37,16 @@ interface PressHealthCheckData {
   type: "press-health-check";
 }
 
-type BroadcastJobData = ProcessBroadcastData | AdvanceWarmupData | AdvanceBroadcastSequenceData | PressHealthCheckData;
+interface PressDailyDigestData {
+  type: "press-daily-digest";
+}
+
+type BroadcastJobData =
+  | ProcessBroadcastData
+  | AdvanceWarmupData
+  | AdvanceBroadcastSequenceData
+  | PressHealthCheckData
+  | PressDailyDigestData;
 
 // ---------------------------------------------------------------------------
 // Main processor
@@ -86,6 +95,18 @@ async function processBroadcastJob(job: Job<BroadcastJobData>): Promise<void> {
       log.info(result, "Press health check complete");
     } catch (err) {
       log.warn({ err: (err as Error).message }, "Press health check failed");
+    }
+    return;
+  }
+
+  if (type === "press-daily-digest") {
+    log.info("Sending press daily digest...");
+    try {
+      const { sendPressDailyDigest } = await import("../../services/press/pressDailyDigest.js");
+      const result = await sendPressDailyDigest();
+      log.info(result, "Press daily digest complete");
+    } catch (err) {
+      log.warn({ err: (err as Error).message }, "Press daily digest failed");
     }
     return;
   }

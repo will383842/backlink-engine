@@ -305,6 +305,27 @@ export async function setupCronJobs(): Promise<void> {
   log.info("Scheduled: press inbox health check (hourly at :15).");
 
   // -----------------------------------------------------------------------
+  // Press daily digest — every day at 20:00 UTC
+  // Pushes Telegram summary: sent today / cumul / bounces / replies /
+  // next-day cap + per-inbox status lines.
+  // -----------------------------------------------------------------------
+  await broadcastQueue.upsertJobScheduler(
+    "press-daily-digest",
+    {
+      pattern: "0 20 * * *", // every day at 20:00 UTC
+    },
+    {
+      name: "press-daily-digest",
+      data: { type: "press-daily-digest" },
+      opts: {
+        removeOnComplete: { count: 30 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  );
+  log.info("Scheduled: press daily digest (20:00 UTC).");
+
+  // -----------------------------------------------------------------------
   // 14. Daily broadcast report: every day at 21:00 UTC
   // -----------------------------------------------------------------------
   await reportingQueue.upsertJobScheduler(

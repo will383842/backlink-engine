@@ -530,6 +530,17 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
   });
 
   // -------------------------------------------------------------------------
+  // POST /api/press/digest/send-now
+  // Fire the daily digest Telegram message on demand (for test / early
+  // preview).  Normally runs via cron every day at 20:00 UTC.
+  // -------------------------------------------------------------------------
+  fastify.post("/api/press/digest/send-now", async (_request, reply) => {
+    const { sendPressDailyDigest } = await import("../../services/press/pressDailyDigest.js");
+    const result = await sendPressDailyDigest();
+    return reply.send(result);
+  });
+
+  // -------------------------------------------------------------------------
   // GET /api/press/health
   // 24h health report per inbox + paused inboxes list + global pause flag.
   // Updated live by the hourly monitor cron.
