@@ -61,7 +61,7 @@ export default function PressTemplates() {
   const { data, isLoading, isError } = useQuery<TemplatesResponse>({
     queryKey: ["press-templates", angle, kind],
     queryFn: async () => {
-      const res = await api.get("/api/press/templates", {
+      const res = await api.get("/press/templates", {
         params: { angle, template: kind },
       });
       return res.data;
