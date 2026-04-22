@@ -446,11 +446,18 @@ function ContactDetailDrawer({
 }) {
   const [articleUrl, setArticleUrl] = useState(contact.articleUrl ?? "");
   const [notes, setNotes] = useState(contact.notes ?? "");
+  const [previewTemplate, setPreviewTemplate] = useState<"initial" | "follow_up_1" | "follow_up_2">("initial");
+  const [viewMode, setViewMode] = useState<"html" | "text">("html");
+
+  const preview = useQuery<{ subject: string; text: string; html: string; pdfUrl: string | null }>({
+    queryKey: ["press-preview", contact.id, previewTemplate],
+    queryFn: async () => (await api.get(`/press/contacts/${contact.id}/preview`, { params: { template: previewTemplate } })).data,
+  });
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={onClose}>
       <div
-        className="h-full w-full max-w-md overflow-y-auto bg-white p-5 shadow-2xl"
+        className="h-full w-full max-w-2xl overflow-y-auto bg-white p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between">
@@ -510,6 +517,80 @@ function ContactDetailDrawer({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Preview email envoyé / à envoyer */}
+        <div className="mt-6 space-y-3 border-t border-slate-200 pt-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-slate-900">Preview email</h4>
+            <div className="flex gap-1 rounded border border-slate-200 p-0.5">
+              <button
+                onClick={() => setPreviewTemplate("initial")}
+                className={`rounded px-2 py-0.5 text-xs ${previewTemplate === "initial" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+              >
+                Initial
+              </button>
+              <button
+                onClick={() => setPreviewTemplate("follow_up_1")}
+                className={`rounded px-2 py-0.5 text-xs ${previewTemplate === "follow_up_1" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+              >
+                J+5
+              </button>
+              <button
+                onClick={() => setPreviewTemplate("follow_up_2")}
+                className={`rounded px-2 py-0.5 text-xs ${previewTemplate === "follow_up_2" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+              >
+                J+10
+              </button>
+            </div>
+          </div>
+
+          {preview.isLoading && <div className="text-sm text-slate-500">Chargement…</div>}
+
+          {preview.data && (
+            <>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">De</div>
+                <div className="text-sm font-medium text-slate-900">
+                  {contact.fromInbox ?? "(sélection auto selon langue à l'envoi)"}
+                </div>
+                <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">À</div>
+                <div className="text-sm text-slate-900">{contact.email}</div>
+                <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Sujet</div>
+                <div className="text-sm font-medium text-slate-900">{preview.data.subject}</div>
+              </div>
+
+              <div className="flex gap-1 rounded border border-slate-200 p-0.5 w-fit">
+                <button
+                  onClick={() => setViewMode("html")}
+                  className={`rounded px-2 py-0.5 text-xs ${viewMode === "html" ? "bg-slate-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                >
+                  Rendu HTML
+                </button>
+                <button
+                  onClick={() => setViewMode("text")}
+                  className={`rounded px-2 py-0.5 text-xs ${viewMode === "text" ? "bg-slate-700 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+                >
+                  Texte brut
+                </button>
+              </div>
+
+              {viewMode === "html" ? (
+                <div
+                  className="max-h-96 overflow-y-auto rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800"
+                  dir={contact.lang === "ar" ? "rtl" : "ltr"}
+                  dangerouslySetInnerHTML={{ __html: preview.data.html }}
+                />
+              ) : (
+                <pre
+                  className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-md border border-slate-200 bg-white px-4 py-3 font-sans text-sm text-slate-800"
+                  dir={contact.lang === "ar" ? "rtl" : "ltr"}
+                >
+                  {preview.data.text}
+                </pre>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

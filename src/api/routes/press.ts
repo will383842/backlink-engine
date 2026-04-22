@@ -248,6 +248,56 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
   });
 
   // -------------------------------------------------------------------------
+  // GET /api/press/contacts/:id/preview
+  // Renders the exact email that would be sent (or was sent) to this
+  // contact — subject, text, html, pdfUrl — with real placeholder values
+  // (firstName, mediaName) so the owner can eyeball it.
+  // Query: template=initial|follow_up_1|follow_up_2 (default initial)
+  // -------------------------------------------------------------------------
+  fastify.get<{
+    Params: { id: string };
+    Querystring: { template?: "initial" | "follow_up_1" | "follow_up_2" };
+  }>("/api/press/contacts/:id/preview", async (request, reply) => {
+    const contact = await prisma.pressContact.findUnique({
+      where: { id: request.params.id },
+    });
+    if (!contact) {
+      return reply.code(404).send({ error: "contact_not_found" });
+    }
+
+    const template = request.query.template ?? "initial";
+    const rendered = await renderPitchEmail({
+      lang: contact.lang,
+      angle: contact.angle,
+      template,
+      firstName: contact.firstName,
+      mediaName: contact.mediaName,
+      mediaUrl: contact.mediaUrl,
+    });
+
+    return reply.send({
+      contact: {
+        id: contact.id,
+        email: contact.email,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        mediaName: contact.mediaName,
+        mediaUrl: contact.mediaUrl,
+        lang: contact.lang,
+        angle: contact.angle,
+        status: contact.status,
+        fromInbox: contact.fromInbox,
+        sentAt: contact.sentAt,
+      },
+      template,
+      subject: rendered.subject,
+      text: rendered.text,
+      html: rendered.html,
+      pdfUrl: rendered.pdfUrl,
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // PATCH /api/press/contacts/:id
   // Update status / article_url / notes (manual intervention).
   // -------------------------------------------------------------------------
