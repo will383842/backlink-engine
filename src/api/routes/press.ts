@@ -22,6 +22,7 @@ import {
   PRESS_PITCH_TEMPLATES_KEY,
 } from "../../services/press/pitchRenderer.js";
 import { EMBEDDED_PITCHES } from "../../services/press/templates/pitches.js";
+import { auditPressContacts } from "../../services/press/emailAudit.js";
 import { createChildLogger } from "../../utils/logger.js";
 import { sendTelegramMessage } from "../../services/notifications/telegramService.js";
 
@@ -422,6 +423,61 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       lang,
       source: body.trim().length === 0 ? "embedded" : "db",
       bodyLength: body.length,
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /api/press/audit-contacts
+  // Runs format + MX + duplicates + language audit on every PENDING
+  // PressContact.  Dry-run by default — set { applySkip: true } to flip
+  // every INVALID/SKIPPED contact to status=SKIPPED so they will never
+  // be picked up by the outreach worker.  Safe to re-run (idempotent).
+  // -------------------------------------------------------------------------
+  fastify.post<{
+    Body: { applySkip?: boolean; statusFilter?: PressContactStatus };
+  }>("/api/press/audit-contacts", async (request, reply) => {
+    const { applySkip = false, statusFilter = PressContactStatus.PENDING } = request.body ?? {};
+
+    const contacts = await prisma.pressContact.findMany({
+      where: { status: statusFilter },
+      select: { id: true, email: true, mediaName: true, lang: true },
+    });
+
+    const summary = await auditPressContacts(contacts);
+
+    let skipped = 0;
+    if (applySkip) {
+      const toSkip = summary.results
+        .filter((r) => r.verdict === "INVALID" || r.verdict === "SKIPPED")
+        .map((r) => r.contactId);
+
+      if (toSkip.length > 0) {
+        const result = await prisma.pressContact.updateMany({
+          where: { id: { in: toSkip } },
+          data: {
+            status: PressContactStatus.SKIPPED,
+            notes: "[AUTO-SKIPPED by email audit]",
+          },
+        });
+        skipped = result.count;
+      }
+      log.info({ skipped, total: summary.total }, "Email audit applied — contacts flagged SKIPPED");
+    }
+
+    return reply.send({
+      total: summary.total,
+      byVerdict: summary.byVerdict,
+      byLang: summary.byLang,
+      topReasons: summary.topReasons,
+      duplicateEmailsCount: summary.duplicateEmails.length,
+      duplicateEmailsSample: summary.duplicateEmails.slice(0, 20),
+      appliedSkip: applySkip,
+      skippedCount: skipped,
+      // Keep a sample for debugging, full results list too large for JSON
+      worstOffenders: summary.results
+        .filter((r) => r.verdict === "INVALID")
+        .slice(0, 50)
+        .map((r) => ({ email: r.email, media: r.mediaName, lang: r.lang, reasons: r.reasons })),
     });
   });
 
