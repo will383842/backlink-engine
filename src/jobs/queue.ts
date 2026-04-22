@@ -18,6 +18,11 @@ export const QUEUE_NAMES = {
   SEQUENCE: "sequence",
   CRAWLING: "crawling",
   BROADCAST: "broadcast",
+  // 2026-04-22 (brand entity Vague 4.3):
+  // Separate queue for press outreach to journalists (targets Wikidata
+  // notability sources + brand SERP authority), isolated from the
+  // netlinking `outreach` queue.
+  PRESS_OUTREACH: "press-outreach",
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -33,6 +38,7 @@ export let reportingQueue: Queue;
 export let sequenceQueue: Queue;
 export let crawlingQueue: Queue;
 export let broadcastQueue: Queue;
+export let pressOutreachQueue: Queue;
 
 // ---------------------------------------------------------------------------
 // Common default job options
@@ -129,6 +135,14 @@ export function setupQueues(): void {
     },
   });
 
+  pressOutreachQueue = new Queue(QUEUE_NAMES.PRESS_OUTREACH, {
+    connection,
+    defaultJobOptions: {
+      ...DEFAULT_JOB_OPTIONS,
+      attempts: 3, // Less aggressive than outreach: a journalist deserves a clean 3-attempt limit
+    },
+  });
+
   log.info("All BullMQ queues initialised.");
 }
 
@@ -148,6 +162,7 @@ export async function closeQueues(): Promise<void> {
     sequenceQueue?.close(),
     crawlingQueue?.close(),
     broadcastQueue?.close(),
+    pressOutreachQueue?.close(),
   ]);
   log.info("All BullMQ queues closed.");
 }

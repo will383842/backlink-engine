@@ -1044,3 +1044,93 @@ model ContactTypeMapping {
   @@index([category])
   @@map("contact_type_mappings")
 }
+
+// ─────────────────────────────────────────────────────────────
+// PRESS OUTREACH (2026-04-22) — brand entity Vague 4.3
+// ─────────────────────────────────────────────────────────────
+// Separate from Prospect (which targets webmasters for netlinking).
+// PressContact targets journalists for press coverage, which serves as
+// source material for Wikidata notability + brand authority SEO.
+
+enum PressContactStatus {
+  PENDING        // Seeded, not yet contacted
+  SENT           // Initial pitch email sent
+  FOLLOW_UP_1    // Reminder at J+5 sent
+  FOLLOW_UP_2    // Reminder at J+10 sent
+  RESPONDED      // Journalist replied
+  PUBLISHED      // Article published (article_url set)
+  BOUNCED        // Email invalid
+  UNSUBSCRIBED   // Journalist opted out
+  SKIPPED        // Manually skipped
+}
+
+enum PressAngle {
+  launch
+  ymyl
+  expat
+  estonia
+  human_interest
+  tech_startup
+  innovation
+  diaspora
+}
+
+enum PressLang {
+  fr
+  en
+  es
+  de
+  pt
+  ru
+  zh
+  hi
+  ar
+  et
+}
+
+model PressContact {
+  id              String             @id @default(cuid())
+
+  // Identity
+  firstName       String?
+  lastName        String?
+  email           String             @unique
+  mediaName       String
+  mediaUrl        String?
+  mediaDr         Int?               // Domain Rating Ahrefs/Semrush
+
+  // Segmentation
+  lang            PressLang
+  angle           PressAngle
+  market          String?            // asia, latam, europe, africa, mena, na, global
+
+  // Tracking send
+  sentAt          DateTime?
+  followUp1At     DateTime?
+  followUp2At     DateTime?
+  fromInbox       String?            // e.g. presse-fr@sos-expat.com (rotation)
+
+  // Tracking reply / publication
+  respondedAt     DateTime?
+  articleUrl      String?
+  publishedAt     DateTime?
+
+  // Meta
+  campaignTag     String?            // e.g. "2026-Q2-launch"
+  notes           String?            @db.Text
+  status          PressContactStatus @default(PENDING)
+
+  // Bounce / engagement
+  bounceCount     Int                @default(0)
+  openCount       Int                @default(0)
+  lastOpenedAt    DateTime?
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([lang, status])
+  @@index([angle])
+  @@index([sentAt])
+  @@index([status, sentAt])
+  @@map("press_contacts")
+}

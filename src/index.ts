@@ -58,6 +58,8 @@ import { startReportingWorker } from "./jobs/workers/reportingWorker.js";
 import { startSequenceWorker } from "./jobs/workers/sequenceWorker.js";
 import { startCrawlingWorker } from "./jobs/workers/crawlingWorker.js";
 import { startBroadcastWorker } from "./jobs/workers/broadcastWorker.js";
+import { startPressOutreachWorker } from "./jobs/workers/pressOutreachWorker.js";
+import { pressRoutes } from "./api/routes/press.js";
 
 // ---------------------------------------------------------------------------
 // Fastify instance
@@ -240,6 +242,8 @@ await app.register(mailboxRoutes, { prefix: "/api/mailbox" });
 await app.register(mailboxesRoutes, { prefix: "/api/mailboxes" });
 await app.register(vpsHealthRoutes, { prefix: "/api/vps-health" });
 await app.register(broadcastRoutes, { prefix: "/api/broadcast" });
+// Press outreach (Vague 4.3 brand entity) — routes already include /api/press prefix internally
+await app.register(pressRoutes);
 
 // Health check
 app.get("/api/health", async () => {
@@ -381,6 +385,7 @@ try {
   startSequenceWorker();
   startCrawlingWorker();
   startBroadcastWorker();
+  startPressOutreachWorker();
   logger.info("All BullMQ workers started.");
 
   await app.listen({ port: PORT, host: HOST });
