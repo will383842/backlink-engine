@@ -25,6 +25,7 @@ export const WORKER_NAMES = [
   "sequence",
   "crawling",
   "broadcast",
+  "press-outreach",
 ] as const;
 
 export type WorkerName = (typeof WORKER_NAMES)[number];
@@ -47,6 +48,7 @@ function defaultToggles(): WorkerToggles {
     sequence: true,
     crawling: true,
     broadcast: true,
+    "press-outreach": true,
   };
 }
 
@@ -104,6 +106,7 @@ export async function setAllWorkers(enabled: boolean): Promise<WorkerToggles> {
     sequence: enabled,
     crawling: enabled,
     broadcast: enabled,
+    "press-outreach": enabled,
   };
 
   await prisma.appSetting.upsert({
