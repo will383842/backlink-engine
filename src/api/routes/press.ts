@@ -58,6 +58,21 @@ function renderUnsubscribePage(opts: { state: "success" | "error"; message?: str
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${title} — SOS-Expat</title><style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:80px auto;padding:0 24px;color:#111827;line-height:1.55}h1{color:${color};font-size:22px;margin:0 0 16px 0}p{color:#374151;margin:0 0 12px 0}.badge{display:inline-block;background:${color};color:#fff;padding:4px 12px;border-radius:99px;font-size:12px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;margin-bottom:20px}a{color:#2563eb}footer{margin-top:48px;padding-top:24px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280}</style></head><body><span class="badge">${isSuccess ? "OK" : "ERREUR"}</span><h1>${title}</h1><p>${body}</p>${isSuccess ? `<p>Si vous avez reçu ce message par erreur ou souhaitez reprendre contact, écrivez-nous à <a href="mailto:contact@sos-expat.com">contact@sos-expat.com</a>.</p>` : ""}<footer>SOS-Expat — contact@sos-expat.com</footer></body></html>`;
 }
 
+/**
+ * HTML confirmation page shown BEFORE the actual unsubscribe. The single-click
+ * on the link from the email lands here. The user must click the red confirm
+ * button to actually unsubscribe — avoids accidental opt-outs from prefetchers,
+ * link-preview bots, or mis-clicks. GET is safe (idempotent, no DB write).
+ *
+ * RFC 8058 One-Click (Gmail/Yahoo "Unsubscribe" button in their UI) goes to
+ * POST /api/press/unsubscribe directly and still triggers immediate unsub —
+ * the one-click spec requires no confirmation for auto-processed requests.
+ */
+function renderUnsubscribeConfirmPage(opts: { id: string; token: string; email?: string }): string {
+  const emailLabel = opts.email ? opts.email : "votre adresse";
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Confirmer la désinscription — SOS-Expat</title><style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:560px;margin:80px auto;padding:0 24px;color:#111827;line-height:1.55}h1{color:#111827;font-size:22px;margin:0 0 16px 0}p{color:#374151;margin:0 0 12px 0}.email{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#f3f4f6;padding:2px 8px;border-radius:4px;font-size:14px}.actions{margin-top:32px;display:flex;flex-wrap:wrap;gap:12px}button,a.btn{display:inline-block;padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px;border:0;cursor:pointer;text-decoration:none;text-align:center}.btn-danger{background:#dc2626;color:#fff}.btn-danger:hover{background:#b91c1c}.btn-secondary{background:#e5e7eb;color:#111827}.btn-secondary:hover{background:#d1d5db}footer{margin-top:48px;padding-top:24px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280}.warn{background:#fef3c7;border:1px solid #fcd34d;padding:12px 16px;border-radius:8px;color:#78350f;margin:20px 0}</style></head><body><h1>Confirmer votre désinscription</h1><p>Vous êtes sur le point de vous désinscrire de la liste presse SOS-Expat pour <span class="email">${emailLabel}</span>.</p><div class="warn"><strong>Attention :</strong> cette action retire votre adresse de <em>toutes</em> nos communications et est enregistrée de manière permanente. Cliquez ci-dessous uniquement si c'est bien votre intention.</div><p>Si vous avez cliqué par erreur, fermez simplement cette page — rien ne sera fait.</p><form method="POST" action="/api/press/unsubscribe/confirm" class="actions"><input type="hidden" name="id" value="${opts.id.replace(/"/g, "&quot;")}"><input type="hidden" name="token" value="${opts.token.replace(/"/g, "&quot;")}"><button type="submit" class="btn-danger">Oui, me désinscrire définitivement</button><a href="https://sos-expat.com" class="btn btn-secondary">Annuler</a></form><footer>SOS-Expat — contact@sos-expat.com · Demande valide pendant 30 jours.</footer></body></html>`;
+}
+
 export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPluginOptions) {
   // -------------------------------------------------------------------------
   // POST /api/press/outreach/start
@@ -793,28 +808,68 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
     return { ok: true };
   }
 
+  // GET = journalist clicked the link in the email footer.
+  // We DO NOT unsubscribe yet — we show a confirmation page instead. This
+  // prevents accidental opt-outs from (a) link prefetchers / preview bots,
+  // (b) Outlook Safe Links scanners, (c) finger-slips. The actual unsub
+  // happens on POST /api/press/unsubscribe/confirm.
   fastify.get<{
     Querystring: { id?: string; token?: string };
   }>("/api/press/unsubscribe", async (request, reply) => {
     const { id, token } = request.query;
+    reply.type("text/html");
     if (!id || !token) {
-      reply.type("text/html");
       return reply.send(renderUnsubscribePage({ state: "error", message: "Lien invalide." }));
     }
+    // Validate the token up-front so the confirm page only loads for real
+    // links — otherwise show the same generic error as after a bad POST.
+    const valid = await verifyUnsubscribeToken(id, token);
+    if (!valid) {
+      return reply.send(renderUnsubscribePage({ state: "error", message: "Lien invalide ou expiré." }));
+    }
+    const contact = await prisma.pressContact.findUnique({
+      where: { id },
+      select: { email: true, status: true },
+    });
+    if (!contact) {
+      return reply.send(renderUnsubscribePage({ state: "error", message: "Contact introuvable." }));
+    }
+    // If already unsubscribed, show the success page directly — no need
+    // to re-confirm something that's already done.
+    if (contact.status === PressContactStatus.UNSUBSCRIBED) {
+      return reply.send(renderUnsubscribePage({ state: "success" }));
+    }
+    return reply.send(renderUnsubscribeConfirmPage({ id, token, email: contact.email }));
+  });
 
-    const result = await handleUnsubscribe(id, token);
+  // POST /api/press/unsubscribe/confirm — the actual desubscribe action,
+  // only reachable after the user clicked "Yes, unsubscribe" on the
+  // confirmation page. Accepts form-encoded id+token from the HTML form.
+  fastify.post<{
+    Body: { id?: string; token?: string } | Record<string, unknown>;
+  }>("/api/press/unsubscribe/confirm", async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const id = typeof body.id === "string" ? body.id : undefined;
+    const token = typeof body.token === "string" ? body.token : undefined;
     reply.type("text/html");
+    if (!id || !token) {
+      return reply.send(renderUnsubscribePage({ state: "error", message: "Paramètres manquants." }));
+    }
+    const result = await handleUnsubscribe(id, token);
     if (!result.ok) {
       return reply.send(renderUnsubscribePage({ state: "error", message: "Lien invalide ou expiré." }));
     }
     return reply.send(renderUnsubscribePage({ state: "success" }));
   });
 
+  // POST /api/press/unsubscribe (direct, not /confirm) is the RFC 8058
+  // One-Click endpoint used by Gmail/Yahoo's built-in Unsubscribe button.
+  // The spec REQUIRES this to process instantly with no confirmation page
+  // — mail clients already confirmed intent in their own UI. Do not add a
+  // confirm step here, it would break Gmail/Yahoo integration.
   fastify.post<{
     Querystring: { id?: string; token?: string };
   }>("/api/press/unsubscribe", async (request, reply) => {
-    // List-Unsubscribe-Post One-Click (RFC 8058).  Params may arrive in
-    // query or form body; check both.
     const bodyUnknown = (request.body ?? {}) as Record<string, unknown>;
     const id = request.query.id ?? (typeof bodyUnknown.id === "string" ? bodyUnknown.id : undefined);
     const token = request.query.token ?? (typeof bodyUnknown.token === "string" ? bodyUnknown.token : undefined);
