@@ -68,9 +68,24 @@ export default async function trackingRoutes(app: FastifyInstance): Promise<void
               .then((rowsAffected) => {
                 if (rowsAffected === 0) return;
                 return prisma.sentEmail
-                  .findUnique({ where: { id }, select: { prospectId: true, contactId: true, enrollmentId: true } })
-                  .then((se) => {
+                  .findUnique({
+                    where: { id },
+                    select: { prospectId: true, contactId: true, enrollmentId: true, pressContactId: true },
+                  })
+                  .then(async (se) => {
                     if (!se) return;
+                    // Mirror open tracking onto PressContact so the press
+                    // campaign admin API (`/api/press/contacts`) shows the
+                    // real openCount + lastOpenedAt — otherwise these stay
+                    // stuck at 0 even when the pixel fires.
+                    if (se.pressContactId) {
+                      await prisma
+                        .$executeRaw`UPDATE press_contacts
+                          SET "openCount"    = "openCount" + 1,
+                              "lastOpenedAt" = NOW()
+                          WHERE id = ${se.pressContactId}`
+                        .catch(() => void 0);
+                    }
                     return prisma.event.create({
                       data: {
                         prospectId: se.prospectId,
@@ -78,7 +93,7 @@ export default async function trackingRoutes(app: FastifyInstance): Promise<void
                         enrollmentId: se.enrollmentId,
                         eventType: "email_opened",
                         eventSource: "tracking_pixel",
-                        data: { sentEmailId: id, userAgent: ua ?? null, ip: request.ip },
+                        data: { sentEmailId: id, userAgent: ua ?? null, ip: request.ip, pressContactId: se.pressContactId ?? null },
                       },
                     });
                   });
