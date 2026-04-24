@@ -13,7 +13,7 @@ import path from "node:path";
 import type { PressLang, PressAngle } from "@prisma/client";
 import { prisma } from "../../config/database.js";
 import { createChildLogger } from "../../utils/logger.js";
-import { EMBEDDED_PITCHES } from "./templates/pitches.js";
+import { EMBEDDED_PITCHES, EMBEDDED_PITCH_VARIANTS } from "./templates/pitches.js";
 
 const log = createChildLogger("press-pitch-renderer");
 
@@ -213,24 +213,34 @@ const ANGLE_LABELS: Record<PressAngle, Record<PressLang, string>> = {
 // Template parsing
 // ---------------------------------------------------------------------------
 
-let cachedTemplates: Map<PressLang, string> | null = null;
+// Each language resolves to a list of body variants (1 primary + N extras).
+// The renderer picks one deterministically from the contactId hash so the
+// same journalist always gets the same body across initial + follow-ups
+// but across 651 different contacts, the variant rotates evenly.
+let cachedTemplates: Map<PressLang, string[]> | null = null;
 
 /** Invalidate cache — called after DB edits so next render picks up changes. */
 export function invalidateTemplatesCache(): void {
   cachedTemplates = null;
 }
 
-async function loadTemplates(): Promise<Map<PressLang, string>> {
+async function loadTemplates(): Promise<Map<PressLang, string[]>> {
   if (cachedTemplates) return cachedTemplates;
 
-  const templates = new Map<PressLang, string>();
+  const templates = new Map<PressLang, string[]>();
 
   // Layer 1 — embedded TS templates: guaranteed to have all 10 langs.
+  // Primary body (EMBEDDED_PITCHES) followed by any extra variants defined
+  // in EMBEDDED_PITCH_VARIANTS.  If a DB override replaces the primary
+  // body (Layer 3), the extra variants are still available.
   for (const lang of Object.keys(EMBEDDED_PITCHES) as PressLang[]) {
-    templates.set(lang, EMBEDDED_PITCHES[lang]);
+    const primary = EMBEDDED_PITCHES[lang];
+    const extras = EMBEDDED_PITCH_VARIANTS[lang] ?? [];
+    templates.set(lang, [primary, ...extras]);
   }
 
   // Layer 2 — markdown file (dev-only, may not exist in container).
+  // Replaces the PRIMARY body only; embedded extra variants are kept.
   try {
     const content = await fs.readFile(PITCH_TEMPLATES_PATH, "utf8");
     const langHeaders: Array<{ lang: PressLang; marker: string }> = [
@@ -248,15 +258,20 @@ async function loadTemplates(): Promise<Map<PressLang, string>> {
       const codeEnd = content.indexOf("```", codeStart + 3);
       if (codeEnd === -1) continue;
       const body = content.slice(codeStart + 3, codeEnd).trim();
-      if (body.length > 0) templates.set(lang, body);
+      if (body.length > 0) {
+        const existing = templates.get(lang) ?? [];
+        // Replace primary (index 0) with markdown body, keep extras.
+        templates.set(lang, [body, ...existing.slice(1)]);
+      }
     }
   } catch {
     // Markdown not on disk — fine, embedded templates cover it.
   }
 
   // Layer 3 — AppSetting DB overrides: final authority so admins can edit
-  // the copy via the UI without a redeploy.  Missing langs fall through
-  // to earlier layers.
+  // the primary body via the UI without a redeploy. The extra variants
+  // (EMBEDDED_PITCH_VARIANTS) are kept to preserve rotation.  Missing
+  // langs fall through to earlier layers.
   try {
     const setting = await prisma.appSetting.findUnique({
       where: { key: PRESS_PITCH_TEMPLATES_KEY },
@@ -265,7 +280,8 @@ async function loadTemplates(): Promise<Map<PressLang, string>> {
       const dbTemplates = setting.value as Partial<Record<PressLang, string>>;
       for (const [lang, body] of Object.entries(dbTemplates)) {
         if (typeof body === "string" && body.length > 0) {
-          templates.set(lang as PressLang, body);
+          const existing = templates.get(lang as PressLang) ?? [];
+          templates.set(lang as PressLang, [body, ...existing.slice(1)]);
         }
       }
     }
@@ -275,6 +291,18 @@ async function loadTemplates(): Promise<Map<PressLang, string>> {
 
   cachedTemplates = templates;
   return templates;
+}
+
+/**
+ * Deterministic body picker — mirrors pickSubject.  Same contactId always
+ * resolves to the same variant index so initial + follow-ups stay
+ * consistent for one journalist.
+ */
+function pickBody(variants: string[], contactId?: string): string {
+  if (variants.length === 0) return "";
+  if (variants.length === 1 || !contactId) return variants[0]!;
+  const hash = [...contactId].reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return variants[hash % variants.length]!;
 }
 
 // ---------------------------------------------------------------------------
@@ -346,9 +374,10 @@ export interface RenderedPitch {
 export async function renderPitchEmail(args: RenderPitchArgs): Promise<RenderedPitch> {
   const templates = await loadTemplates();
   // Embedded templates already cover all 10 langs, so `get(args.lang)` is
-  // always a non-empty string.  FALLBACK_PITCH kept only as ultimate safety
+  // always a non-empty array.  FALLBACK_PITCH kept only as ultimate safety
   // net for a hypothetical schema extension.
-  const rawPitch = templates.get(args.lang) || FALLBACK_PITCH[args.lang] || FALLBACK_PITCH.en;
+  const variants = templates.get(args.lang) ?? [];
+  const rawPitch = pickBody(variants, args.contactId) || FALLBACK_PITCH[args.lang] || FALLBACK_PITCH.en;
 
   // Personalize
   const firstNameSafe = args.firstName?.trim() || (
