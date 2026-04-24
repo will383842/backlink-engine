@@ -22,13 +22,70 @@ const COMMON_PATTERNS = [
   /([a-zA-Z0-9._%+-]+)\s*\(at\)\s*([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi,     // name (at) domain.com
 ];
 
-// Emails génériques à ignorer
+// Emails génériques à ignorer (literal placeholders commonly shown on
+// "how to fill this form" sections of websites). Lowercased.
 const IGNORE_EMAILS = new Set([
   "example@example.com",
   "test@test.com",
   "admin@localhost",
   "noreply@noreply.com",
   "no-reply@example.com",
+  // Common documentation / form placeholders seen in the wild
+  "abc@xyz.com",
+  "xyz@abc.com",
+  "john@doe.com",
+  "jane@doe.com",
+  "john.doe@example.com",
+  "jane.doe@example.com",
+  "foo@bar.com",
+  "bar@foo.com",
+  "user@domain.com",
+  "user@example.com",
+  "name@domain.com",
+  "name@company.com",
+  "name@example.com",
+  "email@domain.com",
+  "email@example.com",
+  "contact@mail.com",
+  "your@email.com",
+  "you@example.com",
+  "yourname@example.com",
+  "yourname@yourdomain.com",
+  "info@yoursite.com",
+  "info@yourdomain.com",
+  "hello@example.com",
+  "hello@domain.com",
+  "sample@sample.com",
+  "demo@demo.com",
+]);
+
+// Placeholder local-parts (the part before @) frequently used in example
+// emails on webpages.  We match these ONLY in combination with a
+// placeholder-looking domain (see PLACEHOLDER_DOMAINS below) so we don't
+// nuke a legitimate "name@realcompany.com" contact.
+const PLACEHOLDER_LOCAL_PARTS = new Set([
+  "abc", "xyz", "foo", "bar", "baz",
+  "john", "jane", "doe", "johndoe", "janedoe",
+  "user", "username", "name", "yourname",
+  "email", "youremail", "myemail",
+  "sample", "demo", "placeholder", "dummy",
+]);
+
+// Domains that almost never host real mailboxes — either they are reserved
+// for documentation (RFC 2606 example.*) or they are notoriously used as
+// "put your domain here" fillers on form samples.
+const PLACEHOLDER_DOMAINS = new Set([
+  "example.com", "example.org", "example.net",
+  "test.com", "test.org", "test.net",
+  "xyz.com", "xyz.org",
+  "abc.com", "abc.org",
+  "domain.com", "domain.org", "domain.net",
+  "yourdomain.com", "yourdomain.org",
+  "yoursite.com", "yoursite.org",
+  "mydomain.com", "mysite.com",
+  "company.com", "yourcompany.com",
+  "mail.com", "email.com",
+  "sample.com", "dummy.com",
 ]);
 
 // ─────────────────────────────────────────────────────────────
@@ -364,7 +421,19 @@ function isValidEmail(email: string): boolean {
 
   // Simple regex validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(normalized);
+  if (!emailRegex.test(normalized)) return false;
+
+  // Reject obvious placeholder patterns (e.g., abc@xyz.com, john@doe.com).
+  // We require BOTH a placeholder local-part AND a placeholder-looking
+  // domain to avoid false positives on real emails like "abc@realcorp.com".
+  const [local, domain] = normalized.split("@");
+  if (!local || !domain) return false;
+  if (PLACEHOLDER_DOMAINS.has(domain)) return false;
+  if (PLACEHOLDER_LOCAL_PARTS.has(local) && PLACEHOLDER_LOCAL_PARTS.has(domain.split(".")[0] ?? "")) {
+    return false;
+  }
+
+  return true;
 }
 
 function deduplicateEmails(emails: ScrapedEmail[]): ScrapedEmail[] {

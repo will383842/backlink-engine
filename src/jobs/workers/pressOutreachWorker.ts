@@ -140,6 +140,27 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
     return { skipped: true, reason: contact.status };
   }
 
+  // Honor the global suppression list — any email flagged as hard-bounce,
+  // spam-complaint, or manual-exclusion must never receive press outreach
+  // regardless of PressContact status. Broadcast and outreach paths already
+  // check this table; press was missing the check and kept sending to
+  // suppressed addresses.
+  const emailNormalized = contact.email.toLowerCase().trim();
+  const suppressed = await prisma.suppressionEntry.findUnique({
+    where: { emailNormalized },
+  });
+  if (suppressed) {
+    log.info(
+      { contactId, email: emailNormalized, reason: suppressed.reason, source: suppressed.source },
+      "Contact is on the global suppression list, skipping + marking SKIPPED",
+    );
+    await prisma.pressContact.update({
+      where: { id: contact.id },
+      data: { status: PressContactStatus.SKIPPED, notes: `Suppressed: ${suppressed.reason}` },
+    });
+    return { skipped: true, reason: "suppressed", suppressionReason: suppressed.reason };
+  }
+
   // Render the email body from the pitch template for this lang + angle +
   // template iteration (initial / follow_up_1 / follow_up_2).
   const { subject, html, text, pdfUrl } = await renderPitchEmail({
