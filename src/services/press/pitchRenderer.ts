@@ -33,22 +33,143 @@ const PITCH_TEMPLATES_PATH = process.env.PRESS_PITCH_TEMPLATES_PATH ??
 
 const PDF_BASE_URL = process.env.PRESS_PDF_BASE_URL ?? "https://sos-expat.com";
 
-// Subject line patterns per language — rewrite 2026-04-22 v2.
-// Hook: pain-point stat (57% WTP) + gap insight ("no one was meeting
-// this need") to trigger journalist curiosity.  No angle suffix in the
-// subject — cleaner visual, higher open rate.
-const SUBJECT_TEMPLATES: Record<PressLang, string> = {
-  fr: "57% des voyageurs et expatriés prêts à payer — et personne ne répondait à ce besoin",
-  en: "57% of travelers and expats ready to pay — and no one was meeting this need",
-  es: "El 57% de viajeros y expatriados dispuestos a pagar — y nadie respondía a esta necesidad",
-  de: "57% der Reisenden und Expats zahlungsbereit — und niemand bediente diesen Bedarf",
-  pt: "57% de viajantes e expatriados dispostos a pagar — e ninguém respondia a esta necessidade",
-  ru: "57% путешественников и экспатов готовы платить — и никто не отвечал на эту потребность",
-  zh: "57%的旅行者和外籍人士愿意付费 — 却无人满足这一需求",
-  hi: "57% यात्री और प्रवासी भुगतान करने को तैयार — और कोई इस ज़रूरत का जवाब नहीं दे रहा था",
-  ar: "57٪ من المسافرين والمغتربين مستعدون للدفع — ولم يكن أحد يستجيب لهذه الحاجة",
-  et: "57% reisijatest ja välismaalastest on valmis maksma — ja keegi ei vastanud sellele vajadusele",
+// Subject line patterns per language — 2026-04-24 v3.
+// Changed from single subject to an ARRAY of 8 variants per language.
+// At render time we pick one variant deterministically from the contactId
+// hash so the same journalist always sees the same subject across initial
+// + follow-up 1 + follow-up 2 (Gmail threads them together, good for
+// deliverability). Across different contacts, subjects rotate — which is
+// the critical anti-bulk signal: 651 identical subjects would land in spam
+// within the first few hundred sends regardless of IP reputation.
+//
+// All variants stay journalist-friendly and avoid spammy triggers
+// (no caps-lock, no !!, no "FREE", no "URGENT"). Each hook pulls from a
+// different angle of the same story so the copy never contradicts itself:
+//   - 57% willingness-to-pay stat
+//   - 304M / 17% health coverage gap
+//   - 80 lawyers onboarded in 2 months
+//   - 9,563-participant CC-BY survey
+//   - 280M "no one to call" pain point
+//   - 197 countries / 5-minute connection
+//   - Direct data-for-article pitch
+//   - Editorial-pitch framing
+const SUBJECT_TEMPLATES: Record<PressLang, readonly string[]> = {
+  fr: [
+    "57% des voyageurs et expatriés prêts à payer — et personne ne répondait à ce besoin",
+    "304 millions d'expatriés, 17% sans couverture santé : comment on a comblé le trou",
+    "80 avocats inscrits en 2 mois : première plateforme mondiale pour expats",
+    "Sondage CC-BY sur 9 563 expatriés dans 54 pays — interview possible ?",
+    "Pourquoi 280 millions d'expats n'avaient-ils personne à appeler en urgence ?",
+    "Un avocat local en 5 minutes dans 197 pays — nouvelle plateforme lancée",
+    "Expatriation et juridique : données inédites pour votre prochain article",
+    "Proposition de contenu expat/voyage : étude 54 pays + angle humain",
+  ],
+  en: [
+    "57% of travelers and expats ready to pay — and no one was meeting this need",
+    "304 million expats, 17% without health coverage: how we bridged the gap",
+    "80 lawyers onboarded in 2 months: first worldwide platform for expats",
+    "CC-BY survey of 9,563 expats across 54 countries — interview opportunity?",
+    "Why 280 million expats had no one to call in an emergency",
+    "A local lawyer in 5 minutes across 197 countries — new platform launched",
+    "Expat legal data: fresh figures for your next story",
+    "Editorial pitch — expat/travel study spanning 54 countries + human angle",
+  ],
+  es: [
+    "El 57% de viajeros y expatriados dispuestos a pagar — y nadie respondía a esta necesidad",
+    "304 millones de expatriados, 17% sin cobertura médica: cómo cubrimos el vacío",
+    "80 abogados incorporados en 2 meses: primera plataforma mundial para expatriados",
+    "Encuesta CC-BY a 9.563 expatriados en 54 países — posible entrevista?",
+    "Por qué 280 millones de expatriados no tenían a quién llamar en una emergencia",
+    "Un abogado local en 5 minutos en 197 países — nueva plataforma lanzada",
+    "Datos jurídicos para expatriados: cifras inéditas para su próximo artículo",
+    "Propuesta editorial — estudio expat/viaje en 54 países + historia humana",
+  ],
+  de: [
+    "57% der Reisenden und Expats zahlungsbereit — und niemand bediente diesen Bedarf",
+    "304 Millionen Expats, 17% ohne Krankenversicherung: wie wir die Lücke schließen",
+    "80 Anwälte in 2 Monaten: erste weltweite Plattform für Expats",
+    "CC-BY-Umfrage unter 9.563 Expats in 54 Ländern — Interview möglich?",
+    "Warum 280 Millionen Expats niemanden im Notfall anrufen konnten",
+    "Ein Anwalt vor Ort in 5 Minuten in 197 Ländern — neue Plattform",
+    "Expat-Recht: neue Zahlen für Ihren nächsten Artikel",
+    "Themenvorschlag — Expat-/Reise-Studie aus 54 Ländern + menschliche Perspektive",
+  ],
+  pt: [
+    "57% de viajantes e expatriados dispostos a pagar — e ninguém respondia a esta necessidade",
+    "304 milhões de expatriados, 17% sem cobertura de saúde: como preenchemos a lacuna",
+    "80 advogados integrados em 2 meses: primeira plataforma mundial para expatriados",
+    "Inquérito CC-BY a 9.563 expatriados em 54 países — entrevista possível?",
+    "Porque 280 milhões de expatriados não tinham a quem ligar numa emergência",
+    "Um advogado local em 5 minutos em 197 países — nova plataforma lançada",
+    "Dados jurídicos para expatriados: números inéditos para o seu próximo artigo",
+    "Proposta editorial — estudo expat/viagem em 54 países + ângulo humano",
+  ],
+  ru: [
+    "57% путешественников и экспатов готовы платить — и никто не отвечал на эту потребность",
+    "304 миллиона экспатов, 17% без медицинского покрытия: как мы заполнили пробел",
+    "80 юристов за 2 месяца: первая мировая платформа для экспатов",
+    "Опрос CC-BY среди 9 563 экспатов в 54 странах — возможно интервью?",
+    "Почему 280 миллионам экспатов некому было позвонить в экстренной ситуации",
+    "Местный юрист за 5 минут в 197 странах — запущена новая платформа",
+    "Юридические данные для экспатов: свежие цифры для вашей следующей статьи",
+    "Редакционное предложение — исследование экспатов/путешественников в 54 странах",
+  ],
+  zh: [
+    "57%的旅行者和外籍人士愿意付费 — 却无人满足这一需求",
+    "3.04亿外籍人士，17%无医疗保障：我们如何填补空白",
+    "2个月80位律师入驻：全球首个外籍人士平台",
+    "CC-BY调查覆盖54国9,563位外籍人士 — 是否可接受采访？",
+    "为何2.8亿外籍人士在紧急情况下无人可联系",
+    "197个国家5分钟内联系当地律师 — 新平台上线",
+    "外籍法律数据：为您下一篇报道提供新鲜数据",
+    "选题提案 — 54国外籍/旅行者研究 + 人情角度",
+  ],
+  hi: [
+    "57% यात्री और प्रवासी भुगतान करने को तैयार — और कोई इस ज़रूरत का जवाब नहीं दे रहा था",
+    "304 मिलियन प्रवासी, 17% बिना स्वास्थ्य बीमा: हमने इस अंतर को कैसे पाटा",
+    "2 महीने में 80 वकील: प्रवासियों के लिए पहला विश्वव्यापी प्लेटफॉर्म",
+    "54 देशों के 9,563 प्रवासियों पर CC-BY सर्वेक्षण — साक्षात्कार संभव?",
+    "280 मिलियन प्रवासियों के पास आपातकाल में कॉल करने वाला कोई क्यों नहीं था",
+    "197 देशों में 5 मिनट में स्थानीय वकील — नया प्लेटफॉर्म लॉन्च",
+    "प्रवासी कानूनी डेटा: आपके अगले लेख के लिए नए आंकड़े",
+    "संपादकीय प्रस्ताव — 54 देशों में प्रवासी/यात्रा अध्ययन + मानवीय पहलू",
+  ],
+  ar: [
+    "57٪ من المسافرين والمغتربين مستعدون للدفع — ولم يكن أحد يستجيب لهذه الحاجة",
+    "304 مليون مغترب، 17% دون تغطية صحية: كيف سددنا الفجوة",
+    "80 محاميًا في شهرين: أول منصة عالمية للمغتربين",
+    "استطلاع CC-BY شمل 9,563 مغتربًا في 54 دولة — إمكانية مقابلة؟",
+    "لماذا لم يجد 280 مليون مغترب من يتصلون به في حالة طارئة",
+    "محامٍ محلي في 5 دقائق عبر 197 دولة — إطلاق منصة جديدة",
+    "بيانات قانونية للمغتربين: أرقام حديثة لمقالك القادم",
+    "اقتراح تحريري — دراسة مغتربين/مسافرين في 54 دولة + بعد إنساني",
+  ],
+  et: [
+    "57% reisijatest ja välismaalastest on valmis maksma — ja keegi ei vastanud sellele vajadusele",
+    "304 miljonit välismaalast, 17% ilma tervisekindlustuseta: kuidas me lünga täitsime",
+    "80 advokaati 2 kuuga: esimene ülemaailmne platvorm välismaalastele",
+    "CC-BY uuring 9 563 välismaalase seas 54 riigis — intervjuu võimalik?",
+    "Miks 280 miljonil välismaalasel polnud kedagi hädaolukorras helistada",
+    "Kohalik advokaat 5 minutiga 197 riigis — uus platvorm käivitatud",
+    "Välismaalaste juriidilised andmed: värsked numbrid teie järgmise loo jaoks",
+    "Toimetuslik pakkumine — välismaalaste/reisijate uuring 54 riigis + inimmõõde",
+  ],
 };
+
+/**
+ * Deterministic subject picker: same contactId → same subject variant across
+ * initial + follow_up_1 + follow_up_2, so Gmail/Outlook thread the 3 emails
+ * together (ongoing conversation = deliverability win). Across different
+ * contacts, the variant rotates — which is the anti-bulk signal we want.
+ *
+ * Falls back to variant index 0 if no contactId (e.g. a test render).
+ */
+function pickSubject(lang: PressLang, contactId?: string): string {
+  const variants = SUBJECT_TEMPLATES[lang];
+  if (!contactId) return variants[0]!;
+  const hash = [...contactId].reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return variants[hash % variants.length]!;
+}
 
 const ANGLE_LABELS: Record<PressAngle, Record<PressLang, string>> = {
   launch: {
@@ -206,6 +327,13 @@ export interface RenderPitchArgs {
   firstName: string | null;
   mediaName: string;
   mediaUrl: string | null;
+  /**
+   * Optional — used to deterministically pick a subject variant per
+   * contact. When provided, a given contact always receives the same
+   * subject across initial + follow-ups (thread coherence). Omit in
+   * one-off test renders.
+   */
+  contactId?: string;
 }
 
 export interface RenderedPitch {
@@ -298,10 +426,11 @@ export async function renderPitchEmail(args: RenderPitchArgs): Promise<RenderedP
     body = finalReminder[args.lang] + body;
   }
 
-  // Subject with angle
+  // Subject: pick a variant deterministically from the contactId hash so
+  // journalists receiving initial + follow-ups see the SAME subject (Gmail
+  // threads them), but across different contacts the subject rotates.
   const angleLabel = ANGLE_LABELS[args.angle][args.lang];
-  const subject = SUBJECT_TEMPLATES[args.lang]
-    .replace(/\{ANGLE_\w+\}/, angleLabel);
+  const subject = pickSubject(args.lang, args.contactId).replace(/\{ANGLE_\w+\}/, angleLabel);
 
   // Basic HTML conversion (preserves newlines as <br> + links autoformat)
   const html = body

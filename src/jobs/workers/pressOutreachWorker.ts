@@ -162,7 +162,10 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
   }
 
   // Render the email body from the pitch template for this lang + angle +
-  // template iteration (initial / follow_up_1 / follow_up_2).
+  // template iteration (initial / follow_up_1 / follow_up_2). Passing
+  // contactId makes the subject picker deterministic: same journalist
+  // always gets the same subject variant across initial + follow-ups so
+  // Gmail threads them together.
   const { subject, html, text, pdfUrl } = await renderPitchEmail({
     lang: contact.lang,
     angle: contact.angle,
@@ -170,6 +173,7 @@ async function processPressOutreach(job: Job<PressOutreachJobData>) {
     firstName: contact.firstName,
     mediaName: contact.mediaName,
     mediaUrl: contact.mediaUrl,
+    contactId: contact.id,
   });
 
   const fromInbox = await pickInboxForContact(contact.id, contact.lang);
