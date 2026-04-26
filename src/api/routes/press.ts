@@ -366,6 +366,7 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
       firstName: contact.firstName,
       mediaName: contact.mediaName,
       mediaUrl: contact.mediaUrl,
+      contactId: contact.id,
     });
 
     // Include the localized unsubscribe footer (what actually ships).
@@ -380,6 +381,7 @@ export async function pressRoutes(fastify: FastifyInstance, _opts: FastifyPlugin
         lastName: contact.lastName,
         mediaName: contact.mediaName,
         mediaUrl: contact.mediaUrl,
+      contactId: contact.id,
         lang: contact.lang,
         angle: contact.angle,
         status: contact.status,
